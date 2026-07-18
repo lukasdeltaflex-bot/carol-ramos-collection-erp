@@ -1,0 +1,1238 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useDb } from "@/hooks/useDb";
+import { IntegrationConfig, IntegrationLog, Automation } from "@/features/integrations/types";
+import { IntegrationConfigSchema, AutomationSchema } from "@/features/integrations/schemas";
+import { Product } from "@/features/products/types";
+import {
+  Building2,
+  Shield,
+  Sliders,
+  CheckCircle2,
+  Globe,
+  RefreshCw,
+  Plus,
+  X,
+  Trash2,
+  Activity,
+  Check,
+  ToggleLeft,
+  ToggleRight,
+  Smartphone,
+  Sparkles,
+  Zap,
+  ShoppingBag,
+  Code
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// Custom SVG Icons for integrations
+const ShopeeIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.36 14.3H8.64l-.56-2.5h7.84l-.56 2.5zm.9-4H7.74l-.56-2.5h9.64l-.56 2.5z" />
+  </svg>
+);
+
+const MeliIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+  </svg>
+);
+
+const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+  </svg>
+);
+
+// Initial Mock Automations
+const INITIAL_AUTOMATIONS = [
+  { name: "Boas-vindas ao Cliente", trigger: "customer_created" as const, actionType: "whatsapp_message" as const, template: "Olá {name}, seja muito bem-vinda à Carol Ramos Collection! ✨ Use o cupom CR10 para obter 10% de desconto na sua primeira compra. Aproveite! 💖", status: "active" as const },
+  { name: "Confirmação de Venda", trigger: "sale_completed" as const, actionType: "whatsapp_message" as const, template: "Olá {name}! Seu pedido de R$ {total} foi confirmado e já está na esteira de separação. Código do pedido: #{id}. Agradecemos a preferência! 🛍️", status: "active" as const },
+  { name: "Lembrete de Atendimento", trigger: "appointment_confirmed" as const, actionType: "whatsapp_message" as const, template: "Olá {name}! Confirmamos seu agendamento de {service} para o dia {date} às {time}. Profissional: {professional}. Esperamos você! ✨", status: "inactive" as const }
+];
+
+export default function SettingsPage() {
+  const { profile, role, tenantId } = useAuth();
+  const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
+
+  const [activeTab, setActiveTab] = useState<"profile" | "rbac" | "params" | "integrations" | "logs">("profile");
+  const [loading, setLoading] = useState(false);
+
+  // Lists
+  const [configs, setConfigs] = useState<IntegrationConfig[]>([]);
+  const [logs, setLogs] = useState<IntegrationLog[]>([]);
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [aiLogs, setAiLogs] = useState<any[]>([]);
+  const [subTab, setSubTab] = useState<"audit" | "ai">("audit");
+
+
+  // Config Form Drawer
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<'shopee' | 'mercado_libre' | 'whatsapp'>("shopee");
+  
+  // Credentials Inputs
+  const [shopId, setShopId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [phoneId, setPhoneId] = useState("");
+  const [wabaId, setWabaId] = useState("");
+
+  // Automation Form
+  const [autoModalOpen, setAutoModalOpen] = useState(false);
+  const [autoEditingId, setAutoEditingId] = useState<string | null>(null);
+  const [autoName, setAutoName] = useState("");
+  const [autoTrigger, setAutoTrigger] = useState<'sale_completed' | 'customer_created' | 'appointment_confirmed'>("sale_completed");
+  const [autoAction, setAutoAction] = useState<'whatsapp_message' | 'email_message' | 'discount_coupon'>("whatsapp_message");
+  const [autoTemplate, setAutoTemplate] = useState("");
+  const [autoStatus, setAutoStatus] = useState<'active' | 'inactive'>("active");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Webhook Simulator State
+  const [simChannel, setSimChannel] = useState<'shopee' | 'mercado_libre'>("shopee");
+  const [simProductId, setSimProductId] = useState("");
+  const [simQuantity, setSimQuantity] = useState(1);
+  const [simCustomerName, setSimCustomerName] = useState("Juliana de Souza");
+  const [simSuccessMsg, setSimSuccessMsg] = useState("");
+
+  const tenantNameMap: Record<string, string> = {
+    "carol-ramos-collection": "Carol Ramos Collection",
+    "beleza-saas-demo": "Beleza SaaS Demo"
+  };
+
+  const activeTenantName = tenantId ? (tenantNameMap[tenantId] || tenantId) : "";
+
+  // Load Integrations
+  const loadIntegrationsData = async () => {
+    setLoading(true);
+    try {
+      const [dbConfigs, dbLogs, dbAutos, dbProds, dbAudits, dbAis] = await Promise.all([
+        getDocs("integration_configs"),
+        getDocs("integration_logs"),
+        getDocs("automations"),
+        getDocs("products"),
+        getDocs("audit_logs"),
+        getDocs("ai_logs")
+      ]);
+
+      setProducts(dbProds as Product[]);
+      setLogs(dbLogs as IntegrationLog[]);
+      setAuditLogs(dbAudits || []);
+
+      // Seed mock integrations if empty
+      let currentConfigs = dbConfigs as IntegrationConfig[];
+      if (currentConfigs.length === 0) {
+        const shopeeSeed = {
+          channel: "shopee" as const,
+          status: "connected" as const,
+          credentials: { shopId: "9912034", apiKey: "shopee_key_prod_abc123" },
+          lastSyncAt: new Date().toISOString()
+        };
+        const mlSeed = {
+          channel: "mercado_libre" as const,
+          status: "disconnected" as const,
+          credentials: {}
+        };
+        const waSeed = {
+          channel: "whatsapp" as const,
+          status: "connected" as const,
+          credentials: { phoneId: "10920491823901", wabaId: "2094812049" },
+          lastSyncAt: new Date().toISOString()
+        };
+
+        await createDoc("integration_configs", shopeeSeed);
+        await createDoc("integration_configs", mlSeed);
+        await createDoc("integration_configs", waSeed);
+
+        const freshConfigs = await getDocs("integration_configs");
+        setConfigs(freshConfigs as IntegrationConfig[]);
+      } else {
+        setConfigs(currentConfigs);
+      }
+
+      // Seed mock automations
+      let currentAutos = dbAutos as Automation[];
+      if (currentAutos.length === 0) {
+        for (const aut of INITIAL_AUTOMATIONS) {
+          await createDoc("automations", aut);
+        }
+        const freshAutos = await getDocs("automations");
+        setAutomations(freshAutos as Automation[]);
+      } else {
+        setAutomations(currentAutos);
+      }
+
+      // Seed mock AI Logs
+      let currentAis = dbAis as any[];
+      if (currentAis.length === 0) {
+        const seedAis = [
+          { user: "admin@carolramos.com.br", prompt: "Qual foi o faturamento total da Shopee esta semana?", model: "gemini-2.5-flash", tokensUsed: 1240, responseSummary: "Faturamento gerado com sucesso.", createdAt: new Date().toISOString() },
+          { user: "admin@carolramos.com.br", prompt: "Quais produtos estão com estoque crítico?", model: "gemini-2.5-flash", tokensUsed: 980, responseSummary: "Identificados 3 produtos críticos de estoque.", createdAt: new Date().toISOString() }
+        ];
+        for (const ai of seedAis) {
+          await createDoc("ai_logs", ai);
+        }
+        currentAis = await getDocs("ai_logs");
+      }
+      setAiLogs(currentAis);
+
+      if (dbProds.length > 0) {
+        setSimProductId(dbProds[0].id);
+      }
+    } catch (e) {
+      console.error("Erro ao sincronizar integrações:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "integrations" || activeTab === "logs") {
+      loadIntegrationsData();
+    }
+  }, [activeTab]);
+
+  // 1. Abrir Modal de Credenciais do Canal
+  const handleOpenCredentials = (channel: typeof selectedChannel) => {
+    const config = configs.find(c => c.channel === channel);
+    setSelectedChannel(channel);
+    setShopId(config?.credentials.shopId || "");
+    setApiKey(config?.credentials.apiKey || "");
+    setAccessToken(config?.credentials.accessToken || "");
+    setPhoneId(config?.credentials.phoneId || "");
+    setWabaId(config?.credentials.wabaId || "");
+    setModalOpen(true);
+  };
+
+  // 2. Conectar Canal
+  const handleConnectChannel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const config = configs.find(c => c.channel === selectedChannel);
+      const payload = {
+        channel: selectedChannel,
+        status: "connected" as const,
+        credentials: {
+          shopId: shopId || undefined,
+          apiKey: apiKey || undefined,
+          accessToken: accessToken || undefined,
+          phoneId: phoneId || undefined,
+          wabaId: wabaId || undefined,
+        }
+      };
+
+      const result = IntegrationConfigSchema.safeParse(payload);
+      if (!result.success) {
+        alert(result.error.issues[0].message);
+        return;
+      }
+
+      if (config) {
+        await updateDoc("integration_configs", config.id, {
+          ...payload,
+          lastSyncAt: new Date().toISOString()
+        });
+      } else {
+        await createDoc("integration_configs", payload);
+      }
+
+      // Log success event
+      await createDoc("integration_logs", {
+        channel: selectedChannel,
+        type: "sync_stock",
+        status: "success",
+        message: `Canal ${selectedChannel.toUpperCase()} conectado e inventário sincronizado com sucesso!`
+      });
+
+      setModalOpen(false);
+      await loadIntegrationsData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao conectar.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Desconectar canal
+  const handleDisconnect = async (id: string, channel: string) => {
+    if (confirm(`Deseja desconectar a integração com o ${channel.toUpperCase()}?`)) {
+      try {
+        await updateDoc("integration_configs", id, { status: "disconnected", credentials: {} });
+        await loadIntegrationsData();
+      } catch (e: any) {
+        alert(e.message || "Erro ao desconectar.");
+      }
+    }
+  };
+
+  // 3. Simular Recebimento de Webhook (Venda de Marketplace)
+  const handleSimulateWebhook = async () => {
+    const prod = products.find(p => p.id === simProductId);
+    if (!prod) return;
+
+    if (prod.currentStock < simQuantity) {
+      alert("Estoque insuficiente para esta simulação.");
+      return;
+    }
+
+    setLoading(true);
+    setSimSuccessMsg("");
+
+    try {
+      const saleVal = prod.sellPrice * simQuantity;
+
+      // 1. Criar Venda correspondente
+      const newSale = await createDoc("sales", {
+        customerId: "marketplace-buyer",
+        items: [{
+          productId: prod.id,
+          name: prod.name,
+          quantity: simQuantity,
+          unitPrice: prod.sellPrice,
+          costPrice: prod.costPrice,
+          discount: 0
+        }],
+        subtotal: saleVal,
+        discount: 0,
+        total: saleVal,
+        paymentMethod: "pix" as const, // Marketplace repassa pix/dinheiro
+        status: "completed" as const,
+        channel: simChannel
+      });
+
+      // 2. Registrar Log da Integração
+      await createDoc("integration_logs", {
+        channel: simChannel,
+        type: "webhook",
+        status: "success",
+        message: `Webhook recebido: Pedido #${newSale.id} importado com sucesso. Comprador: ${simCustomerName}`,
+        payload: { buyer: simCustomerName, item: prod.name, quantity: simQuantity, total: saleVal }
+      });
+
+      // 3. Abater Estoque Físico
+      await updateDoc("products", prod.id, {
+        currentStock: prod.currentStock - simQuantity,
+        availableStock: prod.availableStock - simQuantity,
+        lastSaleDate: new Date().toISOString()
+      });
+
+      // Registrar transação de inventário
+      await createDoc("inventory_transactions", {
+        productId: prod.id,
+        locationId: "deposito-central",
+        type: "out" as const,
+        quantity: simQuantity,
+        costPriceAtTime: prod.costPrice,
+        reason: `Venda via Webhook ${simChannel.toUpperCase()} - Pedido #${newSale.id}`
+      });
+
+      // 4. Criar Receita no Caixa/Banco PJ
+      await createDoc("financial_transactions", {
+        type: "revenue" as const,
+        category: "sale" as const,
+        amount: saleVal,
+        description: `Importação: Venda ${simChannel.toUpperCase()} - Pedido #${newSale.id}`,
+        paymentDate: new Date().toISOString().split("T")[0],
+        status: "paid" as const,
+        bankAccountId: "itau-pj", // Banco Itaú PJ
+        referenceId: newSale.id
+      });
+
+      // 5. Executar automações se houver regra correspondente a venda
+      const saleCompletedAutos = automations.filter(a => a.trigger === "sale_completed" && a.status === "active");
+      for (const auto of saleCompletedAutos) {
+        const formattedMsg = auto.template
+          .replace("{name}", simCustomerName)
+          .replace("{total}", saleVal.toFixed(2))
+          .replace("{id}", newSale.id);
+
+        await createDoc("notifications", {
+          type: "automation_notification",
+          customerId: "marketplace-buyer",
+          message: `[WhatsApp Automático]: ${formattedMsg}`,
+          sentAt: new Date().toISOString()
+        });
+      }
+
+      setSimSuccessMsg(`WebHook Sucedido! Pedido faturado. R$ ${saleVal.toFixed(2)} inserido nas receitas bancárias, estoque do produto decrementado de ${prod.currentStock} para ${prod.currentStock - simQuantity}.`);
+      await loadIntegrationsData();
+    } catch (err: any) {
+      alert(err.message || "Erro na simulação do webhook.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 4. Automations CRUD
+  const handleOpenAuto = (id?: string) => {
+    setErrors({});
+    if (id) {
+      const auto = automations.find(a => a.id === id);
+      if (auto) {
+        setAutoEditingId(id);
+        setAutoName(auto.name);
+        setAutoTrigger(auto.trigger);
+        setAutoAction(auto.actionType);
+        setAutoTemplate(auto.template);
+        setAutoStatus(auto.status);
+      }
+    } else {
+      setAutoEditingId(null);
+      setAutoName("");
+      setAutoTrigger("sale_completed");
+      setAutoAction("whatsapp_message");
+      setAutoTemplate("");
+      setAutoStatus("active");
+    }
+    setAutoModalOpen(true);
+  };
+
+  const handleSaveAutomation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+
+    const payload = {
+      name: autoName,
+      trigger: autoTrigger,
+      actionType: autoAction,
+      template: autoTemplate,
+      status: autoStatus
+    };
+
+    const result = AutomationSchema.safeParse(payload);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      result.error.issues.forEach(i => errs[i.path.join(".")] = i.message);
+      setErrors(errs);
+      return;
+    }
+
+    try {
+      if (autoEditingId) {
+        await updateDoc("automations", autoEditingId, payload);
+      } else {
+        await createDoc("automations", payload);
+      }
+      setAutoModalOpen(false);
+      await loadIntegrationsData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar automação.");
+    }
+  };
+
+  const handleToggleAutoStatus = async (auto: Automation) => {
+    const nextStatus = auto.status === "active" ? ("inactive" as const) : ("active" as const);
+    try {
+      await updateDoc("automations", auto.id, { status: nextStatus });
+      await loadIntegrationsData();
+    } catch (e: any) {
+      alert(e.message || "Erro ao alternar status.");
+    }
+  };
+
+  const handleDeleteAuto = async (id: string, name: string) => {
+    if (confirm(`Excluir regra de automação "${name}"?`)) {
+      try {
+        await deleteDoc("automations", id);
+        await loadIntegrationsData();
+      } catch (e: any) {
+        alert(e.message || "Erro ao excluir.");
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl border border-border bg-card/40 backdrop-blur-md">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-display font-light">Painel de <span className="font-semibold text-rosegold-500">Configurações SaaS</span></h1>
+          <p className="text-xs text-muted-foreground">Gerencie informações do inquilino, usuários, integrações e automações de canais.</p>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Left Nav menu */}
+        <div className="md:col-span-1 p-2 rounded-2xl border border-border bg-card/40 space-y-1.5 h-fit">
+          <button
+            onClick={() => setActiveTab("profile")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "profile" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Building2 className="h-4.5 w-4.5" />
+            <span>Perfil da Empresa</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab("integrations")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "integrations" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Globe className="h-4.5 w-4.5" />
+            <span>Integrações & Canais</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("rbac")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "rbac" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Shield className="h-4.5 w-4.5" />
+            <span>Controle de Acesso (RBAC)</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab("params")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "params" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Sliders className="h-4.5 w-4.5" />
+            <span>Parametrização</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("logs")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "logs" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Activity className="h-4.5 w-4.5" />
+            <span>Logs do Sistema</span>
+          </button>
+        </div>
+
+        {/* Right Detail area */}
+        <div className="md:col-span-2 space-y-6">
+          
+          {/* TAB 1: PROFILE */}
+          {activeTab === "profile" && (
+            <div className="space-y-6">
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <Building2 className="h-4.5 w-4.5 text-rosegold-500" />
+                  <span>Dados da Empresa Ativa</span>
+                </h3>
+                
+                <div className="space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">Identificação Tenant (ID)</span>
+                      <p className="font-mono bg-muted p-2 rounded-lg truncate">{tenantId}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">Razão Social / Fantasia</span>
+                      <p className="p-2 border border-border rounded-lg bg-card/50 font-semibold">{activeTenantName}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">CNPJ/CPF</span>
+                      <p className="p-2 border border-border rounded-lg bg-card/50">12.345.678/0001-99</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">Seu Acesso</span>
+                      <p className="p-2 border border-border rounded-lg bg-card/50 capitalize font-semibold text-rosegold-600 dark:text-rosegold-400">{role}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="h-4.5 w-4.5 text-rosegold-500" />
+                    <span>Assinatura do Plano SaaS</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded bg-rosegold-100 text-rosegold-800 dark:bg-rosegold-950/40 dark:text-rosegold-300 text-[10px] font-bold tracking-wider uppercase border border-rosegold-200/50">
+                    PRO PLAN
+                  </span>
+                </div>
+
+                <div className="text-xs text-muted-foreground leading-relaxed">
+                  Sua conta está associada ao plano comercial Pro ERP Multi-Tenant, ativado com suporte ilimitado para integração de marketplaces, relatórios financeiros consolidados e assistente de IA Gemini.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: INTEGRATIONS & CHANNELS */}
+          {activeTab === "integrations" && (
+            <div className="space-y-6">
+              
+              {/* Canais Conectados */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <Globe className="h-4.5 w-4.5 text-rosegold-500" />
+                  <span>Canais de Integração Disponíveis</span>
+                </h3>
+
+                <div className="space-y-3.5">
+                  {[
+                    { channel: "shopee" as const, name: "Shopee Marketplace", desc: "Sincronização de catálogo e importação de pedidos de vendas.", icon: ShopeeIcon },
+                    { channel: "mercado_libre" as const, name: "Mercado Livre", desc: "Integração automática para estoque em anúncios e faturamento.", icon: MeliIcon },
+                    { channel: "whatsapp" as const, name: "WhatsApp Cloud API", desc: "Envio de templates oficiais de confirmação e alertas pós-venda.", icon: WhatsAppIcon }
+                  ].map((chan) => {
+                    const config = configs.find(c => c.channel === chan.channel);
+                    const isConnected = config?.status === "connected";
+                    const Icon = chan.icon;
+
+                    return (
+                      <div key={chan.channel} className="p-4 rounded-xl border border-border bg-card flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3 text-xs">
+                          <div className={cn(
+                            "p-2 rounded-lg",
+                            isConnected ? "bg-rosegold-100 text-rosegold-700 dark:bg-rosegold-950/30 dark:text-rosegold-300" : "bg-muted text-muted-foreground"
+                          )}>
+                            <Icon className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-foreground">{chan.name}</h4>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{chan.desc}</p>
+                            {isConnected && config.lastSyncAt && (
+                              <p className="text-[8px] font-bold text-green-500 uppercase tracking-wider mt-1.5 flex items-center gap-1 font-mono">
+                                <Check className="h-3 w-3" />
+                                <span>Sincronizado: {new Date(config.lastSyncAt).toLocaleDateString()}</span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isConnected ? (
+                            <>
+                              <button
+                                onClick={() => handleOpenCredentials(chan.channel)}
+                                className="px-2.5 py-1.5 border border-border hover:bg-muted rounded text-[10px] font-semibold transition-colors"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => handleDisconnect(config.id, chan.channel)}
+                                className="px-2.5 py-1.5 bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 hover:bg-red-200 rounded text-[10px] font-semibold transition-colors"
+                              >
+                                Desconectar
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenCredentials(chan.channel)}
+                              className="px-2.5 py-1.5 bg-primary text-primary-foreground font-semibold rounded text-[10px] shadow hover:bg-primary/95 transition-all"
+                            >
+                              Conectar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Simulador de Webhook de Entrada */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <Code className="h-4.5 w-4.5 text-rosegold-500" />
+                  <span>Simulador de Webhook de Marketplace (Entrada)</span>
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Utilize este painel para simular o recebimento de webhooks e testar a automatização integrada de estoque, contabilidade (caixa) e mensagens instantâneas pós-venda.
+                </p>
+
+                <div className="p-4 rounded-xl border border-border bg-card space-y-3.5 text-xs">
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Canal de Origem</label>
+                      <select
+                        value={simChannel}
+                        onChange={(e) => setSimChannel(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
+                      >
+                        <option value="shopee">Shopee Webhook</option>
+                        <option value="mercado_libre">Mercado Livre Webhook</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome do Comprador</label>
+                      <input
+                        type="text"
+                        value={simCustomerName}
+                        onChange={(e) => setSimCustomerName(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3.5">
+                    <div className="col-span-2 space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Produto Vendido</label>
+                      <select
+                        value={simProductId}
+                        onChange={(e) => setSimProductId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground truncate"
+                      >
+                        {products.map(p => <option key={p.id} value={p.id}>{p.name} (R$ {p.sellPrice.toFixed(2)})</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Quantidade</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={simQuantity}
+                        onChange={(e) => setSimQuantity(parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-center"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSimulateWebhook}
+                    disabled={products.length === 0}
+                    className="w-full py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/10 flex items-center justify-center gap-1.5"
+                  >
+                    <Zap className="h-4 w-4" />
+                    <span>Disparar Webhook Simulado</span>
+                  </button>
+
+                  {simSuccessMsg && (
+                    <div className="p-3.5 rounded-xl border border-green-200 bg-green-50 text-green-800 dark:border-green-950/20 dark:bg-green-950/20 dark:text-green-400 font-mono text-[10px] leading-relaxed">
+                      {simSuccessMsg}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Automations Rules (Automations collection CRUD) */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Zap className="h-4.5 w-4.5 text-rosegold-500" />
+                    <span>Regras de Automação (WhatsApp Bot)</span>
+                  </h3>
+                  
+                  <button
+                    onClick={() => handleOpenAuto()}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border hover:bg-muted text-[10px] font-bold uppercase tracking-wider text-rosegold-700 dark:text-rosegold-300"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Adicionar Regra</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {automations.map((auto) => {
+                    const isActive = auto.status === "active";
+                    return (
+                      <div key={auto.id} className="p-4 rounded-xl border border-border bg-card text-xs space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-foreground text-xs">{auto.name}</span>
+                            <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground uppercase font-bold tracking-wider">
+                              <span>Disparador:</span>
+                              <span className="text-rosegold-600 dark:text-rosegold-400">{auto.trigger}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleToggleAutoStatus(auto)}
+                              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              {isActive ? (
+                                <ToggleRight className="h-6 w-6 text-green-500" />
+                              ) : (
+                                <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleOpenAuto(auto.id)}
+                              className="p-1.5 rounded bg-muted hover:bg-border text-muted-foreground hover:text-foreground"
+                            >
+                              <Sliders className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAuto(auto.id, auto.name)}
+                              className="p-1.5 rounded bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-lg border border-border/60 bg-muted/20 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                          {auto.template}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {automations.length === 0 && (
+                    <p className="text-center py-6 text-muted-foreground italic text-xs">Nenhuma regra de automação cadastrada.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Logs de Integração */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <Activity className="h-4.5 w-4.5 text-rosegold-500" />
+                  <span>Histórico de Logs de Integrações</span>
+                </h3>
+
+                <div className="max-h-52 overflow-y-auto pr-1 space-y-1.5 scrollbar-thin">
+                  {logs.map((log) => (
+                    <div key={log.id} className="p-2.5 rounded-lg border border-border bg-card/40 flex items-start justify-between gap-3 text-[10px]">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground leading-normal">{log.message}</p>
+                        <span className="text-[8px] text-muted-foreground font-mono mt-0.5 block">
+                          Canal: {log.channel.toUpperCase()} | {new Date(log.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <span className={cn(
+                        "px-1.5 py-0.2 rounded text-[8px] font-bold uppercase shrink-0 border",
+                        log.status === "success" 
+                          ? "bg-green-50 text-green-700 border-green-200/50 dark:bg-green-950/20 dark:text-green-400" 
+                          : "bg-red-50 text-red-700 border-red-200/50 dark:bg-red-950/20 dark:text-red-400"
+                      )}>
+                        {log.status}
+                      </span>
+                    </div>
+                  ))}
+                  {logs.length === 0 && (
+                    <p className="text-center py-6 text-muted-foreground italic text-[10px]">Nenhum log gravado.</p>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 3: RBAC (PLACEHOLDER) */}
+          {activeTab === "rbac" && (
+            <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Shield className="h-4.5 w-4.5 text-rosegold-500" />
+                <span>Controle de Acesso RBAC</span>
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Configure as permissões de acesso por cargo (Owner, Admin, Operator, Viewer). Funcionalidades avançadas de Multi-Tenant do ERP SaaS.
+              </p>
+              <div className="border border-border rounded-xl overflow-hidden text-xs">
+                <div className="grid grid-cols-3 p-3 bg-muted/40 font-bold text-muted-foreground border-b border-border">
+                  <span>Usuário</span>
+                  <span>Função</span>
+                  <span>Permissão</span>
+                </div>
+                <div className="grid grid-cols-3 p-3 border-b border-border/50 items-center">
+                  <span className="font-semibold">admin@carolramos.com.br</span>
+                  <span className="font-mono bg-rosegold-100 text-rosegold-800 dark:bg-rosegold-950/40 dark:text-rosegold-300 w-fit px-1.5 py-0.5 rounded text-[10px] font-bold">owner</span>
+                  <span className="text-muted-foreground">Acesso Total</span>
+                </div>
+                <div className="grid grid-cols-3 p-3 items-center">
+                  <span className="font-semibold">operator@carolramos.com.br</span>
+                  <span className="font-mono bg-muted text-muted-foreground w-fit px-1.5 py-0.5 rounded text-[10px] font-bold">operator</span>
+                  <span className="text-muted-foreground">Venda/PDV e Agenda</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: PARAMETRIZAÇÃO (PLACEHOLDER) */}
+          {activeTab === "params" && (
+            <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Sliders className="h-4.5 w-4.5 text-rosegold-500" />
+                <span>Parametrização Geral</span>
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Opções gerais de faturamento e alertas mínimos.
+              </p>
+              <div className="space-y-3.5 text-xs">
+                <div className="flex justify-between items-center p-3 rounded-lg border border-border">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-foreground">Alertar estoque crítico</span>
+                    <p className="text-[10px] text-muted-foreground">Exibe notificações de estoque baixo na header.</p>
+                  </div>
+                  <ToggleRight className="h-6 w-6 text-green-500" />
+                </div>
+                <div className="flex justify-between items-center p-3 rounded-lg border border-border">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-foreground">Exigir CPF/CNPJ de Cliente</span>
+                    <p className="text-[10px] text-muted-foreground">Torna obrigatório para emissão posterior de NFC-e.</p>
+                  </div>
+                  <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: SYSTEM LOGS (AUDIT & AI) */}
+          {activeTab === "logs" && (
+            <div className="space-y-6">
+              
+              {/* Header de Logs */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Activity className="h-4.5 w-4.5 text-rosegold-500" />
+                    <span>Logs do Sistema e Rastreabilidade</span>
+                  </h3>
+                  
+                  {/* SubTabs */}
+                  <div className="flex border border-border bg-card rounded-lg p-0.5 text-[10px] font-semibold">
+                    <button
+                      onClick={() => setSubTab("audit")}
+                      className={cn(
+                        "px-2.5 py-1 rounded transition-colors",
+                        subTab === "audit" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      Auditoria CRUD
+                    </button>
+                    <button
+                      onClick={() => setSubTab("ai")}
+                      className={cn(
+                        "px-2.5 py-1 rounded transition-colors",
+                        subTab === "ai" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      Consultas IA
+                    </button>
+                  </div>
+                </div>
+
+                {/* SubTab 1: Auditoria CRUD */}
+                {subTab === "audit" && (
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 scrollbar-thin">
+                    {auditLogs.length === 0 ? (
+                      <p className="text-center py-10 text-muted-foreground italic text-xs">Nenhum log de alteração de banco de dados registrado.</p>
+                    ) : (
+                      [...auditLogs]
+                        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                        .map((log: any) => {
+                          const isUpdate = log.action === "update";
+                          const isDelete = log.action === "delete";
+                          
+                          // Format changes visual representation
+                          let changesList: string[] = [];
+                          if (isUpdate && log.previousValues && log.newValues) {
+                            Object.keys(log.newValues).forEach(k => {
+                              if (k !== "updatedAt" && k !== "updatedBy") {
+                                const oldVal = typeof log.previousValues[k] === "object" ? JSON.stringify(log.previousValues[k]) : log.previousValues[k];
+                                const newVal = typeof log.newValues[k] === "object" ? JSON.stringify(log.newValues[k]) : log.newValues[k];
+                                if (oldVal !== newVal) {
+                                  changesList.push(`${k}: "${oldVal ?? ''}" → "${newVal ?? ''}"`);
+                                }
+                              }
+                            });
+                          }
+
+                          return (
+                            <div key={log.id} className="p-3.5 rounded-xl border border-border bg-card text-[11px] space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5 font-bold text-foreground">
+                                    <span className={cn(
+                                      "px-1.5 py-0.2 rounded text-[8px] font-bold uppercase border",
+                                      isUpdate ? "bg-blue-50 text-blue-700 border-blue-200/50 dark:bg-blue-950/20 dark:text-blue-400" : 
+                                      isDelete ? "bg-red-50 text-red-700 border-red-200/50 dark:bg-red-950/20 dark:text-red-400" :
+                                      "bg-green-50 text-green-700 border-green-200/50 dark:bg-green-950/20 dark:text-green-400"
+                                    )}>
+                                      {log.action}
+                                    </span>
+                                    <span>Tabela: <code className="text-rosegold-600 dark:text-rosegold-400 font-mono font-bold">{log.collection}</code></span>
+                                  </div>
+                                  <p className="text-[9px] text-muted-foreground font-mono">ID Documento: {log.documentId}</p>
+                                </div>
+                                <span className="text-[9px] text-muted-foreground font-mono">{new Date(log.createdAt).toLocaleString()}</span>
+                              </div>
+
+                              <div className="border-t border-border/40 pt-2 text-muted-foreground leading-relaxed">
+                                <span className="font-semibold block text-[10px] text-foreground">Operador: <code className="font-mono text-rosegold-500">{log.userEmail}</code></span>
+                                
+                                {changesList.length > 0 ? (
+                                  <div className="mt-1 space-y-0.5 pl-3 border-l-2 border-primary/20">
+                                    {changesList.map((ch, cidx) => <p key={cidx} className="font-mono text-[9px]">{ch}</p>)}
+                                  </div>
+                                ) : isUpdate ? (
+                                  <p className="italic text-[9px] mt-1">Metadados de auditoria modificados.</p>
+                                ) : (
+                                  <div className="mt-1 font-mono text-[9px] truncate bg-muted/40 p-1.5 rounded border border-border/50 max-w-full">
+                                    {JSON.stringify(log.newValues || log.previousValues)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                )}
+
+                {/* SubTab 2: Consultas IA */}
+                {subTab === "ai" && (
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 scrollbar-thin">
+                    {aiLogs.map((log: any) => (
+                      <div key={log.id} className="p-3.5 rounded-xl border border-border bg-card text-[11px] space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-bold text-foreground flex items-center gap-1">
+                            <Sparkles className="h-3.5 w-3.5 text-rosegold-500 animate-pulse" />
+                            <span>Consulta Assistente IA</span>
+                          </span>
+                          <span className="text-[9px] text-muted-foreground font-mono">{new Date(log.createdAt).toLocaleString()}</span>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg border border-border/60 bg-muted/20 text-foreground font-medium italic leading-normal">
+                          "{log.prompt}"
+                        </div>
+
+                        <div className="flex items-center justify-between text-[9px] text-muted-foreground font-mono pt-1">
+                          <span>Modelo: {log.model || "gemini-2.5-flash"}</span>
+                          <span>Tokens: {log.tokensUsed || 0}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+              </div>
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+      {/* 4. MODAL: CONFIGURAÇÃO DE INTEGRAÇÃO (CREDENTIALS) */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm p-6 rounded-2xl border border-border bg-card shadow-2xl space-y-5 relative animate-in zoom-in-95 duration-300">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5 capitalize">
+                <Globe className="h-4.5 w-4.5 text-rosegold-500" />
+                <span>Credenciais {selectedChannel.replace("_", " ")}</span>
+              </h3>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConnectChannel} className="space-y-4 text-xs">
+              
+              {selectedChannel === "shopee" && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">ID do Inquilino/Loja (Shop ID)</label>
+                    <input
+                      type="text"
+                      required
+                      value={shopId}
+                      onChange={(e) => setShopId(e.target.value)}
+                      placeholder="Ex: 9912034"
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Chave de Produção API Key</label>
+                    <input
+                      type="password"
+                      required
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="••••••••••••••••"
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                    />
+                  </div>
+                </>
+              )}
+
+              {selectedChannel === "mercado_libre" && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Chave de Acesso OAuth Access Token</label>
+                    <input
+                      type="password"
+                      required
+                      value={accessToken}
+                      onChange={(e) => setAccessToken(e.target.value)}
+                      placeholder="Ex: APP_USR-823901-..."
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                    />
+                  </div>
+                </>
+              )}
+
+              {selectedChannel === "whatsapp" && (
+                <>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Phone Number ID (Meta Cloud)</label>
+                    <input
+                      type="text"
+                      required
+                      value={phoneId}
+                      onChange={(e) => setPhoneId(e.target.value)}
+                      placeholder="Ex: 10920491823901"
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">WhatsApp Business Account ID (WABA ID)</label>
+                    <input
+                      type="text"
+                      required
+                      value={wabaId}
+                      onChange={(e) => setWabaId(e.target.value)}
+                      placeholder="Ex: 2094812049"
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-3.5 pt-3 border-t border-border mt-6">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="flex-1 py-2 border border-border rounded-xl text-xs font-semibold hover:bg-muted transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10"
+                >
+                  Salvar e Conectar
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL: AUTOMATION FORM (ADD / EDIT) */}
+      {autoModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm p-6 rounded-2xl border border-border bg-card shadow-2xl space-y-5 relative animate-in zoom-in-95 duration-300">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                <Zap className="h-4.5 w-4.5 text-rosegold-500" />
+                <span>{autoEditingId ? "Editar Regra" : "Nova Regra de Disparo"}</span>
+              </h3>
+              <button
+                onClick={() => setAutoModalOpen(false)}
+                className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAutomation} className="space-y-4 text-xs">
+              
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Amigável da Regra</label>
+                <input
+                  type="text"
+                  required
+                  value={autoName}
+                  onChange={(e) => setAutoName(e.target.value)}
+                  placeholder="Ex: Mensagem Obrigado Venda Shopee"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                />
+                {errors.name && <p className="text-[10px] text-destructive mt-0.5">{errors.name}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Gatilho (Trigger)</label>
+                  <select
+                    value={autoTrigger}
+                    onChange={(e) => setAutoTrigger(e.target.value as any)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-foreground"
+                  >
+                    <option value="sale_completed">Venda Concluída</option>
+                    <option value="customer_created">Cliente Cadastrado</option>
+                    <option value="appointment_confirmed">Atendimento Confirmado</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Ação Executada</label>
+                  <select
+                    value={autoAction}
+                    onChange={(e) => setAutoAction(e.target.value as any)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-foreground"
+                  >
+                    <option value="whatsapp_message">WhatsApp Simulado</option>
+                    <option value="email_message">E-mail (SMTP)</option>
+                    <option value="discount_coupon">Cupom de Desconto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Mensagem de Disparo (Template)</label>
+                <textarea
+                  required
+                  value={autoTemplate}
+                  onChange={(e) => setAutoTemplate(e.target.value)}
+                  placeholder="Ex: Olá {name}! Obrigado pela compra de R$ {total}..."
+                  rows={4}
+                  className="w-full p-3 rounded-lg border border-border bg-card resize-none"
+                />
+                {errors.template && <p className="text-[10px] text-destructive mt-0.5">{errors.template}</p>}
+                <p className="text-[9px] text-muted-foreground leading-normal mt-0.5">
+                  Variáveis suportadas: <code className="font-bold text-rosegold-500 font-mono">{`{name}`}</code>, <code className="font-bold text-rosegold-500 font-mono">{`{total}`}</code>, <code className="font-bold text-rosegold-500 font-mono">{`{id}`}</code>.
+                </p>
+              </div>
+
+              <div className="flex gap-3.5 pt-3 border-t border-border mt-6">
+                <button
+                  type="button"
+                  onClick={() => setAutoModalOpen(false)}
+                  className="flex-1 py-2 border border-border rounded-xl text-xs font-semibold hover:bg-muted transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10"
+                >
+                  Salvar Automação
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Carol Ramos Collection ERP",
+  "short_name": "CR ERP",
+  "description": "ERP Web profissional com Inteligência Artificial para gestão de cosméticos e vendas multicanal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF6F4",
+  "theme_color": "#B76E79",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
