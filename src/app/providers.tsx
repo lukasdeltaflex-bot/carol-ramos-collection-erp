@@ -2,6 +2,9 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { AuthProvider } from "@/context/AuthContext";
+import { AppearanceProvider } from "@/context/AppearanceContext";
+import { ToastProvider } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
 
 type Theme = "light" | "dark" | "system";
 
@@ -68,11 +71,25 @@ export function useTheme() {
   return context;
 }
 
+// Inner provider that has access to Auth context for per-user appearance
+function InnerProviders({ children }: { children: React.ReactNode }) {
+  const { profile } = useAuth();
+  return (
+    <AppearanceProvider userId={profile?.uid}>
+      <ToastProvider>
+        {children}
+      </ToastProvider>
+    </AppearanceProvider>
+  );
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <CustomThemeProvider>
       <AuthProvider>
-        {children}
+        <InnerProviders>
+          {children}
+        </InnerProviders>
       </AuthProvider>
     </CustomThemeProvider>
   );

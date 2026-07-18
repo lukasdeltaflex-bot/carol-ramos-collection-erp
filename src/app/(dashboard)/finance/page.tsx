@@ -46,6 +46,28 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Lista de Bancos Brasileiros para o seletor visual (Req 7)
+export const BRAZILIAN_BANKS = [
+  { code: "001", name: "Banco do Brasil", color: "bg-yellow-500 text-blue-900 border-yellow-600", brand: "BB" },
+  { code: "033", name: "Santander", color: "bg-red-600 text-white border-red-700", brand: "San" },
+  { code: "104", name: "Caixa", color: "bg-blue-600 text-orange-400 border-blue-700", brand: "Caixa" },
+  { code: "237", name: "Bradesco", color: "bg-red-700 text-white border-red-800", brand: "Brad" },
+  { code: "341", name: "Itaú Unibanco", color: "bg-orange-500 text-blue-950 border-orange-600", brand: "Itaú" },
+  { code: "077", name: "Banco Inter", color: "bg-orange-500 text-white border-orange-600", brand: "Inter" },
+  { code: "260", name: "Nubank", color: "bg-purple-700 text-white border-purple-800", brand: "Nu" },
+  { code: "336", name: "C6 Bank", color: "bg-black text-white border-neutral-700", brand: "C6" },
+  { code: "290", name: "PagBank", color: "bg-green-600 text-white border-green-700", brand: "Pag" },
+  { code: "121", name: "Neon", color: "bg-cyan-500 text-white border-cyan-600", brand: "Neon" },
+  { code: "041", name: "Banrisul", color: "bg-blue-800 text-white border-blue-900", brand: "BRS" },
+  { code: "756", name: "Sicoob", color: "bg-emerald-800 text-yellow-400 border-emerald-950", brand: "Sicoob" },
+  { code: "748", name: "Sicredi", color: "bg-green-700 text-white border-green-800", brand: "Sicredi" },
+  { code: "004", name: "Banco do Nordeste", color: "bg-yellow-600 text-emerald-950 border-yellow-700", brand: "BNB" },
+  { code: "197", name: "Stone", color: "bg-emerald-600 text-white border-emerald-700", brand: "Stone" },
+  { code: "318", name: "BMG", color: "bg-orange-600 text-white border-orange-700", brand: "BMG" },
+  { code: "623", name: "Banco Pan", color: "bg-blue-950 text-white border-blue-900", brand: "Pan" },
+  { code: "074", name: "Safra", color: "bg-amber-700 text-white border-amber-800", brand: "Safra" },
+];
+
 // Mock Inicial de Contas Bancárias
 const INITIAL_BANK_ACCOUNTS = [
   { name: "Caixa Físico / Gaveta", type: "cash_register" as const, balance: 350.00, currency: "BRL", status: "active" as const },
@@ -122,6 +144,10 @@ export default function FinancePage() {
   const [selectedPayId, setSelectedPayId] = useState<string | null>(null);
   const [selectedReceiveId, setSelectedReceiveId] = useState<string | null>(null);
   const [paymentBankAccountId, setPaymentBankAccountId] = useState("");
+
+  // Bank Selector State (Req 7)
+  const [bankSearch, setBankSearch] = useState("");
+  const [selectedBankObj, setSelectedBankObj] = useState<any>(null);
 
   // Load All Financial Data
   const loadFinancialData = async () => {
@@ -721,22 +747,41 @@ export default function FinancePage() {
             {/* Tela 2: Contas Bancárias & Saldos */}
             {activeTab === "accounts" && (
               <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                {bankAccounts.map((a) => (
-                  <div key={a.id} className="p-5 rounded-xl border border-border bg-card/50 flex flex-col justify-between h-32 hover:border-primary/20 transition-all select-none">
-                    <div className="flex items-start justify-between">
-                      <span className="text-xs font-semibold text-foreground truncate">{a.name}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-muted text-[8px] font-bold text-muted-foreground tracking-wider uppercase">
-                        {a.type === "checking" ? "Corrente" : a.type === "wallet" ? "Digital" : "Caixa"}
-                      </span>
+                {bankAccounts.map((a) => {
+                  // Find bank design helper
+                  const bankMatch = BRAZILIAN_BANKS.find(b => 
+                    a.name.toLowerCase().includes(b.name.toLowerCase()) || 
+                    a.name.toLowerCase().includes(b.brand.toLowerCase())
+                  );
+
+                  return (
+                    <div key={a.id} className="p-5 rounded-xl border border-border bg-card/50 flex flex-col justify-between h-32 hover:border-primary/20 transition-all select-none">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs font-semibold text-foreground truncate block">{a.name}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-muted text-[8px] font-bold text-muted-foreground tracking-wider uppercase inline-block mt-1">
+                            {a.type === "checking" ? "Corrente" : a.type === "wallet" ? "Digital" : "Caixa"}
+                          </span>
+                        </div>
+                        {bankMatch ? (
+                          <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shadow-sm shrink-0 border", bankMatch.color)}>
+                            {bankMatch.brand}
+                          </div>
+                        ) : (
+                          <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                            <Building2 className="h-4 w-4" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        <span className="text-[10px] text-muted-foreground uppercase">Saldo Disponível</span>
+                        <h4 className="text-xl font-bold font-mono tracking-tight text-foreground">
+                          R$ {a.balance.toFixed(2)}
+                        </h4>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase">Saldo Disponível</span>
-                      <h4 className="text-xl font-bold font-mono tracking-tight text-foreground">
-                        R$ {a.balance.toFixed(2)}
-                      </h4>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -1010,6 +1055,48 @@ export default function FinancePage() {
               {/* Form 1: Bank Account */}
               {drawerType === "bank_account" && (
                 <>
+                  {/* Select Bank (Req 7) */}
+                  <div className="space-y-2 border-b border-border/50 pb-3">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Banco Brasileiro (Visual Picker)</label>
+                    <input
+                      type="text"
+                      placeholder="Pesquisar banco (Ex: Itaú, Nubank, Caixa...)"
+                      value={bankSearch}
+                      onChange={(e) => setBankSearch(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-lg border border-border bg-card"
+                    />
+                    <div className="grid grid-cols-2 gap-2 mt-2 max-h-36 overflow-y-auto pr-1 scrollbar-thin">
+                      {BRAZILIAN_BANKS.filter(b => 
+                        b.name.toLowerCase().includes(bankSearch.toLowerCase()) ||
+                        b.brand.toLowerCase().includes(bankSearch.toLowerCase()) ||
+                        b.code.includes(bankSearch)
+                      ).map(b => {
+                        const isSelected = selectedBankObj?.code === b.code;
+                        return (
+                          <button
+                            key={b.code}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBankObj(b);
+                              setBName(`${b.name} PJ`);
+                            }}
+                            className={cn(
+                              "flex items-center gap-2 p-2 rounded-xl border text-left transition-all",
+                              isSelected 
+                                ? "border-primary bg-primary/10" 
+                                : "border-border hover:border-primary/30 bg-card/50"
+                            )}
+                          >
+                            <div className={cn("h-6 w-6 rounded-md flex items-center justify-center font-bold text-[8px] shrink-0 border", b.color)}>
+                              {b.brand}
+                            </div>
+                            <span className="text-[10px] font-semibold text-foreground truncate">{b.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div className="space-y-1">
                     <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Identificador da Conta</label>
                     <input

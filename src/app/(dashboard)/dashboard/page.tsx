@@ -5,22 +5,25 @@ import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
 import { Product } from "@/features/products/types";
 import { Sale } from "@/features/sales/types";
+import { Customer } from "@/features/customers/types";
 import { AccountsReceivable } from "@/features/finance/types";
 import { IntegrationConfig } from "@/features/integrations/types";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import {
   TrendingUp,
   ShoppingCart,
   Package,
   DollarSign,
+  Users,
   Plus,
   ArrowUpRight,
-  ArrowDownRight,
   Sparkles,
   Building2,
   ExternalLink,
   ChevronRight,
   RefreshCw,
-  Globe
+  Globe,
+  BarChart2
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -41,21 +44,24 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [receivables, setReceivables] = useState<AccountsReceivable[]>([]);
   const [configs, setConfigs] = useState<IntegrationConfig[]>([]);
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [prods, sls, recs, confs] = await Promise.all([
+      const [prods, sls, custs, recs, confs] = await Promise.all([
         getDocs("products"),
         getDocs("sales"),
+        getDocs("customers"),
         getDocs("accounts_receivable"),
         getDocs("integration_configs")
       ]);
 
       setProducts(prods as Product[]);
       setSales(sls as Sale[]);
+      setCustomers(custs as Customer[]);
       setReceivables(recs as AccountsReceivable[]);
       setConfigs(confs as IntegrationConfig[]);
     } catch (e) {
@@ -116,10 +122,35 @@ export default function Dashboard() {
 
   const chartData = getChartData();
 
-  // 5. Últimas 5 Vendas Dinâmicas
+  // 5. Top 5 Produtos Mais Vendidos
+  const getTopProducts = () => {
+    const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
+    sales.forEach(s => {
+      if (s.items) {
+        s.items.forEach((item: any) => {
+          if (!productSales[item.productId]) {
+            productSales[item.productId] = { name: item.name || item.productId, qty: 0, revenue: 0 };
+          }
+          productSales[item.productId].qty += item.qty || 1;
+          productSales[item.productId].revenue += (item.unitPrice || 0) * (item.qty || 1);
+        });
+      }
+    });
+    return Object.values(productSales)
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5);
+  };
+  const topProducts = getTopProducts();
+
+  // 6. Últimas 5 Vendas Dinâmicas
   const recentSales = [...sales]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
+
+  // 7. Ticket Médio
+  const ticketMedio = sales.length > 0
+    ? sales.reduce((sum, s) => sum + s.total, 0) / sales.length
+    : 0;
 
   // Helpers para Badges
   const getChannelStyle = (channel: string) => {
@@ -179,7 +210,11 @@ export default function Dashboard() {
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-xs text-muted-foreground animate-pulse">Carregando painel analítico...</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
       ) : (
         <>
           {/* 2. Metric Cards Grid */}
@@ -247,20 +282,20 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Card 4: Contas a Receber */}
-            <div className="p-5 rounded-2xl border border-border bg-card/50 flex flex-col justify-between h-36 relative group hover:border-rosegold-500/30 transition-all duration-300">
+            {/* Card 4: Total de Clientes */}
+            <div className="p-5 rounded-2xl border border-border bg-card/50 flex flex-col justify-between h-36 relative group hover:border-primary/30 transition-all duration-300">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Contas a Receber</span>
-                <div className="p-2 rounded-xl bg-rosegold-100 dark:bg-rosegold-950/30 text-rosegold-600 dark:text-rosegold-400">
-                  <DollarSign className="h-4 w-4" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total de Clientes</span>
+                <div className="p-2 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
+                  <Users className="h-4 w-4" />
                 </div>
               </div>
               <div>
-                <h3 className="text-2xl font-bold tracking-tight font-mono">
-                  R$ {totalReceivables.toFixed(2)}
+                <h3 className="text-2xl font-bold tracking-tight">
+                  {customers.length}
                 </h3>
                 <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 mt-0.5">
-                  <span>Pendências gerais ativas</span>
+                  <span>Clientes cadastrados na base</span>
                 </p>
               </div>
             </div>
@@ -359,6 +394,86 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Top Produtos + Indicadores Financeiros */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Top Produtos */}
+            <div className="p-5 rounded-2xl border border-border bg-card/40 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <BarChart2 className="h-4 w-4 text-primary" />
+                    Top 5 Produtos Mais Vendidos
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Baseado no histórico de vendas registradas.</p>
+                </div>
+                <Link href="/products" className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-0.5">
+                  <span>Ver Catálogo</span>
+                  <ChevronRight className="h-3 w-3" />
+                </Link>
+              </div>
+              {topProducts.length > 0 ? (
+                <div className="space-y-2.5">
+                  {topProducts.map((p, i) => {
+                    const maxQty = topProducts[0]?.qty || 1;
+                    return (
+                      <div key={i} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-foreground truncate flex-1 mr-2">{p.name}</span>
+                          <span className="font-mono font-bold text-foreground shrink-0">{p.qty} un.</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all duration-500"
+                            style={{ width: `${(p.qty / maxQty) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-center py-8 text-muted-foreground italic text-xs">Nenhuma venda registrada ainda.</p>
+              )}
+            </div>
+
+            {/* Indicadores Financeiros */}
+            <div className="p-5 rounded-2xl border border-border bg-card/40 space-y-4">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  Indicadores Financeiros
+                </h3>
+                <p className="text-xs text-muted-foreground">Resumo de performance financeira geral.</p>
+              </div>
+              <div className="space-y-3">
+                <IndicatorRow
+                  label="Ticket Médio"
+                  value={`R$ ${ticketMedio.toFixed(2)}`}
+                  desc="Média por venda registrada"
+                  color="text-emerald-600 dark:text-emerald-400"
+                />
+                <IndicatorRow
+                  label="Total em Vendas"
+                  value={`R$ ${sales.reduce((s, v) => s + v.total, 0).toFixed(2)}`}
+                  desc="Faturamento acumulado no período"
+                  color="text-primary"
+                />
+                <IndicatorRow
+                  label="Produtos Ativos"
+                  value={`${products.filter(p => p.currentStock > 0).length} SKUs`}
+                  desc="Produtos com estoque disponível"
+                  color="text-blue-600 dark:text-blue-400"
+                />
+                <IndicatorRow
+                  label="Contas a Receber"
+                  value={`R$ ${totalReceivables.toFixed(2)}`}
+                  desc="Pendências de recebimento em aberto"
+                  color="text-amber-600 dark:text-amber-400"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* 4. Canais de Venda Integrados */}
           <div className="p-5 rounded-2xl border border-border bg-card/30">
             <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
@@ -402,6 +517,20 @@ export default function Dashboard() {
         </>
       )}
 
+    </div>
+  );
+}
+
+// ——— Sub-components ———
+
+function IndicatorRow({ label, value, desc, color }: { label: string; value: string; desc: string; color: string }) {
+  return (
+    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-[11px] text-muted-foreground/80 mt-0.5">{desc}</p>
+      </div>
+      <span className={`text-sm font-bold font-mono ${color}`}>{value}</span>
     </div>
   );
 }

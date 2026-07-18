@@ -17,7 +17,10 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Truck,
+  BookOpen,
+  Palette
 } from "lucide-react";
 
 interface SidebarProps {
@@ -81,10 +84,28 @@ export default function Sidebar({
       badge: "Gemini",
     },
     {
+      name: "Fornecedores",
+      href: "/suppliers",
+      icon: Truck,
+      roles: ["owner", "admin", "operator"],
+    },
+    {
       name: "Configurações",
       href: "/settings",
       icon: Settings,
-      roles: ["owner", "admin"], // Only administrators can see settings
+      roles: ["owner", "admin"],
+    },
+    {
+      name: "Aparência",
+      href: "/appearance",
+      icon: Palette,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Tutorial",
+      href: "/tutorial",
+      icon: BookOpen,
+      roles: ["owner", "admin", "operator", "viewer"],
     },
   ];
 
@@ -152,7 +173,7 @@ export default function Sidebar({
               <Icon
                 className={cn(
                   "h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110",
-                  isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-rosegold-500 dark:group-hover:text-rosegold-400"
+                  isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary"
                 )}
               />
               {(isOpen || isMobileOpen) && (

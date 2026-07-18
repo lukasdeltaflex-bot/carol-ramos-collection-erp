@@ -9,7 +9,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 
 export interface UserProfile {
@@ -36,6 +36,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   isMock: boolean;
+  activeCompany: any | null;
+  createCompany: (name: string, cnpj: string) => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,6 +63,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMock, setIsMock] = useState(false);
+  const [activeCompany, setActiveCompany] = useState<any | null>(null);
+
+  const tenantId = profile?.activeTenantId || null;
+  const role = tenantId && profile?.tenants?.[tenantId]
+    ? profile.tenants[tenantId].role
+    : null;
 
   useEffect(() => {
     // 1. Verificar se há sessão mock salva no localStorage
@@ -122,6 +130,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribeProfile();
   }, [user, isMock]);
+
+  // Sincroniza dados da Empresa Ativa (Req 2 & 3)
+  useEffect(() => {
+    if (!tenantId) {
+      setActiveCompany(null);
+      return;
+    }
+
+    if (isMock) {
+      try {
+        const saved = localStorage.getItem(`company_profile_${tenantId}`);
+        if (saved) {
+          setActiveCompany(JSON.parse(saved));
+        } else {
+          const defaultCompany = {
+            id: tenantId,
+            name: tenantId === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+            tradeName: tenantId === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+            cnpj: "12.345.678/0001-99",
+            email: "contato@carolramos.com.br",
+            phone: "(11) 99999-9999",
+            createdAt: new Date().toISOString()
+          };
+          localStorage.setItem(`company_profile_${tenantId}`, JSON.stringify(defaultCompany));
+          setActiveCompany(defaultCompany);
+        }
+      } catch (e) {
+        console.error("Erro ao carregar empresa mock:", e);
+      }
+      return;
+    }
+
+    const docRef = doc(db, "companies", tenantId);
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        setActiveCompany(snap.data());
+      } else {
+        const defaultCompany = {
+          id: tenantId,
+          name: tenantId === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+          tradeName: tenantId === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+          cnpj: "12.345.678/0001-99",
+          email: "contato@carolramos.com.br",
+          phone: "(11) 99999-9999",
+          createdAt: new Date().toISOString()
+        };
+        setActiveCompany(defaultCompany);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [tenantId, isMock]);
 
   const login = async (email: string, password: string) => {
     if (isMock || isFirebasePlaceholder || email === "admin@carolramos.com.br") {
@@ -216,13 +276,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const tenantId = profile?.activeTenantId || null;
-  const role = tenantId && profile?.tenants?.[tenantId]
-    ? profile.tenants[tenantId].role
-    : null;
+  const createCompany = async (name: string, cnpj: string) => {
+    if (!profile) throw new Error("Usuário não autenticado.");
+
+    // Gerar slug simples para ID do tenant
+    const slug = name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)+/g, "");
+
+    const uniqueTenantId = `${slug}-${Date.now().toString(36)}`;
+
+    const newCompanyObj = {
+      id: uniqueTenantId,
+      name,
+      tradeName: name,
+      cnpj,
+      status: "active",
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedTenants = {
+      ...profile.tenants,
+      [uniqueTenantId]: {
+        role: "owner" as const,
+        joinedAt: new Date().toISOString()
+      }
+    };
+
+    const updatedProfile = {
+      ...profile,
+      tenants: updatedTenants,
+      activeTenantId: uniqueTenantId
+    };
+
+    if (isMock) {
+      localStorage.setItem(`company_profile_${uniqueTenantId}`, JSON.stringify(newCompanyObj));
+      setProfile(updatedProfile);
+      const savedMockSession = localStorage.getItem("mock_auth_session");
+      if (savedMockSession) {
+        const parsed = JSON.parse(savedMockSession);
+        parsed.profile = updatedProfile;
+        localStorage.setItem("mock_auth_session", JSON.stringify(parsed));
+      }
+      return uniqueTenantId;
+    }
+
+    // Firestore real company profile write
+    const compDocRef = doc(db, "companies", uniqueTenantId);
+    await setDoc(compDocRef, newCompanyObj);
+
+    // Update user profile tenants
+    const userDocRef = doc(db, "users", user.uid);
+    await updateDoc(userDocRef, {
+      tenants: updatedTenants,
+      activeTenantId: uniqueTenantId
+    });
+
+    return uniqueTenantId;
+  };
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
+import { useToast } from "@/context/ToastContext";
 import { IntegrationConfig, IntegrationLog, Automation } from "@/features/integrations/types";
 import { IntegrationConfigSchema, AutomationSchema } from "@/features/integrations/schemas";
 import { Product } from "@/features/products/types";
@@ -24,8 +25,31 @@ import {
   Sparkles,
   Zap,
   ShoppingBag,
-  Code
+  Code,
+  Upload,
+  Save,
+  Phone,
+  Mail,
+  MapPin,
+  HelpCircle,
+  Clock,
+  PlusCircle
 } from "lucide-react";
+
+// Custom SVG Icons for socials (Req 1)
+const InstagramIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </svg>
+);
+
+const FacebookIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  </svg>
+);
 import { cn } from "@/lib/utils";
 
 // Custom SVG Icons for integrations
@@ -55,8 +79,9 @@ const INITIAL_AUTOMATIONS = [
 ];
 
 export default function SettingsPage() {
-  const { profile, role, tenantId } = useAuth();
+  const { profile, role, tenantId, activeCompany, createCompany, switchTenant } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
+  const { success, error: toastError, info } = useToast();
 
   const [activeTab, setActiveTab] = useState<"profile" | "rbac" | "params" | "integrations" | "logs">("profile");
   const [loading, setLoading] = useState(false);
@@ -91,6 +116,205 @@ export default function SettingsPage() {
   const [autoTemplate, setAutoTemplate] = useState("");
   const [autoStatus, setAutoStatus] = useState<'active' | 'inactive'>("active");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Parameters state (Req 13 - CPF/CNPJ fix)
+  const [requireCpf, setRequireCpf] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('param_requireCpf') === 'true';
+    }
+    return false;
+  });
+  const [requireStockAlert, setRequireStockAlert] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('param_requireStockAlert') !== 'false';
+    }
+    return true;
+  });
+
+  const handleToggleParam = (key: 'requireCpf' | 'requireStockAlert', value: boolean) => {
+    if (key === 'requireCpf') {
+      setRequireCpf(value);
+      localStorage.setItem('param_requireCpf', String(value));
+    } else {
+      setRequireStockAlert(value);
+      localStorage.setItem('param_requireStockAlert', String(value));
+    }
+  };
+
+  // Company Profile Form state (Req 1)
+  const [compName, setCompName] = useState("");
+  const [compTradeName, setCompTradeName] = useState("");
+  const [compCnpj, setCompCnpj] = useState("");
+  const [compIe, setCompIe] = useState("");
+  const [compIm, setCompIm] = useState("");
+  const [compCnae, setCompCnae] = useState("");
+  const [compCep, setCompCep] = useState("");
+  const [compStreet, setCompStreet] = useState("");
+  const [compNumber, setCompNumber] = useState("");
+  const [compComplement, setCompComplement] = useState("");
+  const [compNeighborhood, setCompNeighborhood] = useState("");
+  const [compCity, setCompCity] = useState("");
+  const [compState, setCompState] = useState("");
+  const [compPhone, setCompPhone] = useState("");
+  const [compWhatsapp, setCompWhatsapp] = useState("");
+  const [compEmail, setCompEmail] = useState("");
+  const [compSite, setCompSite] = useState("");
+  const [compInstagram, setCompInstagram] = useState("");
+  const [compFacebook, setCompFacebook] = useState("");
+  const [compTiktok, setCompTiktok] = useState("");
+  const [compLogo, setCompLogo] = useState("");
+  const [compOpeningHours, setCompOpeningHours] = useState("");
+  const [compNotes, setCompNotes] = useState("");
+
+  // Sub-tabs inside profile edit form
+  const [profileFormTab, setProfileFormTab] = useState<"ident" | "addr" | "contacts" | "extra">("ident");
+
+  // Multi-company form modal (Req 2)
+  const [newCompanyModalOpen, setNewCompanyModalOpen] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newCompanyCnpj, setNewCompanyCnpj] = useState("");
+
+  // Synchronize company profile states when activeCompany changes
+  useEffect(() => {
+    if (activeCompany) {
+      setCompName(activeCompany.name || "");
+      setCompTradeName(activeCompany.tradeName || "");
+      setCompCnpj(activeCompany.cnpj || "");
+      setCompIe(activeCompany.ie || "");
+      setCompIm(activeCompany.im || "");
+      setCompCnae(activeCompany.cnae || "");
+      setCompCep(activeCompany.address?.cep || "");
+      setCompStreet(activeCompany.address?.street || "");
+      setCompNumber(activeCompany.address?.number || "");
+      setCompComplement(activeCompany.address?.complement || "");
+      setCompNeighborhood(activeCompany.address?.neighborhood || "");
+      setCompCity(activeCompany.address?.city || "");
+      setCompState(activeCompany.address?.state || "");
+      setCompPhone(activeCompany.phone || "");
+      setCompWhatsapp(activeCompany.whatsapp || "");
+      setCompEmail(activeCompany.email || "");
+      setCompSite(activeCompany.website || "");
+      setCompInstagram(activeCompany.socials?.instagram || "");
+      setCompFacebook(activeCompany.socials?.facebook || "");
+      setCompTiktok(activeCompany.socials?.tiktok || "");
+      setCompLogo(activeCompany.logo || "");
+      setCompOpeningHours(activeCompany.openingHours || "");
+      setCompNotes(activeCompany.notes || "");
+    }
+  }, [activeCompany]);
+
+  const handleCnpjChange = (val: string) => {
+    const raw = val.replace(/\D/g, "");
+    let masked = raw;
+    if (raw.length > 2) masked = `${raw.substring(0, 2)}.${raw.substring(2)}`;
+    if (raw.length > 5) masked = `${raw.substring(0, 2)}.${raw.substring(2, 5)}.${raw.substring(5)}`;
+    if (raw.length > 8) masked = `${raw.substring(0, 2)}.${raw.substring(2, 5)}.${raw.substring(5, 8)}/${raw.substring(8)}`;
+    if (raw.length > 12) masked = `${raw.substring(0, 2)}.${raw.substring(2, 5)}.${raw.substring(5, 8)}/${raw.substring(8, 12)}-${raw.substring(12, 14)}`;
+    setCompCnpj(masked.substring(0, 18));
+  };
+
+  const handleCepBlur = async () => {
+    const cleanCep = compCep.replace(/\D/g, "");
+    if (cleanCep.length !== 8) return;
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setCompStreet(data.logradouro || "");
+        setCompNeighborhood(data.bairro || "");
+        setCompCity(data.localidade || "");
+        setCompState(data.uf || "");
+      }
+    } catch (e) {
+      console.error("Erro ao buscar CEP:", e);
+    }
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCompLogo(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveCompanyProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenantId) return;
+
+    setLoading(true);
+    const payload = {
+      name: compName,
+      tradeName: compTradeName,
+      cnpj: compCnpj,
+      ie: compIe,
+      im: compIm,
+      cnae: compCnae,
+      phone: compPhone,
+      whatsapp: compWhatsapp,
+      email: compEmail,
+      website: compSite,
+      openingHours: compOpeningHours,
+      notes: compNotes,
+      logo: compLogo,
+      address: {
+        cep: compCep,
+        street: compStreet,
+        number: compNumber,
+        complement: compComplement,
+        neighborhood: compNeighborhood,
+        city: compCity,
+        state: compState
+      },
+      socials: {
+        instagram: compInstagram,
+        facebook: compFacebook,
+        tiktok: compTiktok
+      },
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      const isMockMode = !process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes("your-api-key");
+      
+      if (isMockMode) {
+        localStorage.setItem(`company_profile_${tenantId}`, JSON.stringify(payload));
+        // Force refresh
+        window.location.reload();
+      } else {
+        await updateDoc("companies", tenantId, payload);
+      }
+      success("Sucesso", "Perfil da empresa atualizado com sucesso!");
+    } catch (err: any) {
+      toastError("Erro ao salvar", err.message || "Erro desconhecido");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCompanyName.trim()) return;
+
+    setLoading(true);
+    try {
+      const newId = await createCompany(newCompanyName, newCompanyCnpj);
+      setNewCompanyModalOpen(false);
+      setNewCompanyName("");
+      setNewCompanyCnpj("");
+      success("Empresa criada!", `A empresa foi registrada. Alternando contexto para a nova empresa.`);
+      // Switch tenant will automatically reload context
+      await switchTenant(newId);
+      window.location.reload();
+    } catch (err: any) {
+      toastError("Erro ao criar empresa", err.message || "Erro desconhecido");
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   // Webhook Simulator State
   const [simChannel, setSimChannel] = useState<'shopee' | 'mercado_libre'>("shopee");
@@ -525,50 +749,426 @@ export default function SettingsPage() {
           {/* TAB 1: PROFILE */}
           {activeTab === "profile" && (
             <div className="space-y-6">
-              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Building2 className="h-4.5 w-4.5 text-rosegold-500" />
-                  <span>Dados da Empresa Ativa</span>
-                </h3>
-                
-                <div className="space-y-3 text-xs">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">Identificação Tenant (ID)</span>
-                      <p className="font-mono bg-muted p-2 rounded-lg truncate">{tenantId}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">Razão Social / Fantasia</span>
-                      <p className="p-2 border border-border rounded-lg bg-card/50 font-semibold">{activeTenantName}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">CNPJ/CPF</span>
-                      <p className="p-2 border border-border rounded-lg bg-card/50">12.345.678/0001-99</p>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-bold">Seu Acesso</span>
-                      <p className="p-2 border border-border rounded-lg bg-card/50 capitalize font-semibold text-rosegold-600 dark:text-rosegold-400">{role}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+              
+              {/* SECTION: MULTI-EMPRESA (Req 2 & 3) */}
               <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold flex items-center gap-2">
-                    <CheckCircle2 className="h-4.5 w-4.5 text-rosegold-500" />
-                    <span>Assinatura do Plano SaaS</span>
+                    <Building2 className="h-4.5 w-4.5 text-primary" />
+                    <span>Suas Empresas (Multi-Tenant)</span>
                   </h3>
-                  <span className="px-2 py-0.5 rounded bg-rosegold-100 text-rosegold-800 dark:bg-rosegold-950/40 dark:text-rosegold-300 text-[10px] font-bold tracking-wider uppercase border border-rosegold-200/50">
-                    PRO PLAN
-                  </span>
+                  <button
+                    onClick={() => setNewCompanyModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    <PlusCircle className="h-3.5 w-3.5" />
+                    <span>Nova Empresa</span>
+                  </button>
                 </div>
 
+                <p className="text-xs text-muted-foreground">
+                  Alterne instantaneamente o contexto operacional do ERP selecionando uma das empresas abaixo.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                  {profile && Object.keys(profile.tenants).map((id) => {
+                    const isActive = id === tenantId;
+                    const cRole = profile.tenants[id].role;
+                    return (
+                      <button
+                        key={id}
+                        onClick={async () => {
+                          if (isActive) return;
+                          try {
+                            await switchTenant(id);
+                            window.location.reload();
+                          } catch (e: any) {
+                            toastError("Erro ao alternar", e.message);
+                          }
+                        }}
+                        className={cn(
+                          "p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-all",
+                          isActive
+                            ? "border-primary bg-primary/10 shadow"
+                            : "border-border hover:border-primary/30 bg-card hover:bg-muted/40"
+                        )}
+                      >
+                        <div className="min-w-0 flex-1 flex items-center gap-2">
+                          <div className={cn(
+                            "h-7 w-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0",
+                            isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                          )}>
+                            {(tenantNameMap[id] || id)[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-foreground truncate block">{tenantNameMap[id] || id}</span>
+                            <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">{cRole}</span>
+                          </div>
+                        </div>
+                        {isActive && (
+                          <span className="px-2 py-0.5 rounded bg-primary text-primary-foreground text-[8px] font-bold tracking-widest uppercase">
+                            Ativa
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION: CADASTRO DETALHADO DA EMPRESA ATIVA (Req 1) */}
+              <form onSubmit={handleSaveCompanyProfile} className="p-5 rounded-2xl border border-border bg-card/50 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Building2 className="h-4.5 w-4.5 text-primary" />
+                      <span>Cadastro Completo da Empresa</span>
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground">ID do Tenant Operacional: <span className="font-mono bg-muted px-1.5 py-0.5 rounded">{tenantId}</span></p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex items-center justify-center gap-1.5 px-4.5 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-xl shadow hover:bg-primary/95 transition-colors disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>{loading ? "Salvando..." : "Salvar Alterações"}</span>
+                  </button>
+                </div>
+
+                {/* Sub-Tabs Form */}
+                <div className="flex border-b border-border text-xs gap-4 font-semibold pb-1.5">
+                  {[
+                    { id: "ident" as const, label: "Identificação" },
+                    { id: "addr" as const, label: "Endereço" },
+                    { id: "contacts" as const, label: "Contatos & Redes" },
+                    { id: "extra" as const, label: "Funcionamento & Notas" }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setProfileFormTab(tab.id)}
+                      className={cn(
+                        "pb-1 border-b-2 transition-all",
+                        profileFormTab === tab.id
+                          ? "border-primary text-primary"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab 1: Identificação */}
+                {profileFormTab === "ident" && (
+                  <div className="space-y-4">
+                    {/* Logo uploader */}
+                    <div className="flex items-center gap-4 p-3 rounded-xl border border-border bg-card/30">
+                      <div className="h-16 w-16 rounded-xl border border-border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                        {compLogo ? (
+                          <img src={compLogo} alt="Logo" className="h-full w-full object-cover" />
+                        ) : (
+                          <Building2 className="h-6 w-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Logotipo da Empresa</label>
+                        <div className="flex items-center gap-2">
+                          <label className="px-2.5 py-1.5 bg-primary text-primary-foreground text-[10px] font-semibold rounded hover:bg-primary/95 cursor-pointer flex items-center gap-1">
+                            <Upload className="h-3 w-3" />
+                            <span>Upload Logo</span>
+                            <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                          </label>
+                          {compLogo && (
+                            <button
+                              type="button"
+                              onClick={() => setCompLogo("")}
+                              className="px-2.5 py-1.5 border border-border hover:bg-muted text-[10px] font-semibold rounded text-red-500"
+                            >
+                              Remover Logo
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Razão Social *</label>
+                        <input
+                          type="text"
+                          required
+                          value={compName}
+                          onChange={e => setCompName(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Fantasia</label>
+                        <input
+                          type="text"
+                          value={compTradeName}
+                          onChange={e => setCompTradeName(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CNPJ</label>
+                        <input
+                          type="text"
+                          value={compCnpj}
+                          onChange={e => handleCnpjChange(e.target.value)}
+                          placeholder="00.000.000/0000-00"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Insc. Estadual</label>
+                        <input
+                          type="text"
+                          value={compIe}
+                          onChange={e => setCompIe(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Insc. Municipal</label>
+                        <input
+                          type="text"
+                          value={compIm}
+                          onChange={e => setCompIm(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CNAE Principal</label>
+                        <input
+                          type="text"
+                          value={compCnae}
+                          onChange={e => setCompCnae(e.target.value)}
+                          placeholder="9602-5/02"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 2: Endereço */}
+                {profileFormTab === "addr" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CEP</label>
+                        <input
+                          type="text"
+                          value={compCep}
+                          onChange={e => setCompCep(e.target.value)}
+                          onBlur={handleCepBlur}
+                          placeholder="00000-000"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Logradouro / Rua</label>
+                        <input
+                          type="text"
+                          value={compStreet}
+                          onChange={e => setCompStreet(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Número</label>
+                        <input
+                          type="text"
+                          value={compNumber}
+                          onChange={e => setCompNumber(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Complemento</label>
+                        <input
+                          type="text"
+                          value={compComplement}
+                          onChange={e => setCompComplement(e.target.value)}
+                          placeholder="Ex: Sala 202"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Bairro</label>
+                        <input
+                          type="text"
+                          value={compNeighborhood}
+                          onChange={e => setCompNeighborhood(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Cidade</label>
+                        <input
+                          type="text"
+                          value={compCity}
+                          onChange={e => setCompCity(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Estado (UF)</label>
+                        <input
+                          type="text"
+                          value={compState}
+                          onChange={e => setCompState(e.target.value)}
+                          placeholder="Ex: SP"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card uppercase"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 3: Contatos & Redes */}
+                {profileFormTab === "contacts" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Telefone Fixo</label>
+                        <input
+                          type="text"
+                          value={compPhone}
+                          onChange={e => setCompPhone(e.target.value)}
+                          placeholder="(11) 5555-5555"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">WhatsApp Comercial</label>
+                        <input
+                          type="text"
+                          value={compWhatsapp}
+                          onChange={e => setCompWhatsapp(e.target.value)}
+                          placeholder="(11) 99999-9999"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Email de Contato</label>
+                        <input
+                          type="email"
+                          value={compEmail}
+                          onChange={e => setCompEmail(e.target.value)}
+                          placeholder="contato@empresa.com.br"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Website</label>
+                        <input
+                          type="text"
+                          value={compSite}
+                          onChange={e => setCompSite(e.target.value)}
+                          placeholder="www.empresa.com.br"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 text-xs border-t border-border pt-4">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] flex items-center gap-1">
+                          <InstagramIcon className="h-3 w-3" />
+                          <span>Instagram</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={compInstagram}
+                          onChange={e => setCompInstagram(e.target.value)}
+                          placeholder="@empresa"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] flex items-center gap-1">
+                          <FacebookIcon className="h-3 w-3" />
+                          <span>Facebook</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={compFacebook}
+                          onChange={e => setCompFacebook(e.target.value)}
+                          placeholder="facebook.com/empresa"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">TikTok</label>
+                        <input
+                          type="text"
+                          value={compTiktok}
+                          onChange={e => setCompTiktok(e.target.value)}
+                          placeholder="@empresa_tiktok"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 4: Funcionamento */}
+                {profileFormTab === "extra" && (
+                  <div className="space-y-4 text-xs">
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Horário de Funcionamento</label>
+                      <input
+                        type="text"
+                        value={compOpeningHours}
+                        onChange={e => setCompOpeningHours(e.target.value)}
+                        placeholder="Ex: Seg a Sex das 09h às 18h, Sáb das 09h às 13h"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações / Descrição do Estabelecimento</label>
+                      <textarea
+                        rows={4}
+                        value={compNotes}
+                        onChange={e => setCompNotes(e.target.value)}
+                        placeholder="Informações adicionais sobre o salão, regras de atendimento ou detalhes da marca..."
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                      />
+                    </div>
+                  </div>
+                )}
+              </form>
+
+              {/* Plan info */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="h-4.5 w-4.5 text-primary" />
+                    <span>Plano SaaS Contratado</span>
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold tracking-widest uppercase border border-primary/20">
+                    Pro ERP Multi-Tenant
+                  </span>
+                </div>
                 <div className="text-xs text-muted-foreground leading-relaxed">
-                  Sua conta está associada ao plano comercial Pro ERP Multi-Tenant, ativado com suporte ilimitado para integração de marketplaces, relatórios financeiros consolidados e assistente de IA Gemini.
+                  Sua conta empresarial está associada ao plano Pro ERP, ativado com suporte ilimitado para integração de marketplaces, relatórios financeiros consolidados e assistente de IA Gemini.
                 </div>
               </div>
             </div>
@@ -857,30 +1457,52 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* TAB 4: PARAMETRIZAÇÃO (PLACEHOLDER) */}
+          {/* TAB 4: PARAMETRIZAÇÃO */}
           {activeTab === "params" && (
             <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Sliders className="h-4.5 w-4.5 text-rosegold-500" />
+                <Sliders className="h-4.5 w-4.5 text-primary" />
                 <span>Parametrização Geral</span>
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Opções gerais de faturamento e alertas mínimos.
+                Opções gerais de faturamento, alertas e operações do sistema.
               </p>
-              <div className="space-y-3.5 text-xs">
-                <div className="flex justify-between items-center p-3 rounded-lg border border-border">
+              <div className="space-y-3 text-xs">
+                {/* Toggle: Stock Alert */}
+                <div className="flex justify-between items-center p-3 rounded-xl border border-border bg-card/30">
                   <div className="space-y-0.5">
-                    <span className="font-bold text-foreground">Alertar estoque crítico</span>
+                    <span className="font-semibold text-foreground">Alertar estoque crítico</span>
                     <p className="text-[10px] text-muted-foreground">Exibe notificações de estoque baixo na header.</p>
                   </div>
-                  <ToggleRight className="h-6 w-6 text-green-500" />
+                  <button
+                    onClick={() => handleToggleParam('requireStockAlert', !requireStockAlert)}
+                    className={`relative h-6 w-11 rounded-full transition-colors duration-200 shrink-0 ${requireStockAlert ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                    role="switch"
+                    aria-checked={requireStockAlert}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all duration-200 ${requireStockAlert ? 'left-6' : 'left-1'}`} />
+                  </button>
                 </div>
-                <div className="flex justify-between items-center p-3 rounded-lg border border-border">
+
+                {/* Toggle: Require CPF/CNPJ */}
+                <div className="flex justify-between items-center p-3 rounded-xl border border-border bg-card/30">
                   <div className="space-y-0.5">
-                    <span className="font-bold text-foreground">Exigir CPF/CNPJ de Cliente</span>
-                    <p className="text-[10px] text-muted-foreground">Torna obrigatório para emissão posterior de NFC-e.</p>
+                    <span className="font-semibold text-foreground">Exigir CPF/CNPJ de Cliente</span>
+                    <p className="text-[10px] text-muted-foreground">Torna obrigatório o documento para emissão de NFC-e.</p>
+                    {requireCpf && (
+                      <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                        ⚠ Ativo: CPF/CNPJ obrigatório
+                      </span>
+                    )}
                   </div>
-                  <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                  <button
+                    onClick={() => handleToggleParam('requireCpf', !requireCpf)}
+                    className={`relative h-6 w-11 rounded-full transition-colors duration-200 shrink-0 ${requireCpf ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                    role="switch"
+                    aria-checked={requireCpf}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all duration-200 ${requireCpf ? 'left-6' : 'left-1'}`} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -1229,6 +1851,69 @@ export default function SettingsPage() {
 
             </form>
 
+          </div>
+        </div>
+      )}
+      {/* 5. MODAL: NOVA EMPRESA (Req 2) */}
+      {newCompanyModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm p-6 rounded-2xl border border-border bg-card shadow-2xl space-y-5 relative animate-in zoom-in-95 duration-300">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                <Building2 className="h-4.5 w-4.5 text-primary" />
+                <span>Cadastrar Nova Empresa</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setNewCompanyModalOpen(false)}
+                className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCompany} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Razão Social / Nome da Empresa *</label>
+                <input
+                  type="text"
+                  required
+                  value={newCompanyName}
+                  onChange={(e) => setNewCompanyName(e.target.value)}
+                  placeholder="Ex: Beleza SaaS Cosméticos"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CNPJ da Empresa</label>
+                <input
+                  type="text"
+                  value={newCompanyCnpj}
+                  onChange={(e) => setNewCompanyCnpj(e.target.value)}
+                  placeholder="00.000.000/0000-00"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                />
+              </div>
+
+              <div className="flex gap-3.5 pt-3 border-t border-border mt-6">
+                <button
+                  type="button"
+                  onClick={() => setNewCompanyModalOpen(false)}
+                  className="flex-1 py-2 border border-border rounded-xl text-xs font-semibold hover:bg-muted transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 disabled:opacity-50"
+                >
+                  {loading ? "Criando..." : "Criar Empresa"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
