@@ -9,13 +9,17 @@ const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
 // Inicialização segura do Firebase Admin SDK com suporte a HMR
 const adminApp = getApps().length === 0
-  ? initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey: privateKey ? privateKey.replace(/\\n/g, "\n") : undefined,
-      }),
-    })
+  ? (projectId && clientEmail && privateKey
+      ? initializeApp({
+          credential: cert({
+            projectId,
+            clientEmail,
+            privateKey: privateKey.replace(/\\n/g, "\n"),
+          }),
+        })
+      : initializeApp({
+          projectId: projectId || "dummy-project-id",
+        }))
   : getApp();
 
 export const adminAuth = getAuth(adminApp);
