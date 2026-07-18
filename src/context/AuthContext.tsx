@@ -5,7 +5,9 @@ import {
   User as FirebaseUser, 
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  signOut
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup
 } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
@@ -30,6 +32,7 @@ interface AuthContextType {
   role: 'owner' | 'admin' | 'operator' | 'viewer' | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   isMock: boolean;
@@ -148,6 +151,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
+  const loginWithGoogle = async () => {
+    if (isMock || isFirebasePlaceholder) {
+      const mockUser = {
+        uid: MOCK_PROFILE.uid,
+        email: MOCK_PROFILE.email,
+        displayName: MOCK_PROFILE.displayName,
+      };
+      const session = {
+        ...mockUser,
+        profile: MOCK_PROFILE
+      };
+      localStorage.setItem("mock_auth_session", JSON.stringify(session));
+      setUser(mockUser);
+      setProfile(MOCK_PROFILE);
+      setIsMock(true);
+      setLoading(false);
+      return;
+    }
+
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  };
+
   const logout = async () => {
     if (isMock) {
       localStorage.removeItem("mock_auth_session");
@@ -196,7 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : null;
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, logout, switchTenant, isMock }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock }}>
       {children}
     </AuthContext.Provider>
   );
