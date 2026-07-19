@@ -1,4 +1,4 @@
-﻿export interface Supplier {
+export interface Supplier {
   id: string;
   tenantId: string;
   name: string;           // Razão Social
@@ -6,6 +6,7 @@
   cnpj?: string;
   email?: string;
   phone?: string;
+  isWhatsapp?: boolean;   // Whether the main phone has WhatsApp
   whatsapp?: string;
   website?: string;
   address?: {
@@ -23,4 +24,11 @@
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt?: string;
+  // Contact representative fields (Req 2)
+  contactPerson?: string;
+  contactRole?: string;
+  contactDepartment?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  contactIsWhatsapp?: boolean;
 }

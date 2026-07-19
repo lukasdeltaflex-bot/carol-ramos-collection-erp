@@ -44,7 +44,7 @@ import {
   Activity,
   UserCheck
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 // Lista de Bancos Brasileiros para o seletor visual (Req 7)
 export const BRAZILIAN_BANKS = [
@@ -96,6 +96,7 @@ const INITIAL_RECEIVABLES = [
 ];
 
 export default function FinancePage() {
+  const { tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
 
   const [activeTab, setActiveTab] = useState<"cashflow" | "accounts" | "payable" | "receivable" | "purchases" | "dre">("cashflow");
@@ -149,43 +150,61 @@ export default function FinancePage() {
   const [bankSearch, setBankSearch] = useState("");
   const [selectedBankObj, setSelectedBankObj] = useState<any>(null);
 
-  // Load All Financial Data
+  // Load All Financial Data (Paralelizado e Reativo)
   const loadFinancialData = async () => {
     setLoading(true);
     try {
-      let bAccounts = await getDocs("bank_accounts");
-      let trans = await getDocs("financial_transactions");
-      let pays = await getDocs("accounts_payable");
-      let recs = await getDocs("accounts_receivable");
-      let purcs = await getDocs("purchases");
-      const prods = await getDocs("products");
-      const supps = await getDocs("suppliers");
+      let [bAccounts, trans, pays, recs, purcs, prods, supps] = await Promise.all([
+        getDocs("bank_accounts"),
+        getDocs("financial_transactions"),
+        getDocs("accounts_payable"),
+        getDocs("accounts_receivable"),
+        getDocs("purchases"),
+        getDocs("products"),
+        getDocs("suppliers")
+      ]);
 
-      // Pre-seed bank accounts
+      // Pre-seed bank accounts (Paralelizado)
+      let needsRefetch = false;
       if (bAccounts.length === 0) {
-        for (const ba of INITIAL_BANK_ACCOUNTS) await createDoc("bank_accounts", ba);
+        await Promise.all(INITIAL_BANK_ACCOUNTS.map(ba => createDoc("bank_accounts", ba)));
+        needsRefetch = true;
+      }
+
+      if (needsRefetch) {
         bAccounts = await getDocs("bank_accounts");
       }
 
       const bankIds = (bAccounts as any[]).map((b: any) => b.id);
       const supplierIds = (supps as any[]).map((s: any) => s.id);
 
-      // Pre-seed Transactions
+      // Pre-seed other entities in parallel
+      let needsRefetchOthers = false;
+      const seedPromises = [];
+
       if (trans.length === 0) {
-        for (const t of INITIAL_TRANSACTIONS(bankIds)) await createDoc("financial_transactions", t);
-        trans = await getDocs("financial_transactions");
+        seedPromises.push(Promise.all(INITIAL_TRANSACTIONS(bankIds).map(t => createDoc("financial_transactions", t))));
+        needsRefetchOthers = true;
       }
-
-      // Pre-seed Payables
       if (pays.length === 0) {
-        for (const p of INITIAL_PAYABLES(supplierIds)) await createDoc("accounts_payable", p);
-        pays = await getDocs("accounts_payable");
+        seedPromises.push(Promise.all(INITIAL_PAYABLES(supplierIds).map(p => createDoc("accounts_payable", p))));
+        needsRefetchOthers = true;
+      }
+      if (recs.length === 0) {
+        seedPromises.push(Promise.all(INITIAL_RECEIVABLES.map(r => createDoc("accounts_receivable", r))));
+        needsRefetchOthers = true;
       }
 
-      // Pre-seed Receivables
-      if (recs.length === 0) {
-        for (const r of INITIAL_RECEIVABLES) await createDoc("accounts_receivable", r);
-        recs = await getDocs("accounts_receivable");
+      if (seedPromises.length > 0) {
+        await Promise.all(seedPromises);
+      }
+
+      if (needsRefetchOthers) {
+        [trans, pays, recs] = await Promise.all([
+          getDocs("financial_transactions"),
+          getDocs("accounts_payable"),
+          getDocs("accounts_receivable")
+        ]);
       }
 
       setBankAccounts(bAccounts as BankAccount[]);
@@ -208,8 +227,10 @@ export default function FinancePage() {
   };
 
   useEffect(() => {
-    loadFinancialData();
-  }, []);
+    if (tenantId) {
+      loadFinancialData();
+    }
+  }, [tenantId, isMock]);
 
   // 1. Abrir Drawer de Cadastro
   const handleOpenDrawer = (type: typeof drawerType) => {
@@ -719,13 +740,13 @@ export default function FinancePage() {
                             </div>
                           </td>
                           <td className="p-4">{getCategoryLabel(t.category)}</td>
-                          <td className="p-4 font-mono text-muted-foreground">{t.paymentDate ? new Date(t.paymentDate).toLocaleDateString() : "-"}</td>
+                          <td className="p-4 font-mono text-muted-foreground">{t.paymentDate ? formatDate(t.paymentDate) : "-"}</td>
                           <td className="p-4 text-muted-foreground">
                             {bankAccounts.find(a => a.id === t.bankAccountId)?.name || "Caixa Geral"}
                           </td>
                           <td className="p-4 font-mono font-bold text-foreground">
                             <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
-                              {t.type === "revenue" ? "+" : "-"} R$ {t.amount.toFixed(2)}
+                              {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
                             </span>
                           </td>
                           <td className="p-4 text-right">
@@ -776,7 +797,7 @@ export default function FinancePage() {
                       <div className="mt-2">
                         <span className="text-[10px] text-muted-foreground uppercase">Saldo Disponível</span>
                         <h4 className="text-xl font-bold font-mono tracking-tight text-foreground">
-                          R$ {a.balance.toFixed(2)}
+                          {formatCurrency(a.balance)}
                         </h4>
                       </div>
                     </div>
@@ -817,10 +838,10 @@ export default function FinancePage() {
                             </td>
                             <td className="p-4 font-mono font-semibold">
                               <span className={isOverdue ? "text-red-500" : "text-muted-foreground"}>
-                                {new Date(p.dueDate).toLocaleDateString()}
+                                {formatDate(p.dueDate)}
                               </span>
                             </td>
-                            <td className="p-4 font-mono font-bold text-foreground">R$ {p.amount.toFixed(2)}</td>
+                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(p.amount)}</td>
                             <td className="p-4 uppercase text-[10px] text-muted-foreground">{p.paymentMethod || "Boleto"}</td>
                             <td className="p-4">
                               <span className={cn(
@@ -888,8 +909,8 @@ export default function FinancePage() {
                             <td className="p-4">
                               <div className="font-semibold text-foreground">{r.description}</div>
                             </td>
-                            <td className="p-4 font-mono text-muted-foreground">{new Date(r.dueDate).toLocaleDateString()}</td>
-                            <td className="p-4 font-mono font-bold text-foreground">R$ {r.amount.toFixed(2)}</td>
+                            <td className="p-4 font-mono text-muted-foreground">{formatDate(r.dueDate)}</td>
+                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(r.amount)}</td>
                             <td className="p-4 uppercase text-[10px] text-muted-foreground">{r.paymentMethod || "Crédito"}</td>
                             <td className="p-4">
                               <span className={cn(
@@ -955,11 +976,11 @@ export default function FinancePage() {
                           <td className="p-4 font-semibold text-foreground">
                             {suppliers.find(s => s.id === p.supplierId)?.name || "Fornecedor"}
                           </td>
-                          <td className="p-4 font-mono text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</td>
+                          <td className="p-4 font-mono text-muted-foreground">{formatDate(p.createdAt)}</td>
                           <td className="p-4 truncate max-w-[200px] text-muted-foreground">
                             {p.items.map(i => `${i.quantity}x ${i.name}`).join(", ")}
                           </td>
-                          <td className="p-4 font-mono font-bold text-foreground">R$ {p.total.toFixed(2)}</td>
+                          <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(p.total)}</td>
                           <td className="p-4 uppercase text-[10px] text-muted-foreground">{p.paymentMethod}</td>
                           <td className="p-4">
                             <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border border-green-200/30">
@@ -985,26 +1006,26 @@ export default function FinancePage() {
                 <div className="space-y-3.5">
                   <div className="flex justify-between font-bold text-foreground text-xs pb-1 border-b border-border">
                     <span>RECEITA OPERACIONAL BRUTA</span>
-                    <span className="font-mono text-green-500">+ R$ {dre.totalRevenues.toFixed(2)}</span>
+                    <span className="font-mono text-green-500">+ {formatCurrency(dre.totalRevenues)}</span>
                   </div>
 
                   <div className="space-y-1.5 pl-4 text-muted-foreground">
                     <div className="flex justify-between">
                       <span>Vendas PDV e Canais</span>
-                      <span className="font-mono">R$ {dre.totalRevenues.toFixed(2)}</span>
+                      <span className="font-mono">{formatCurrency(dre.totalRevenues)}</span>
                     </div>
                   </div>
 
                   <div className="flex justify-between font-bold text-foreground text-xs pb-1 border-b border-border pt-2">
                     <span>(-) DESPESAS OPERACIONAIS</span>
-                    <span className="font-mono text-red-500">- R$ {dre.totalExpenses.toFixed(2)}</span>
+                    <span className="font-mono text-red-500">- {formatCurrency(dre.totalExpenses)}</span>
                   </div>
 
                   <div className="space-y-1.5 pl-4 text-muted-foreground">
                     {Object.keys(dre.categoriesSum).map((cat) => (
                       <div key={cat} className="flex justify-between">
                         <span>{getCategoryLabel(cat)}</span>
-                        <span className="font-mono">R$ {dre.categoriesSum[cat].toFixed(2)}</span>
+                        <span className="font-mono">{formatCurrency(dre.categoriesSum[cat])}</span>
                       </div>
                     ))}
                     {Object.keys(dre.categoriesSum).length === 0 && (
@@ -1019,7 +1040,7 @@ export default function FinancePage() {
                       : "bg-red-100/50 border-red-200/50 text-red-800 dark:bg-red-950/20 dark:text-red-400"
                   )}>
                     <span>LUCRO LÍQUIDO DO PERÍODO</span>
-                    <span className="font-mono">R$ {dre.netIncome.toFixed(2)}</span>
+                    <span className="font-mono">{formatCurrency(dre.netIncome)}</span>
                   </div>
                 </div>
               </div>
@@ -1221,7 +1242,7 @@ export default function FinancePage() {
                       onChange={(e) => setTBankAccountId(e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground"
                     >
-                      {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} (R$ {a.balance.toFixed(2)})</option>)}
+                      {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>)}
                     </select>
                     {errors.bankAccountId && <p className="text-[10px] text-destructive mt-0.5">{errors.bankAccountId}</p>}
                   </div>
@@ -1336,7 +1357,7 @@ export default function FinancePage() {
                   {/* Resumo Valor Total Compra */}
                   <div className="p-3.5 rounded-xl border border-border bg-muted/20 text-xs font-bold flex justify-between">
                     <span>TOTAL FATURADO COMPRA</span>
-                    <span className="font-mono">R$ {purchaseItems.reduce((sum, i) => sum + (i.quantity * i.unitCost), 0).toFixed(2)}</span>
+                    <span className="font-mono">{formatCurrency(purchaseItems.reduce((sum, i) => sum + (i.quantity * i.unitCost), 0))}</span>
                   </div>
                 </>
               )}
@@ -1393,7 +1414,7 @@ export default function FinancePage() {
                 onChange={(e) => setPaymentBankAccountId(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-foreground"
               >
-                {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} (R$ {a.balance.toFixed(2)})</option>)}
+                {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>)}
               </select>
             </div>
 

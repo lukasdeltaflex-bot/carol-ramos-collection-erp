@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { 
   collection, 
@@ -89,7 +90,7 @@ export function useDb() {
   };
 
   // 1. Criar Documento
-  const createDoc = async (collectionName: string, data: any) => {
+  const createDoc = useCallback(async (collectionName: string, data: any) => {
     const finalData = injectBaseFields(data, "create");
 
     if (isMock) {
@@ -119,10 +120,10 @@ export function useDb() {
     await logAudit("create", collectionName, docRef.id, null, finalData);
     
     return { id: docRef.id, ...finalData };
-  };
+  }, [user, tenantId, isMock]);
 
   // 2. Atualizar Documento
-  const updateDoc = async (collectionName: string, docId: string, data: any) => {
+  const updateDoc = useCallback(async (collectionName: string, docId: string, data: any) => {
     let previousData: any = null;
 
     if (isMock) {
@@ -160,10 +161,10 @@ export function useDb() {
     await logAudit("update", collectionName, docId, previousData, finalData);
     
     return { id: docId, ...finalData };
-  };
+  }, [user, tenantId, isMock]);
 
   // 3. Deletar Documento
-  const deleteDoc = async (collectionName: string, docId: string) => {
+  const deleteDoc = useCallback(async (collectionName: string, docId: string) => {
     let previousData: any = null;
 
     if (isMock) {
@@ -195,10 +196,10 @@ export function useDb() {
     // Registrar log de auditoria
     await logAudit("delete", collectionName, docId, previousData, null);
     return true;
-  };
+  }, [user, tenantId, isMock]);
 
   // 4. Obter Todos os Documentos do Tenant
-  const getDocs = async (collectionName: string) => {
+  const getDocs = useCallback(async (collectionName: string) => {
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
       const existing = localStorage.getItem(storageKey);
@@ -216,10 +217,10 @@ export function useDb() {
     );
     const snap = await firestoreGetDocs(q);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  };
+  }, [tenantId, isMock]);
 
   // 5. Obter Documento por ID
-  const getDocById = async (collectionName: string, docId: string) => {
+  const getDocById = useCallback(async (collectionName: string, docId: string) => {
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
       const existing = localStorage.getItem(storageKey);
@@ -233,7 +234,7 @@ export function useDb() {
     const snap = await firestoreGetDoc(docRef);
     if (!snap.exists()) return null;
     return { id: snap.id, ...snap.data() };
-  };
+  }, [isMock]);
 
   return {
     createDoc,

@@ -35,7 +35,7 @@ import {
   CartesianGrid
 } from "recharts";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 export default function Dashboard() {
   const { profile, tenantId } = useAuth();
@@ -72,8 +72,10 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (tenantId) {
+      loadDashboardData();
+    }
+  }, [tenantId]);
 
   // 1. Cálculos de Vendas de Hoje
   const getTodayStats = () => {
@@ -230,7 +232,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <h3 className="text-2xl font-bold tracking-tight font-mono">
-                  R$ {todayStats.revenueToday.toFixed(2)}
+                  {formatCurrency(todayStats.revenueToday)}
                 </h3>
                 <p className="text-[10px] text-green-500 flex items-center gap-0.5 mt-0.5 font-semibold">
                   <TrendingUp className="h-3.5 w-3.5" />
@@ -376,9 +378,9 @@ export default function Dashboard() {
                         </p>
                       </div>
                       <div className="flex flex-col items-end shrink-0 gap-1.5">
-                        <span className="text-xs font-bold text-foreground font-mono">R$ {sale.total.toFixed(2)}</span>
+                        <span className="text-xs font-bold text-foreground font-mono">{formatCurrency(sale.total)}</span>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] text-muted-foreground">{new Date(sale.createdAt).toLocaleDateString()}</span>
+                          <span className="text-[9px] text-muted-foreground">{formatDate(sale.createdAt)}</span>
                           <span className={`px-2 py-0.5 text-[9px] font-semibold rounded-full border ${getChannelStyle(sale.channel)}`}>
                             {getChannelLabel(sale.channel)}
                           </span>
@@ -448,13 +450,13 @@ export default function Dashboard() {
               <div className="space-y-3">
                 <IndicatorRow
                   label="Ticket Médio"
-                  value={`R$ ${ticketMedio.toFixed(2)}`}
+                  value={formatCurrency(ticketMedio)}
                   desc="Média por venda registrada"
                   color="text-emerald-600 dark:text-emerald-400"
                 />
                 <IndicatorRow
                   label="Total em Vendas"
-                  value={`R$ ${sales.reduce((s, v) => s + v.total, 0).toFixed(2)}`}
+                  value={formatCurrency(sales.reduce((s, v) => s + v.total, 0))}
                   desc="Faturamento acumulado no período"
                   color="text-primary"
                 />
@@ -466,7 +468,7 @@ export default function Dashboard() {
                 />
                 <IndicatorRow
                   label="Contas a Receber"
-                  value={`R$ ${totalReceivables.toFixed(2)}`}
+                  value={formatCurrency(totalReceivables)}
                   desc="Pendências de recebimento em aberto"
                   color="text-amber-600 dark:text-amber-400"
                 />

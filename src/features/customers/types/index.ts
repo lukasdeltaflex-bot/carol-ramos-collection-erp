@@ -5,9 +5,10 @@ export interface Customer extends BaseDocument {
   name: string;
   email?: string;
   phone: string;
+  isWhatsapp?: boolean;
   cpf?: string;
   instagram?: string;
-  birthday?: string; // YYYY-MM-DD
+  birthday?: string; // DD/MM/AAAA or YYYY-MM-DD
   tags: string[];
   source: string; // instagram, shopee, walk-in, etc.
   notes?: string;
@@ -33,6 +34,7 @@ export interface Supplier extends BaseDocument {
   cnpj?: string;
   email?: string;
   phone?: string;
+  isWhatsapp?: boolean;
   contactPerson?: string;
   address?: {
     street: string;

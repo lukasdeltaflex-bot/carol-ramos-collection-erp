@@ -22,7 +22,7 @@ import {
   X,
   Check,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, maskPhone, maskCep, maskCnpj } from "@/lib/utils";
 
 const CATEGORIES = [
   "Cosméticos","Embalagens","Matéria-prima","Perfumaria",
@@ -32,33 +32,20 @@ const CATEGORIES = [
 const TABS = ["Dados Gerais", "Contatos", "Endereço", "Observações"] as const;
 type TabLabel = (typeof TABS)[number];
 
-function maskCnpj(v: string): string {
-  const d = v.replace(/\D/g, "").slice(0, 14);
-  return d
-    .replace(/^(\d{2})(\d)/, "$1.$2")
-    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/\.(\d{3})(\d)/, ".$1/$2")
-    .replace(/(\d{4})(\d)/, "$1-$2");
-}
-
-function maskPhone(v: string): string {
-  const d = v.replace(/\D/g, "").slice(0, 11);
-  if (d.length <= 10) return d.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").trim();
-  return d.replace(/^(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3").trim();
-}
-
-function maskCep(v: string): string {
-  const d = v.replace(/\D/g, "").slice(0, 8);
-  return d.replace(/^(\d{5})(\d)/, "$1-$2");
-}
-
 function emptyForm() {
   return {
     name: "", tradeName: "", cnpj: "", category: "",
     status: "active" as "active" | "inactive",
-    logo: "", email: "", phone: "", whatsapp: "", website: "",
+    logo: "", email: "", phone: "", isWhatsapp: false, whatsapp: "", website: "",
     cep: "", street: "", number: "", complement: "",
     neighborhood: "", city: "", state: "", notes: "",
+    // New fields (Req 2)
+    contactPerson: "",
+    contactRole: "",
+    contactDepartment: "",
+    contactPhone: "",
+    contactEmail: "",
+    contactIsWhatsapp: false,
   };
 }
 
@@ -175,9 +162,49 @@ function SupplierCard({ supplier, onEdit, onDelete }: SupplierCardProps) {
         <StatusBadge status={supplier.status} />
         <CategoryBadge category={supplier.category} />
       </div>
-      <div className="space-y-1.5 text-xs text-muted-foreground">
+      <div className="space-y-2 text-xs text-muted-foreground border-t border-border/40 pt-3 mt-1">
+        {/* Atendimento details */}
+        {supplier.contactPerson && (
+          <div className="bg-muted/30 p-2 rounded-xl border border-border/40 space-y-0.5 mb-2">
+            <div className="text-[10px] font-bold text-primary uppercase tracking-wider">Atendimento</div>
+            <div className="font-semibold text-foreground truncate">{supplier.contactPerson}</div>
+            {supplier.contactRole && <div className="text-[10px] text-muted-foreground">{supplier.contactRole} {supplier.contactDepartment ? `• ${supplier.contactDepartment}` : ""}</div>}
+            {supplier.contactPhone && (
+              <div className="flex items-center gap-1.5 text-[10px] font-mono mt-1">
+                {supplier.contactIsWhatsapp && (
+                  <a 
+                    href={`https://wa.me/55${supplier.contactPhone.replace(/\D/g, "")}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="text-emerald-500 hover:text-emerald-600 transition-colors"
+                  >
+                    <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
+                    </svg>
+                  </a>
+                )}
+                <span>{supplier.contactPhone}</span>
+              </div>
+            )}
+            {supplier.contactEmail && <div className="text-[10px] truncate">{supplier.contactEmail}</div>}
+          </div>
+        )}
+
         {(supplier.phone || supplier.whatsapp) && (
           <div className="flex items-center gap-1.5">
+            {supplier.isWhatsapp && (
+              <a 
+                href={`https://wa.me/55${supplier.phone?.replace(/\D/g, "")}`} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="text-emerald-500 hover:text-emerald-600 transition-colors"
+                title="Conversar no WhatsApp"
+              >
+                <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
+                </svg>
+              </a>
+            )}
             <Phone className="h-3 w-3 shrink-0 text-primary/60" />
             <span className="font-mono truncate">{supplier.phone || supplier.whatsapp}</span>
           </div>
@@ -295,11 +322,18 @@ export default function SuppliersPage() {
     setForm({
       name: s.name, tradeName: s.tradeName ?? "", cnpj: s.cnpj ?? "",
       category: s.category ?? "", status: s.status, logo: s.logo ?? "",
-      email: s.email ?? "", phone: s.phone ?? "", whatsapp: s.whatsapp ?? "",
-      website: s.website ?? "", cep: s.address?.cep ?? "", street: s.address?.street ?? "",
-      number: s.address?.number ?? "", complement: s.address?.complement ?? "",
-      neighborhood: s.address?.neighborhood ?? "", city: s.address?.city ?? "",
-      state: s.address?.state ?? "", notes: s.notes ?? "",
+      email: s.email ?? "", phone: s.phone ?? "", isWhatsapp: !!s.isWhatsapp,
+      whatsapp: s.whatsapp ?? "", website: s.website ?? "", cep: s.address?.cep ?? "",
+      street: s.address?.street ?? "", number: s.address?.number ?? "",
+      complement: s.address?.complement ?? "", neighborhood: s.address?.neighborhood ?? "",
+      city: s.address?.city ?? "", state: s.address?.state ?? "", notes: s.notes ?? "",
+      // New fields
+      contactPerson: s.contactPerson ?? "",
+      contactRole: s.contactRole ?? "",
+      contactDepartment: s.contactDepartment ?? "",
+      contactPhone: s.contactPhone ?? "",
+      contactEmail: s.contactEmail ?? "",
+      contactIsWhatsapp: !!s.contactIsWhatsapp,
     });
     setActiveTab("Dados Gerais"); setModalOpen(true);
   }
@@ -315,16 +349,20 @@ export default function SuppliersPage() {
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cepClean}/json/`);
       const data = await res.json();
-      if (!data.erro) {
-        setForm((prev) => ({
-          ...prev,
-          street: data.logradouro || prev.street,
-          neighborhood: data.bairro || prev.neighborhood,
-          city: data.localidade || prev.city,
-          state: data.uf || prev.state,
-        }));
+      if (data.erro) {
+        toastError("CEP não encontrado", "Por favor, verifique o CEP informado.");
+        return;
       }
-    } catch { /* silently ignore */ } finally { setCepLoading(false); }
+      setForm((prev) => ({
+        ...prev,
+        street: data.logradouro || prev.street,
+        neighborhood: data.bairro || prev.neighborhood,
+        city: data.localidade || prev.city,
+        state: data.uf || prev.state,
+      }));
+    } catch {
+      toastError("Erro ao buscar CEP", "Não foi possível consultar o CEP automaticamente.");
+    } finally { setCepLoading(false); }
   }
 
   async function handleSave() {
@@ -340,6 +378,7 @@ export default function SuppliersPage() {
         cnpj: form.cnpj.trim() || undefined, category: form.category || undefined,
         status: form.status, logo: form.logo || undefined,
         email: form.email.trim() || undefined, phone: form.phone.trim() || undefined,
+        isWhatsapp: form.isWhatsapp,
         whatsapp: form.whatsapp.trim() || undefined, website: form.website.trim() || undefined,
         notes: form.notes.trim() || undefined,
         address: hasAddress ? {
@@ -347,6 +386,13 @@ export default function SuppliersPage() {
           complement: form.complement || undefined, neighborhood: form.neighborhood,
           city: form.city, state: form.state,
         } : undefined,
+        // Representative fields (Req 2)
+        contactPerson: form.contactPerson.trim() || undefined,
+        contactRole: form.contactRole.trim() || undefined,
+        contactDepartment: form.contactDepartment.trim() || undefined,
+        contactPhone: form.contactPhone.trim() || undefined,
+        contactEmail: form.contactEmail.trim() || undefined,
+        contactIsWhatsapp: form.contactIsWhatsapp,
       };
       if (editingId) {
         await updateDoc("suppliers", editingId, payload);
@@ -527,35 +573,96 @@ export default function SuppliersPage() {
 
         {/* Tab: Contatos */}
         {activeTab === "Contatos" && (
-          <div className="space-y-4">
-            <div>
-              <FormLabel>E-mail</FormLabel>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <FormInput type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="contato@fornecedor.com.br" className="pl-9" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Contatos Gerais */}
+            <div className="space-y-3">
+              <h4 className="text-[10px] font-bold text-primary uppercase tracking-wider border-b border-border pb-1">Contatos Gerais</h4>
               <div>
-                <FormLabel>Telefone</FormLabel>
+                <FormLabel>E-mail</FormLabel>
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                  <FormInput type="text" value={form.phone} onChange={(e) => setField("phone", maskPhone(e.target.value))} placeholder="(11) 99999-8888" className="pl-9 font-mono" maxLength={15} />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <FormInput type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="contato@fornecedor.com.br" className="pl-9" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telefone</label>
+                    <label className="flex items-center gap-1 text-[9px] font-semibold text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.isWhatsapp}
+                        onChange={(e) => setField("isWhatsapp", e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary h-3 w-3"
+                      />
+                      <span>WhatsApp</span>
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <FormInput type="text" value={form.phone} onChange={(e) => setField("phone", maskPhone(e.target.value))} placeholder="(11) 99999-9999" className="pl-9 font-mono" maxLength={15} />
+                  </div>
+                </div>
+                <div>
+                  <FormLabel>Outro Telefone / WhatsApp</FormLabel>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <FormInput type="text" value={form.whatsapp} onChange={(e) => setField("whatsapp", maskPhone(e.target.value))} placeholder="(11) 99999-9999" className="pl-9 font-mono" maxLength={15} />
+                  </div>
                 </div>
               </div>
               <div>
-                <FormLabel>WhatsApp</FormLabel>
+                <FormLabel>Website</FormLabel>
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                  <FormInput type="text" value={form.whatsapp} onChange={(e) => setField("whatsapp", maskPhone(e.target.value))} placeholder="(11) 99999-8888" className="pl-9 font-mono" maxLength={15} />
+                  <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <FormInput type="url" value={form.website} onChange={(e) => setField("website", e.target.value)} placeholder="https://www.fornecedor.com.br" className="pl-9" />
                 </div>
               </div>
             </div>
-            <div>
-              <FormLabel>Website</FormLabel>
-              <div className="relative">
-                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <FormInput type="url" value={form.website} onChange={(e) => setField("website", e.target.value)} placeholder="https://www.fornecedor.com.br" className="pl-9" />
+
+            {/* Responsável pelo Atendimento (Req 2) */}
+            <div className="space-y-3 pt-3 border-t border-border">
+              <h4 className="text-[10px] font-bold text-primary uppercase tracking-wider border-b border-border pb-1">Responsável pelo Atendimento</h4>
+              <div>
+                <FormLabel>Nome do Responsável</FormLabel>
+                <FormInput type="text" value={form.contactPerson} onChange={(e) => setField("contactPerson", e.target.value)} placeholder="Ex: Carlos Silva" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <FormLabel>Cargo</FormLabel>
+                  <FormInput type="text" value={form.contactRole} onChange={(e) => setField("contactRole", e.target.value)} placeholder="Ex: Gerente Comercial" />
+                </div>
+                <div>
+                  <FormLabel>Departamento</FormLabel>
+                  <FormInput type="text" value={form.contactDepartment} onChange={(e) => setField("contactDepartment", e.target.value)} placeholder="Ex: Vendas Atacado" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Telefone Direto</label>
+                    <label className="flex items-center gap-1 text-[9px] font-semibold text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.contactIsWhatsapp}
+                        onChange={(e) => setField("contactIsWhatsapp", e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary h-3 w-3"
+                      />
+                      <span>WhatsApp</span>
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <FormInput type="text" value={form.contactPhone} onChange={(e) => setField("contactPhone", maskPhone(e.target.value))} placeholder="(11) 99999-9999" className="pl-9 font-mono" maxLength={15} />
+                  </div>
+                </div>
+                <div>
+                  <FormLabel>E-mail Direto</FormLabel>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <FormInput type="email" value={form.contactEmail} onChange={(e) => setField("contactEmail", e.target.value)} placeholder="vendedor@fornecedor.com.br" className="pl-9" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

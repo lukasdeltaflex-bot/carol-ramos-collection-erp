@@ -50,7 +50,7 @@ const FacebookIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
   </svg>
 );
-import { cn } from "@/lib/utils";
+import { cn, maskCep, maskPhone, maskCnpj } from "@/lib/utils";
 
 // Custom SVG Icons for integrations
 const ShopeeIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -967,10 +967,11 @@ export default function SettingsPage() {
                         <input
                           type="text"
                           value={compCep}
-                          onChange={e => setCompCep(e.target.value)}
+                          onChange={e => setCompCep(maskCep(e.target.value))}
                           onBlur={handleCepBlur}
                           placeholder="00000-000"
                           className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                          maxLength={9}
                         />
                       </div>
                       <div className="col-span-2 space-y-1">
@@ -1891,9 +1892,10 @@ export default function SettingsPage() {
                 <input
                   type="text"
                   value={newCompanyCnpj}
-                  onChange={(e) => setNewCompanyCnpj(e.target.value)}
+                  onChange={(e) => setNewCompanyCnpj(maskCnpj(e.target.value))}
                   placeholder="00.000.000/0000-00"
                   className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                  maxLength={18}
                 />
               </div>
 

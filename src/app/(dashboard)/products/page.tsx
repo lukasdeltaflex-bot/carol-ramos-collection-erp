@@ -23,7 +23,8 @@ import {
   Layers,
   Coins
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 // Mock Inicial de Categorias
 const INITIAL_CATEGORIES = [
@@ -119,6 +120,7 @@ const INITIAL_PRODUCTS = (catIds: string[], brandIds: string[], supplierIds: str
 ];
 
 export default function ProductsPage() {
+  const { tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
 
   const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
@@ -172,28 +174,39 @@ export default function ProductsPage() {
   const [auxDesc, setAuxDesc] = useState("");
   const [auxIsVirtual, setAuxIsVirtual] = useState(false);
 
-  // Carregar todos os dados do banco
+  // Carregar todos os dados do banco (Paralelizado e Reativo)
   const loadAllData = async () => {
     setLoading(true);
     try {
-      let cats = await getDocs("categories");
-      let brs = await getDocs("brands");
-      let locs = await getDocs("stock_locations");
-      let supps = await getDocs("suppliers");
-      let prods = await getDocs("products");
+      let [cats, brs, locs, supps, prods] = await Promise.all([
+        getDocs("categories"),
+        getDocs("brands"),
+        getDocs("stock_locations"),
+        getDocs("suppliers"),
+        getDocs("products")
+      ]);
 
-      // Pre-seed se o mock estiver zerado
+      // Pre-seed se o mock ou banco estiver zerado (Paralelizado com Promise.all)
+      let needsRefetch = false;
       if (cats.length === 0) {
-        for (const c of INITIAL_CATEGORIES) await createDoc("categories", c);
-        cats = await getDocs("categories");
+        await Promise.all(INITIAL_CATEGORIES.map(c => createDoc("categories", c)));
+        needsRefetch = true;
       }
       if (brs.length === 0) {
-        for (const b of INITIAL_BRANDS) await createDoc("brands", b);
-        brs = await getDocs("brands");
+        await Promise.all(INITIAL_BRANDS.map(b => createDoc("brands", b)));
+        needsRefetch = true;
       }
       if (locs.length === 0) {
-        for (const l of INITIAL_LOCATIONS) await createDoc("stock_locations", l);
-        locs = await getDocs("stock_locations");
+        await Promise.all(INITIAL_LOCATIONS.map(l => createDoc("stock_locations", l)));
+        needsRefetch = true;
+      }
+
+      if (needsRefetch) {
+        [cats, brs, locs] = await Promise.all([
+          getDocs("categories"),
+          getDocs("brands"),
+          getDocs("stock_locations")
+        ]);
       }
 
       const catIds = (cats as any[]).map((c: any) => c.id);
@@ -202,7 +215,7 @@ export default function ProductsPage() {
 
       if (prods.length === 0) {
         const seedProds = INITIAL_PRODUCTS(catIds, brandIds, suppIds);
-        for (const p of seedProds) await createDoc("products", p);
+        await Promise.all(seedProds.map(p => createDoc("products", p)));
         prods = await getDocs("products");
       }
 
@@ -219,8 +232,10 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (tenantId) {
+      loadAllData();
+    }
+  }, [tenantId, isMock]);
 
   // Conversão de arquivo para Base64 para visualização em modo mock
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -583,8 +598,8 @@ export default function ProductsPage() {
                           </td>
                           <td className="p-4">
                             <div className="flex flex-col">
-                              <span className="font-semibold text-foreground">R$ {p.sellPrice.toFixed(2)}</span>
-                              <span className="text-[10px] text-muted-foreground">Custo: R$ {p.costPrice.toFixed(2)}</span>
+                              <span className="font-semibold text-foreground">{formatCurrency(p.sellPrice)}</span>
+                              <span className="text-[10px] text-muted-foreground">Custo: {formatCurrency(p.costPrice)}</span>
                             </div>
                           </td>
                           <td className="p-4">

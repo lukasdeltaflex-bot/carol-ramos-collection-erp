@@ -16,9 +16,11 @@ import {
   Mail,
   MapPin,
   X,
-  UserCheck
+  UserCheck,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, calculateAge, maskCpf, maskCnpj, maskPhone, maskCep, maskDate } from "@/lib/utils";
 
 const Instagram = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -68,6 +70,7 @@ export default function ContactsPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [isWhatsapp, setIsWhatsapp] = useState(false);
   const [cpfOrCnpj, setCpfOrCnpj] = useState("");
   const [instagram, setInstagram] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -130,6 +133,7 @@ export default function ContactsPage() {
     setName("");
     setEmail("");
     setPhone("");
+    setIsWhatsapp(false);
     setCpfOrCnpj("");
     setInstagram("");
     setBirthday("");
@@ -158,6 +162,7 @@ export default function ContactsPage() {
     setName(item.name || "");
     setEmail(item.email || "");
     setPhone(item.phone || "");
+    setIsWhatsapp(!!item.isWhatsapp);
     setCpfOrCnpj(activeTab === "customers" ? (item.cpf || "") : (item.cnpj || ""));
     setInstagram(item.instagram || "");
     setBirthday(item.birthday || "");
@@ -203,6 +208,26 @@ export default function ContactsPage() {
     }
   };
 
+  // Buscar CEP automaticamente (Req 3)
+  const handleCepBlur = async () => {
+    const clean = zipCode.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        alert("CEP não encontrado. Por favor, verifique.");
+        return;
+      }
+      setStreet(data.logradouro || "");
+      setNeighborhood(data.bairro || "");
+      setCity(data.localidade || "");
+      setState(data.uf || "");
+    } catch (err) {
+      console.error("Erro ao buscar CEP:", err);
+    }
+  };
+
   // Salvar formulário
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,6 +249,7 @@ export default function ContactsPage() {
         name,
         email: email || undefined,
         phone,
+        isWhatsapp,
         cpf: cpfOrCnpj || undefined,
         instagram: instagram || undefined,
         birthday: birthday || undefined,
@@ -265,6 +291,7 @@ export default function ContactsPage() {
         cnpj: cpfOrCnpj || undefined,
         email: email || undefined,
         phone: phone || undefined,
+        isWhatsapp,
         contactPerson: contactPerson || undefined,
         address: addressData
       };
@@ -397,6 +424,7 @@ export default function ContactsPage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
                     <th className="p-4">Cliente</th>
+                    <th className="p-4">Idade</th>
                     <th className="p-4">Contato</th>
                     <th className="p-4">Redes Sociais</th>
                     <th className="p-4">Canal</th>
@@ -408,7 +436,7 @@ export default function ContactsPage() {
                 <tbody className="divide-y divide-border/60">
                   {filteredCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
+                      <td colSpan={8} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
                     </tr>
                   ) : (
                     filteredCustomers.map((c) => (
@@ -417,9 +445,28 @@ export default function ContactsPage() {
                           <div className="font-semibold text-foreground">{c.name}</div>
                           {c.cpf && <span className="text-[10px] text-muted-foreground font-mono">CPF: {c.cpf}</span>}
                         </td>
+                        <td className="p-4 text-xs text-muted-foreground">
+                          {calculateAge(c.birthday) || "-"}
+                        </td>
                         <td className="p-4">
                           <div className="flex flex-col gap-0.5">
-                            <span className="flex items-center gap-1 font-mono text-muted-foreground"><Phone className="h-3 w-3 shrink-0" /> {c.phone}</span>
+                            <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
+                              {c.isWhatsapp && (
+                                <a 
+                                  href={`https://wa.me/55${c.phone.replace(/\D/g, "")}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="text-emerald-500 hover:text-emerald-600 transition-colors cursor-pointer" 
+                                  title="Conversar no WhatsApp"
+                                >
+                                  <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
+                                  </svg>
+                                </a>
+                              )}
+                              <Phone className="h-3 w-3 shrink-0" />
+                              <span>{c.phone}</span>
+                            </span>
                             {c.email && <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Mail className="h-3 w-3 shrink-0" /> {c.email}</span>}
                           </div>
                         </td>
@@ -491,7 +538,25 @@ export default function ContactsPage() {
                         <td className="p-4 font-mono text-muted-foreground">{s.cnpj || "-"}</td>
                         <td className="p-4">
                           <div className="flex flex-col gap-0.5">
-                            {s.phone && <span className="flex items-center gap-1 font-mono text-muted-foreground"><Phone className="h-3 w-3" /> {s.phone}</span>}
+                            {s.phone && (
+                              <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
+                                {s.isWhatsapp && (
+                                  <a 
+                                    href={`https://wa.me/55${s.phone.replace(/\D/g, "")}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-emerald-500 hover:text-emerald-600 transition-colors cursor-pointer" 
+                                    title="Conversar no WhatsApp"
+                                  >
+                                    <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
+                                    </svg>
+                                  </a>
+                                )}
+                                <Phone className="h-3 w-3" />
+                                <span>{s.phone}</span>
+                              </span>
+                            )}
                             {s.email && <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Mail className="h-3 w-3" /> {s.email}</span>}
                           </div>
                         </td>
@@ -564,13 +629,24 @@ export default function ContactsPage() {
                   {errors.email && <p className="text-[10px] text-destructive mt-0.5">{errors.email}</p>}
                 </div>
                 <div className="space-y-1">
-                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Telefone</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Telefone</label>
+                    <label className="flex items-center gap-1 text-[9px] font-semibold text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isWhatsapp}
+                        onChange={(e) => setIsWhatsapp(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary h-3 w-3"
+                      />
+                      <span>WhatsApp</span>
+                    </label>
+                  </div>
                   <input
                     type="text"
                     required
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+55 11 99999-8888"
+                    onChange={(e) => setPhone(maskPhone(e.target.value))}
+                    placeholder="(11) 99999-9999"
                     className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                   />
                   {errors.phone && <p className="text-[10px] text-destructive mt-0.5">{errors.phone}</p>}
@@ -585,8 +661,8 @@ export default function ContactsPage() {
                 <input
                   type="text"
                   value={cpfOrCnpj}
-                  onChange={(e) => setCpfOrCnpj(e.target.value)}
-                  placeholder={activeTab === "customers" ? "123.456.789-00" : "12.345.678/0001-99"}
+                  onChange={(e) => setCpfOrCnpj(activeTab === "customers" ? maskCpf(e.target.value) : maskCnpj(e.target.value))}
+                  placeholder={activeTab === "customers" ? "000.000.000-00" : "00.000.000/0000-00"}
                   className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary font-mono"
                 />
                 {errors.cpf && <p className="text-[10px] text-destructive mt-0.5">{errors.cpf}</p>}
@@ -610,12 +686,12 @@ export default function ContactsPage() {
                     </div>
                     {/* Birthday */}
                     <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Aniversário (AAAA-MM-DD)</label>
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Aniversário (DD/MM/AAAA)</label>
                       <input
                         type="text"
                         value={birthday}
-                        onChange={(e) => setBirthday(e.target.value)}
-                        placeholder="Ex: 1995-04-12"
+                        onChange={(e) => setBirthday(maskDate(e.target.value))}
+                        placeholder="Ex: 15/08/1992"
                         className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                       />
                       {errors.birthday && <p className="text-[10px] text-destructive mt-0.5">{errors.birthday}</p>}
@@ -779,8 +855,9 @@ export default function ContactsPage() {
                       type="text"
                       required={hasAddress}
                       value={zipCode}
-                      onChange={(e) => setZipCode(e.target.value)}
-                      placeholder="01310-100"
+                      onChange={(e) => setZipCode(maskCep(e.target.value))}
+                      onBlur={handleCepBlur}
+                      placeholder="00000-000"
                       className="w-full p-2 rounded-lg border border-border bg-card font-mono"
                     />
                   </div>
