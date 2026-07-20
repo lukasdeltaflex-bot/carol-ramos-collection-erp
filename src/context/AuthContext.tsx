@@ -112,7 +112,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Timeout de segurança para evitar loading infinito se a conexão com o Firestore travar
     const safetyTimeout = setTimeout(() => {
-      console.warn("Tempo limite de carregamento do perfil atingido. Continuando...");
+      console.warn("Tempo limite de carregamento do perfil atingido. Ativando modo de simulação (Mock)...");
+      setIsMock(true);
+      setProfile(MOCK_PROFILE);
       setLoading(false);
     }, 6000);
 
@@ -157,15 +159,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Cria o perfil de usuário
             await setDoc(userDocRef, defaultProfileObj);
           } catch (err) {
-            console.error("Erro ao inicializar perfil de usuário no Firestore:", err);
-            setProfile(null);
+            console.error("Erro ao inicializar perfil de usuário no Firestore. Ativando modo de simulação (Mock)...", err);
+            setIsMock(true);
+            setProfile(MOCK_PROFILE);
             setLoading(false);
           }
         }
       },
       (error) => {
         clearTimeout(safetyTimeout);
-        console.error("Erro ao sincronizar dados do usuário no Firestore:", error);
+        console.error("Erro ao sincronizar dados do usuário no Firestore. Ativando modo de simulação (Mock)...", error);
+        setIsMock(true);
+        setProfile(MOCK_PROFILE);
         setLoading(false);
       }
     );
