@@ -36,9 +36,49 @@ import {
 } from "recharts";
 import Link from "next/link";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+const getStoreStatus = (company: any) => {
+  if (!company || !company.hours) return { isOpen: false, text: "Horários não configurados" };
+  
+  const daysOfWeek = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const todayEng = daysOfWeek[new Date().getDay()];
+  const sched = company.hours[todayEng];
+  
+  if (!sched || !sched.isOpen) return { isOpen: false, text: "Fechado hoje" };
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTimeVal = currentHour * 60 + currentMinute;
+  
+  for (const period of sched.periods) {
+    const [openH, openM] = period.open.split(":").map(Number);
+    const [closeH, closeM] = period.close.split(":").map(Number);
+    
+    const openTimeVal = openH * 60 + openM;
+    const closeTimeVal = closeH * 60 + closeM;
+    
+    if (currentTimeVal >= openTimeVal && currentTimeVal <= closeTimeVal) {
+      return { 
+        isOpen: true, 
+        text: `Aberto agora (das ${period.open} às ${period.close})` 
+      };
+    }
+  }
+  
+  const upcomingToday = sched.periods.find((p: any) => {
+    const [openH, openM] = p.open.split(":").map(Number);
+    return (openH * 60 + openM) > currentTimeVal;
+  });
+  
+  if (upcomingToday) {
+    return { isOpen: false, text: `Fechado no momento (abre às ${upcomingToday.open})` };
+  }
+  
+  return { isOpen: false, text: "Fechado no momento" };
+};
 
 export default function Dashboard() {
-  const { profile, tenantId } = useAuth();
+  const { profile, tenantId, activeCompany } = useAuth();
   const { getDocs } = useDb();
 
   const [loading, setLoading] = useState(true);
@@ -190,6 +230,18 @@ export default function Dashboard() {
           <p className="text-xs text-muted-foreground">
             Sua loja está crescendo! Veja os insights de vendas e estoque dos múltiplos canais de hoje.
           </p>
+          {/* Status de Funcionamento */}
+          {activeCompany && (
+            <div className="flex items-center gap-2 mt-2 select-none animate-in fade-in duration-300">
+              <span className={cn(
+                "h-2 w-2 rounded-full shrink-0",
+                getStoreStatus(activeCompany).isOpen ? "bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500" : "bg-red-500"
+              )} />
+              <span className="text-[10px] font-semibold text-muted-foreground">
+                {getStoreStatus(activeCompany).text}
+              </span>
+            </div>
+          )}
         </div>
         
         {/* Quick Action buttons */}

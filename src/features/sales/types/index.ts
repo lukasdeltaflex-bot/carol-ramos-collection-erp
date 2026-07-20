@@ -16,7 +16,7 @@ export interface Sale extends BaseDocument {
   subtotal: number;
   discount: number;
   total: number;
-  paymentMethod: 'credit_card' | 'debit_card' | 'pix' | 'cash' | 'split';
+  paymentMethod: 'credit_card' | 'debit_card' | 'pix' | 'cash' | 'split' | 'term';
   paymentDetails?: {
     installments?: number;
     transactionId?: string;

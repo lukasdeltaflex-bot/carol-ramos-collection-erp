@@ -78,6 +78,38 @@ const INITIAL_AUTOMATIONS = [
   { name: "Lembrete de Atendimento", trigger: "appointment_confirmed" as const, actionType: "whatsapp_message" as const, template: "Olá {name}! Confirmamos seu agendamento de {service} para o dia {date} às {time}. Profissional: {professional}. Esperamos você! ✨", status: "inactive" as const }
 ];
 
+interface TimePeriod {
+  open: string;
+  close: string;
+}
+
+interface DaySchedule {
+  isOpen: boolean;
+  periods: TimePeriod[];
+}
+
+type WeekSchedule = Record<string, DaySchedule>;
+
+const DAYS_TRANSLATIONS: Record<string, string> = {
+  monday: "Segunda-feira",
+  tuesday: "Terça-feira",
+  wednesday: "Quarta-feira",
+  thursday: "Quinta-feira",
+  friday: "Sexta-feira",
+  saturday: "Sábado",
+  sunday: "Domingo"
+};
+
+const DEFAULT_WEEK_SCHEDULE: WeekSchedule = {
+  monday: { isOpen: true, periods: [{ open: "08:00", close: "12:00" }, { open: "13:00", close: "18:00" }] },
+  tuesday: { isOpen: true, periods: [{ open: "08:00", close: "12:00" }, { open: "13:00", close: "18:00" }] },
+  wednesday: { isOpen: true, periods: [{ open: "08:00", close: "12:00" }, { open: "13:00", close: "18:00" }] },
+  thursday: { isOpen: true, periods: [{ open: "08:00", close: "12:00" }, { open: "13:00", close: "18:00" }] },
+  friday: { isOpen: true, periods: [{ open: "08:00", close: "12:00" }, { open: "13:00", close: "18:00" }] },
+  saturday: { isOpen: true, periods: [{ open: "09:00", close: "13:00" }] },
+  sunday: { isOpen: false, periods: [] }
+};
+
 export default function SettingsPage() {
   const { profile, role, tenantId, activeCompany, createCompany, switchTenant } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
@@ -165,6 +197,7 @@ export default function SettingsPage() {
   const [compLogo, setCompLogo] = useState("");
   const [compOpeningHours, setCompOpeningHours] = useState("");
   const [compNotes, setCompNotes] = useState("");
+  const [compHours, setCompHours] = useState<WeekSchedule>(DEFAULT_WEEK_SCHEDULE);
 
   // Sub-tabs inside profile edit form
   const [profileFormTab, setProfileFormTab] = useState<"ident" | "addr" | "contacts" | "extra">("ident");
@@ -200,6 +233,11 @@ export default function SettingsPage() {
       setCompLogo(activeCompany.logo || "");
       setCompOpeningHours(activeCompany.openingHours || "");
       setCompNotes(activeCompany.notes || "");
+      if (activeCompany.hours) {
+        setCompHours(activeCompany.hours);
+      } else {
+        setCompHours(DEFAULT_WEEK_SCHEDULE);
+      }
     }
   }, [activeCompany]);
 
@@ -228,6 +266,52 @@ export default function SettingsPage() {
     } catch (e) {
       console.error("Erro ao buscar CEP:", e);
     }
+  };
+
+  const handleToggleDay = (day: string) => {
+    setCompHours((prev) => {
+      const current = prev[day] || { isOpen: false, periods: [] };
+      const updated = {
+        ...current,
+        isOpen: !current.isOpen,
+        periods: !current.isOpen && current.periods.length === 0 ? [{ open: "08:00", close: "18:00" }] : current.periods
+      };
+      return { ...prev, [day]: updated };
+    });
+  };
+
+  const handleAddPeriod = (day: string) => {
+    setCompHours((prev) => {
+      const current = prev[day] || { isOpen: true, periods: [] };
+      const newPeriods = [...current.periods, { open: "13:00", close: "18:00" }];
+      return {
+        ...prev,
+        [day]: { ...current, periods: newPeriods }
+      };
+    });
+  };
+
+  const handleRemovePeriod = (day: string, idx: number) => {
+    setCompHours((prev) => {
+      const current = prev[day] || { isOpen: true, periods: [] };
+      const newPeriods = current.periods.filter((_, i) => i !== idx);
+      return {
+        ...prev,
+        [day]: { ...current, periods: newPeriods }
+      };
+    });
+  };
+
+  const handleUpdatePeriodTime = (day: string, idx: number, field: "open" | "close", val: string) => {
+    setCompHours((prev) => {
+      const current = prev[day] || { isOpen: true, periods: [] };
+      const newPeriods = [...current.periods];
+      newPeriods[idx] = { ...newPeriods[idx], [field]: val };
+      return {
+        ...prev,
+        [day]: { ...current, periods: newPeriods }
+      };
+    });
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -273,6 +357,7 @@ export default function SettingsPage() {
         facebook: compFacebook,
         tiktok: compTiktok
       },
+      hours: compHours,
       updatedAt: new Date().toISOString()
     };
 
@@ -1133,15 +1218,82 @@ export default function SettingsPage() {
                 {/* Tab 4: Funcionamento */}
                 {profileFormTab === "extra" && (
                   <div className="space-y-4 text-xs">
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Horário de Funcionamento</label>
-                      <input
-                        type="text"
-                        value={compOpeningHours}
-                        onChange={e => setCompOpeningHours(e.target.value)}
-                        placeholder="Ex: Seg a Sex das 09h às 18h, Sáb das 09h às 13h"
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-card"
-                      />
+                    <div className="space-y-3 pt-2">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Horário de Funcionamento (Estilo WhatsApp Business)</label>
+                      <div className="space-y-3.5 border border-border/80 bg-muted/10 p-4 rounded-xl max-h-[420px] overflow-y-auto pr-2 scrollbar-thin">
+                        {Object.keys(compHours).map((day) => {
+                          const sched = compHours[day] || { isOpen: false, periods: [] };
+                          return (
+                            <div key={day} className="flex flex-col md:flex-row md:items-start justify-between gap-3 pb-3 border-b border-border/40 last:border-b-0 text-xs">
+                              {/* Left: Day & Toggle */}
+                              <div className="flex items-center gap-2.5 w-36 shrink-0 pt-1.5">
+                                <input
+                                  type="checkbox"
+                                  id={`hours-toggle-${day}`}
+                                  checked={sched.isOpen}
+                                  onChange={() => handleToggleDay(day)}
+                                  className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                                />
+                                <label htmlFor={`hours-toggle-${day}`} className="font-bold text-foreground cursor-pointer select-none">
+                                  {DAYS_TRANSLATIONS[day]}
+                                </label>
+                              </div>
+
+                              {/* Center: Periods List */}
+                              <div className="flex-1 space-y-2">
+                                {sched.isOpen ? (
+                                  sched.periods.length === 0 ? (
+                                    <span className="text-[10px] text-muted-foreground italic pt-1 inline-block">Nenhum horário cadastrado.</span>
+                                  ) : (
+                                    <div className="space-y-1.5">
+                                      {sched.periods.map((period, idx) => (
+                                        <div key={idx} className="flex items-center gap-1.5 animate-in fade-in duration-200">
+                                          <input
+                                            type="time"
+                                            value={period.open}
+                                            onChange={(e) => handleUpdatePeriodTime(day, idx, "open", e.target.value)}
+                                            className="px-2 py-1 rounded border border-border bg-card font-mono text-[11px] w-20 text-center"
+                                          />
+                                          <span className="text-muted-foreground text-[10px]">às</span>
+                                          <input
+                                            type="time"
+                                            value={period.close}
+                                            onChange={(e) => handleUpdatePeriodTime(day, idx, "close", e.target.value)}
+                                            className="px-2 py-1 rounded border border-border bg-card font-mono text-[11px] w-20 text-center"
+                                          />
+                                          {sched.periods.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemovePeriod(day, idx)}
+                                              className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors ml-1"
+                                              title="Remover período"
+                                            >
+                                              <X className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground font-semibold bg-muted px-2 py-0.5 rounded inline-block mt-1">Fechado</span>
+                                )}
+                              </div>
+
+                              {/* Right: Actions */}
+                              {sched.isOpen && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddPeriod(day)}
+                                  className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors pt-1 shrink-0"
+                                >
+                                  + Adicionar
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações / Descrição do Estabelecimento</label>

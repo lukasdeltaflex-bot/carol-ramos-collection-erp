@@ -30,9 +30,10 @@ import {
   Building2,
   RefreshCw,
   Coins,
-  Package
+  Package,
+  Calendar
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export default function SalesPOSPage() {
   const { createDoc, getDocs, updateDoc, getDocById } = useDb();
@@ -57,10 +58,13 @@ export default function SalesPOSPage() {
   const [cart, setCart] = useState<Array<{ product: Product; quantity: number; discount: number }>>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'debit_card' | 'pix' | 'cash' | 'split'>("pix");
+  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'debit_card' | 'pix' | 'cash' | 'split' | 'term'>("pix");
   const [installments, setInstallments] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
+
+  // Installment Details (Req 2)
+  const [generatedInstallments, setGeneratedInstallments] = useState<Array<{ number: number; amount: number; dueDate: string }>>([]);
 
   // Split Payment Details
   const [pixAmount, setPixAmount] = useState(0);
@@ -261,6 +265,52 @@ export default function SalesPOSPage() {
     }
   }, [total, paymentMethod]);
 
+  const generateDefaultInstallments = (count: number, saleTotal: number) => {
+    if (count <= 0) return;
+    const list = [];
+    const baseAmount = parseFloat((saleTotal / count).toFixed(2));
+    let accumulated = 0;
+    for (let i = 1; i <= count; i++) {
+      let amount = baseAmount;
+      if (i === count) {
+        amount = parseFloat((saleTotal - accumulated).toFixed(2));
+      } else {
+        accumulated = parseFloat((accumulated + baseAmount).toFixed(2));
+      }
+      const d = new Date();
+      d.setDate(d.getDate() + 30 * i);
+      list.push({
+        number: i,
+        amount,
+        dueDate: d.toISOString().split("T")[0],
+      });
+    }
+    setGeneratedInstallments(list);
+  };
+
+  const handleUpdateInstallmentAmount = (index: number, newAmount: number) => {
+    setGeneratedInstallments((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], amount: newAmount };
+      return updated;
+    });
+  };
+
+  const handleUpdateInstallmentDate = (index: number, newDate: string) => {
+    setGeneratedInstallments((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], dueDate: newDate };
+      return updated;
+    });
+  };
+
+  // Regenerar parcelas se o total mudar enquanto estiver em modo a prazo
+  useEffect(() => {
+    if (paymentMethod === "term") {
+      generateDefaultInstallments(installments, total);
+    }
+  }, [total]);
+
   // 7. Concluir Venda (Checkout)
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,7 +330,7 @@ export default function SalesPOSPage() {
       }));
 
       const paymentDetailsPayload: any = {};
-      if (paymentMethod === "credit_card") {
+      if (paymentMethod === "credit_card" || paymentMethod === "term") {
         paymentDetailsPayload.installments = installments;
       } else if (paymentMethod === "split") {
         paymentDetailsPayload.splitDetails = [
@@ -339,22 +389,38 @@ export default function SalesPOSPage() {
         });
       }
 
-      // 3. Registrar Lançamento Financeiro (Revenue)
+      // 3. Registrar Lançamento Financeiro (Revenue) ou Contas a Receber (Receivables)
       const customerName = selectedCustomerId 
         ? (customers.find(c => c.id === selectedCustomerId)?.name || "Cliente") 
         : "Não Identificado";
 
-      await createDoc("financial_transactions", {
-        type: "revenue" as const,
-        category: "sale",
-        amount: total,
-        description: `Venda PDV Ref #${newSale.id} - Cliente: ${customerName}`,
-        paymentDate: new Date().toISOString(),
-        status: "paid" as const,
-        bankAccountId: "caixa-geral",
-        referenceId: newSale.id,
-        cashRegisterId: activeRegister.id
-      });
+      if (paymentMethod === "term") {
+        for (const inst of generatedInstallments) {
+          await createDoc("accounts_receivable", {
+            customerId: selectedCustomerId || undefined,
+            saleId: newSale.id,
+            description: `Parcela ${inst.number}/${generatedInstallments.length} - Venda PDV Ref #${newSale.id} - Cliente: ${customerName}`,
+            amount: inst.amount,
+            dueDate: inst.dueDate,
+            status: "pending" as const,
+            paymentMethod: "split" as const,
+            installments: generatedInstallments.length,
+            currentInstallment: inst.number
+          });
+        }
+      } else {
+        await createDoc("financial_transactions", {
+          type: "revenue" as const,
+          category: "sale",
+          amount: total,
+          description: `Venda PDV Ref #${newSale.id} - Cliente: ${customerName}`,
+          paymentDate: new Date().toISOString(),
+          status: "paid" as const,
+          bankAccountId: "caixa-geral",
+          referenceId: newSale.id,
+          cashRegisterId: activeRegister.id
+        });
+      }
 
       // 4. Incrementar métricas de compras do cliente
       if (selectedCustomerId) {
@@ -622,6 +688,7 @@ export default function SalesPOSPage() {
                     { id: "cash", label: "Dinheiro", icon: Banknote },
                     { id: "credit_card", label: "Crédito", icon: CreditCard },
                     { id: "debit_card", label: "Débito", icon: CreditCard },
+                    { id: "term", label: "A Prazo", icon: Calendar },
                     { id: "split", label: "Misto", icon: Calculator }
                   ].map((m) => {
                     const Icon = m.icon;
@@ -629,7 +696,13 @@ export default function SalesPOSPage() {
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setPaymentMethod(m.id as any)}
+                        onClick={() => {
+                          setPaymentMethod(m.id as any);
+                          if (m.id === "term") {
+                            setInstallments(1);
+                            generateDefaultInstallments(1, total);
+                          }
+                        }}
                         className={cn(
                           "py-2 rounded-lg border text-[10px] font-semibold flex flex-col items-center gap-1 transition-all",
                           paymentMethod === m.id
@@ -655,9 +728,103 @@ export default function SalesPOSPage() {
                     className="w-full p-2 rounded-lg border border-border bg-card"
                   >
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
-                      <option key={n} value={n}>{n}x de R$ {(total / n).toFixed(2)} {(n === 1 ? "sem juros" : "")}</option>
+                      <option key={n} value={n}>{n}x de {formatCurrency(total / n)} {(n === 1 ? "sem juros" : "")}</option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              {paymentMethod === "term" && (
+                <div className="p-3.5 rounded-xl border border-border bg-card/60 space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-primary uppercase tracking-wider">Configurar Parcelas</label>
+                    <span className="text-[10px] font-mono font-semibold text-muted-foreground bg-muted/40 px-2 py-0.5 rounded">Total: {formatCurrency(total)}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase">Nº de Parcelas</label>
+                      <select
+                        value={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(installments) ? installments : "custom"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "custom") {
+                            setInstallments(2);
+                            generateDefaultInstallments(2, total);
+                          } else {
+                            const count = parseInt(val) || 1;
+                            setInstallments(count);
+                            generateDefaultInstallments(count, total);
+                          }
+                        }}
+                        className="w-full p-2 rounded-lg border border-border bg-card text-xs font-semibold"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].map(n => (
+                          <option key={n} value={n}>{n}x de {formatCurrency(total / n)}</option>
+                        ))}
+                        <option value="custom">Outra quantidade...</option>
+                      </select>
+                    </div>
+
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(installments) ? null : (
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted-foreground uppercase">Qtd (Máx 36)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={36}
+                          value={installments}
+                          onChange={(e) => {
+                            const val = Math.min(36, Math.max(1, parseInt(e.target.value) || 1));
+                            setInstallments(val);
+                            generateDefaultInstallments(val, total);
+                          }}
+                          className="w-full p-2.5 rounded-lg border border-border bg-card font-mono text-center font-bold text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Parcelas geradas com edição individual */}
+                  {generatedInstallments.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-border/50">
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Lista de Vencimentos & Valores</span>
+                      <div className="max-h-48 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                        {generatedInstallments.map((inst, idx) => (
+                          <div key={inst.number} className="grid grid-cols-12 gap-2 items-center bg-muted/20 p-2 rounded-lg border border-border/40">
+                            <span className="col-span-3 font-semibold text-[10px] text-muted-foreground text-center">#{inst.number}</span>
+                            
+                            <div className="col-span-5 relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={inst.amount}
+                                onChange={(e) => handleUpdateInstallmentAmount(idx, parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-1 py-1.5 rounded border border-border bg-card font-mono text-xs"
+                              />
+                            </div>
+
+                            <input
+                              type="date"
+                              value={inst.dueDate}
+                              onChange={(e) => handleUpdateInstallmentDate(idx, e.target.value)}
+                              className="col-span-4 p-1.5 rounded border border-border bg-card font-mono text-[10px]"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Validação de soma */}
+                      {Math.abs(total - generatedInstallments.reduce((sum, item) => sum + item.amount, 0)) > 0.01 && (
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-2 rounded-lg text-[10px] flex items-center gap-1.5">
+                          <ShieldAlert className="h-4 w-4 shrink-0" />
+                          <span>Diferença nas parcelas: <strong>{formatCurrency(total - generatedInstallments.reduce((sum, item) => sum + item.amount, 0))}</strong>.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -739,7 +906,12 @@ export default function SalesPOSPage() {
               {/* Botão Final de Fechamento de Venda */}
               <button
                 type="button"
-                disabled={cart.length === 0 || loading || (paymentMethod === "split" && Math.abs((pixAmount + cardAmount + cashAmount) - total) > 0.05)}
+                disabled={
+                  cart.length === 0 || 
+                  loading || 
+                  (paymentMethod === "split" && Math.abs((pixAmount + cardAmount + cashAmount) - total) > 0.05) ||
+                  (paymentMethod === "term" && Math.abs(generatedInstallments.reduce((sum, item) => sum + item.amount, 0) - total) > 0.02)
+                }
                 onClick={handleCheckout}
                 className="w-full py-3.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
               >

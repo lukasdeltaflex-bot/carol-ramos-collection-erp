@@ -20,7 +20,9 @@ import {
   ShieldCheck,
   Truck,
   BookOpen,
-  Palette
+  Palette,
+  TrendingUp,
+  TrendingDown
 } from "lucide-react";
 
 interface SidebarProps {
@@ -53,7 +55,7 @@ export default function Sidebar({
       roles: ["owner", "admin", "operator", "viewer"],
     },
     {
-      name: "Clientes & Contatos",
+      name: "Clientes",
       href: "/contacts",
       icon: Users,
       roles: ["owner", "admin", "operator", "viewer"],
@@ -69,6 +71,18 @@ export default function Sidebar({
       href: "/finance",
       icon: DollarSign,
       roles: ["owner", "admin", "viewer"], // Operator doesn't see financial reports
+    },
+    {
+      name: "Contas a Receber",
+      href: "/receivable",
+      icon: TrendingUp,
+      roles: ["owner", "admin", "viewer"],
+    },
+    {
+      name: "Contas a Pagar",
+      href: "/payable",
+      icon: TrendingDown,
+      roles: ["owner", "admin", "viewer"],
     },
     {
       name: "Agenda & Serviços",

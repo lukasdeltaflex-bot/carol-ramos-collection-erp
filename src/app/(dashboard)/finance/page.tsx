@@ -42,7 +42,8 @@ import {
   Layers,
   Receipt,
   Activity,
-  UserCheck
+  UserCheck,
+  ShieldAlert
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -136,6 +137,8 @@ export default function FinancePage() {
   const [purchaseItems, setPurchaseItems] = useState<Array<{ productId: string; quantity: number; unitCost: number }>>([]);
   const [purchasePaymentMethod, setPurchasePaymentMethod] = useState<'credit_card' | 'bank_slip' | 'pix' | 'cash'>("pix");
   const [purchaseDueDate, setPurchaseDueDate] = useState("");
+  const [purchaseInstallmentsCount, setPurchaseInstallmentsCount] = useState(1);
+  const [generatedPurchaseInstallments, setGeneratedPurchaseInstallments] = useState<Array<{ number: number; amount: number; dueDate: string }>>([]);
 
   // Common errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -149,6 +152,56 @@ export default function FinancePage() {
   // Bank Selector State (Req 7)
   const [bankSearch, setBankSearch] = useState("");
   const [selectedBankObj, setSelectedBankObj] = useState<any>(null);
+
+  const purchaseTotalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+
+  const generateDefaultPurchaseInstallments = (count: number, totalVal: number) => {
+    if (count <= 0) return;
+    const list = [];
+    const baseAmount = parseFloat((totalVal / count).toFixed(2));
+    let accumulated = 0;
+    for (let i = 1; i <= count; i++) {
+      let amount = baseAmount;
+      if (i === count) {
+        amount = parseFloat((totalVal - accumulated).toFixed(2));
+      } else {
+        accumulated = parseFloat((accumulated + baseAmount).toFixed(2));
+      }
+      const d = new Date();
+      d.setDate(d.getDate() + 30 * i);
+      list.push({
+        number: i,
+        amount,
+        dueDate: d.toISOString().split("T")[0],
+      });
+    }
+    setGeneratedPurchaseInstallments(list);
+  };
+
+  const handleUpdatePurchaseInstallmentAmount = (index: number, newAmount: number) => {
+    setGeneratedPurchaseInstallments((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], amount: newAmount };
+      return updated;
+    });
+  };
+
+  const handleUpdatePurchaseInstallmentDate = (index: number, newDate: string) => {
+    setGeneratedPurchaseInstallments((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], dueDate: newDate };
+      return updated;
+    });
+  };
+
+  // Regenerar parcelas da compra se o total ou método mudar
+  useEffect(() => {
+    if (purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card") {
+      generateDefaultPurchaseInstallments(purchaseInstallmentsCount, purchaseTotalCost);
+    } else {
+      setGeneratedPurchaseInstallments([]);
+    }
+  }, [purchaseTotalCost, purchasePaymentMethod, purchaseInstallmentsCount]);
 
   // Load All Financial Data (Paralelizado e Reativo)
   const loadFinancialData = async () => {
@@ -254,6 +307,8 @@ export default function FinancePage() {
     setPurchaseItems([]);
     setPurchasePaymentMethod("pix");
     setPurchaseDueDate(new Date().toISOString().split("T")[0]);
+    setPurchaseInstallmentsCount(1);
+    setGeneratedPurchaseInstallments([]);
 
     setDrawerOpen(true);
   };
@@ -438,15 +493,17 @@ export default function FinancePage() {
           }
         } else {
           // A prazo: gera contas a pagar (AccountsPayable)
-          await createDoc("accounts_payable", {
-            supplierId: selectedSupplierId,
-            purchaseId: newPurchase.id,
-            description: `Compra Reposição Ref #${newPurchase.id}`,
-            amount: totalCost,
-            dueDate: purchaseDueDate,
-            status: "pending" as const,
-            paymentMethod: purchasePaymentMethod
-          });
+          for (const inst of generatedPurchaseInstallments) {
+            await createDoc("accounts_payable", {
+              supplierId: selectedSupplierId || undefined,
+              purchaseId: newPurchase.id,
+              description: `Parcela ${inst.number}/${generatedPurchaseInstallments.length} - Compra Reposição Ref #${newPurchase.id}`,
+              amount: inst.amount,
+              dueDate: inst.dueDate,
+              status: "pending" as const,
+              paymentMethod: purchasePaymentMethod
+            });
+          }
         }
       }
 
@@ -866,8 +923,17 @@ export default function FinancePage() {
                                   </button>
                                 )}
                                 <button
+                                  onClick={() => window.location.href = `/payable?id=${p.id}`}
+                                  disabled={p.status === "paid"}
+                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                  title="Editar"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
                                   onClick={() => handleDeleteItem("accounts_payable", p.id, p.description)}
                                   className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                  title="Excluir"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -935,8 +1001,17 @@ export default function FinancePage() {
                                   </button>
                                 )}
                                 <button
+                                  onClick={() => window.location.href = `/receivable?id=${r.id}`}
+                                  disabled={r.status === "paid"}
+                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                  title="Editar"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
                                   onClick={() => handleDeleteItem("accounts_receivable", r.id, r.description)}
                                   className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                  title="Excluir"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -1325,11 +1400,17 @@ export default function FinancePage() {
 
                   {/* Forma e Vencimento */}
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-                    <div className="space-y-1">
+                    <div className="col-span-2 space-y-1">
                       <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Método Pagamento</label>
                       <select
                         value={purchasePaymentMethod}
-                        onChange={(e) => setPurchasePaymentMethod(e.target.value as any)}
+                        onChange={(e) => {
+                          setPurchasePaymentMethod(e.target.value as any);
+                          if (e.target.value === "bank_slip" || e.target.value === "credit_card") {
+                            setPurchaseInstallmentsCount(1);
+                            generateDefaultPurchaseInstallments(1, purchaseTotalCost);
+                          }
+                        }}
                         className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
                       >
                         <option value="pix">PIX (À Vista)</option>
@@ -1340,16 +1421,91 @@ export default function FinancePage() {
                     </div>
 
                     {(purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card") && (
-                      <div className="space-y-1">
-                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Vencimento Boleto/Fatura</label>
-                        <input
-                          type="text"
-                          required
-                          value={purchaseDueDate}
-                          onChange={(e) => setPurchaseDueDate(e.target.value)}
-                          placeholder="AAAA-MM-DD"
-                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono"
-                        />
+                      <div className="col-span-2 space-y-3 pt-2 border-t border-border/40 animate-in fade-in duration-200">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2 space-y-1">
+                            <label className="text-[9px] font-bold text-muted-foreground uppercase">Nº de Parcelas</label>
+                            <select
+                              value={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(purchaseInstallmentsCount) ? purchaseInstallmentsCount : "custom"}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "custom") {
+                                  setPurchaseInstallmentsCount(2);
+                                  generateDefaultPurchaseInstallments(2, purchaseTotalCost);
+                                } else {
+                                  const count = parseInt(val) || 1;
+                                  setPurchaseInstallmentsCount(count);
+                                  generateDefaultPurchaseInstallments(count, purchaseTotalCost);
+                                }
+                              }}
+                              className="w-full p-2 rounded-lg border border-border bg-card text-xs font-semibold"
+                            >
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].map(n => (
+                                <option key={n} value={n}>{n}x de {formatCurrency(purchaseTotalCost / n)}</option>
+                              ))}
+                              <option value="custom">Outra quantidade...</option>
+                            </select>
+                          </div>
+
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(purchaseInstallmentsCount) ? null : (
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-muted-foreground uppercase">Qtd (Máx 36)</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={36}
+                                value={purchaseInstallmentsCount}
+                                onChange={(e) => {
+                                  const val = Math.min(36, Math.max(1, parseInt(e.target.value) || 1));
+                                  setPurchaseInstallmentsCount(val);
+                                  generateDefaultPurchaseInstallments(val, purchaseTotalCost);
+                                }}
+                                className="w-full p-2 rounded-lg border border-border bg-card font-mono text-center font-bold text-xs"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Listagem e edição individual de parcelas da compra */}
+                        {generatedPurchaseInstallments.length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Vencimentos & Valores da Compra</span>
+                            <div className="max-h-36 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                              {generatedPurchaseInstallments.map((inst, idx) => (
+                                <div key={inst.number} className="grid grid-cols-12 gap-2 items-center bg-muted/20 p-2 rounded-lg border border-border/40">
+                                  <span className="col-span-3 font-semibold text-[10px] text-muted-foreground text-center">#{inst.number}</span>
+                                  
+                                  <div className="col-span-5 relative">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      value={inst.amount}
+                                      onChange={(e) => handleUpdatePurchaseInstallmentAmount(idx, parseFloat(e.target.value) || 0)}
+                                      className="w-full pl-7 pr-1 py-1 rounded border border-border bg-card font-mono text-xs"
+                                    />
+                                  </div>
+
+                                  <input
+                                    type="date"
+                                    value={inst.dueDate}
+                                    onChange={(e) => handleUpdatePurchaseInstallmentDate(idx, e.target.value)}
+                                    className="col-span-4 p-1 rounded border border-border bg-card font-mono text-[10px]"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Validação de soma */}
+                            {Math.abs(purchaseTotalCost - generatedPurchaseInstallments.reduce((sum, item) => sum + item.amount, 0)) > 0.01 && (
+                              <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-2 rounded-lg text-[10px] flex items-center gap-1.5">
+                                <ShieldAlert className="h-4 w-4 shrink-0" />
+                                <span>Diferença: <strong>{formatCurrency(purchaseTotalCost - generatedPurchaseInstallments.reduce((sum, item) => sum + item.amount, 0))}</strong>.</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1373,7 +1529,11 @@ export default function FinancePage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={drawerType === "purchase" && purchaseItems.length === 0}
+                  disabled={
+                    (drawerType === "purchase" && purchaseItems.length === 0) ||
+                    (drawerType === "purchase" && (purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card") && 
+                     Math.abs(generatedPurchaseInstallments.reduce((sum, item) => sum + item.amount, 0) - purchaseTotalCost) > 0.02)
+                  }
                   className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 disabled:opacity-50"
                 >
                   Salvar Registro

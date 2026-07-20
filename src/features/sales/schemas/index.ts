@@ -23,7 +23,7 @@ export const SaleSchema = z.object({
   customerId: z.string().optional(),
   items: z.array(SaleItemSchema).min(1, "A venda deve conter pelo menos um item"),
   discount: z.number().min(0, "Desconto global não pode ser negativo").default(0),
-  paymentMethod: z.enum(["credit_card", "debit_card", "pix", "cash", "split"]),
+  paymentMethod: z.enum(["credit_card", "debit_card", "pix", "cash", "split", "term"]),
   paymentDetails: z.object({
     installments: z.number().int().positive().optional(),
     transactionId: z.string().optional(),

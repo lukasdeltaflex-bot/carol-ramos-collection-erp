@@ -2,11 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { useDb } from "@/hooks/useDb";
-import { Customer, Supplier } from "@/features/customers/types";
-import { CustomerSchema, SupplierSchema } from "@/features/customers/schemas";
+import { Customer } from "@/features/customers/types";
+import { CustomerSchema } from "@/features/customers/schemas";
 import {
   Users,
-  Building2,
   Plus,
   Search,
   Edit2,
@@ -20,7 +19,7 @@ import {
   CheckCircle2,
   AlertCircle
 } from "lucide-react";
-import { cn, formatCurrency, formatDate, calculateAge, maskCpf, maskCnpj, maskPhone, maskCep, maskDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, calculateAge, maskCpf, maskPhone, maskCep, maskDate } from "@/lib/utils";
 
 const Instagram = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -38,28 +37,17 @@ const Instagram = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-// Mock inicial para Clientes
 const INITIAL_CUSTOMERS = [
   { name: "Mariana Silva", email: "mariana.silva@gmail.com", phone: "+5511999998888", instagram: "@marianasilva", birthday: "1995-04-12", tags: ["VIP", "Perfumes"], source: "instagram", notes: "Prefere fragrâncias florais doces.", metrics: { totalOrders: 5, totalSpent: 750.00 } },
   { name: "Juliana Costa", email: "juliana.costa@hotmail.com", phone: "+5521988887777", instagram: "@jucosta", birthday: "1990-09-22", tags: ["Skincare"], source: "shopee", notes: "Pele sensível.", metrics: { totalOrders: 3, totalSpent: 350.00 } },
   { name: "Ana Beatriz", email: "ana.beatriz@outlook.com", phone: "+5511977776666", instagram: "@anabea_beauty", birthday: "1988-12-05", tags: ["Maquiagem", "VIP"], source: "walk-in", notes: "Sempre compra lançamentos de batons.", metrics: { totalOrders: 12, totalSpent: 1890.00 } }
 ];
 
-// Mock inicial para Fornecedores
-const INITIAL_SUPPLIERS = [
-  { name: "Natura Cosméticos S/A", cnpj: "12.345.678/0001-00", email: "pedidos@natura.com.br", phone: "0800-115-566", contactPerson: "Carlos Silva" },
-  { name: "Eudora (Grupo Boticário)", cnpj: "98.765.432/0001-99", email: "atendimento@eudora.com.br", phone: "0800-727-4533", contactPerson: "Fernanda Souza" }
-];
-
 export default function ContactsPage() {
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
 
-  const [activeTab, setActiveTab] = useState<"customers" | "suppliers">("customers");
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Lists state
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Form Drawer State
@@ -71,13 +59,12 @@ export default function ContactsPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [isWhatsapp, setIsWhatsapp] = useState(false);
-  const [cpfOrCnpj, setCpfOrCnpj] = useState("");
+  const [cpf, setCpf] = useState("");
   const [instagram, setInstagram] = useState("");
   const [birthday, setBirthday] = useState("");
   const [source, setSource] = useState("instagram");
   const [notes, setNotes] = useState("");
   const [tagsInput, setTagsInput] = useState("");
-  const [contactPerson, setContactPerson] = useState("");
 
   // Address fields
   const [street, setStreet] = useState("");
@@ -92,14 +79,11 @@ export default function ContactsPage() {
   // Error States
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Carregar dados iniciais
   const loadData = async () => {
     setLoading(true);
     try {
       let custs = await getDocs("customers");
-      let supps = await getDocs("suppliers");
 
-      // Se estiver vazio no mock, preenchemos com dados de exemplo
       if (custs.length === 0) {
         for (const c of INITIAL_CUSTOMERS) {
           await createDoc("customers", c);
@@ -107,17 +91,9 @@ export default function ContactsPage() {
         custs = await getDocs("customers");
       }
 
-      if (supps.length === 0) {
-        for (const s of INITIAL_SUPPLIERS) {
-          await createDoc("suppliers", s);
-        }
-        supps = await getDocs("suppliers");
-      }
-
       setCustomers(custs as Customer[]);
-      setSuppliers(supps as Supplier[]);
     } catch (e) {
-      console.error("Erro ao carregar contatos:", e);
+      console.error("Erro ao carregar clientes:", e);
     } finally {
       setLoading(false);
     }
@@ -127,20 +103,18 @@ export default function ContactsPage() {
     loadData();
   }, []);
 
-  // Abrir formulário de criação
   const handleNew = () => {
     setEditingId(null);
     setName("");
     setEmail("");
     setPhone("");
     setIsWhatsapp(false);
-    setCpfOrCnpj("");
+    setCpf("");
     setInstagram("");
     setBirthday("");
     setSource("instagram");
     setNotes("");
     setTagsInput("");
-    setContactPerson("");
     
     // Address
     setStreet("");
@@ -156,20 +130,18 @@ export default function ContactsPage() {
     setDrawerOpen(true);
   };
 
-  // Abrir formulário de edição
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: Customer) => {
     setEditingId(item.id);
     setName(item.name || "");
     setEmail(item.email || "");
     setPhone(item.phone || "");
     setIsWhatsapp(!!item.isWhatsapp);
-    setCpfOrCnpj(activeTab === "customers" ? (item.cpf || "") : (item.cnpj || ""));
+    setCpf(item.cpf || "");
     setInstagram(item.instagram || "");
     setBirthday(item.birthday || "");
     setSource(item.source || "instagram");
     setNotes(item.notes || "");
     setTagsInput(item.tags ? item.tags.join(", ") : "");
-    setContactPerson(item.contactPerson || "");
 
     // Address
     if (item.address) {
@@ -196,11 +168,10 @@ export default function ContactsPage() {
     setDrawerOpen(true);
   };
 
-  // Excluir registro
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`Tem certeza que deseja excluir o cadastro de "${name}"?`)) {
       try {
-        await deleteDoc(activeTab, id);
+        await deleteDoc("customers", id);
         await loadData();
       } catch (e: any) {
         alert(e.message || "Erro ao excluir.");
@@ -208,7 +179,6 @@ export default function ContactsPage() {
     }
   };
 
-  // Buscar CEP automaticamente (Req 3)
   const handleCepBlur = async () => {
     const clean = zipCode.replace(/\D/g, "");
     if (clean.length !== 8) return;
@@ -228,7 +198,6 @@ export default function ContactsPage() {
     }
   };
 
-  // Salvar formulário
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
@@ -243,99 +212,54 @@ export default function ContactsPage() {
       zipCode
     } : undefined;
 
-    // 1. Validação de dados com Zod
-    if (activeTab === "customers") {
-      const payload = {
-        name,
-        email: email || undefined,
-        phone,
-        isWhatsapp,
-        cpf: cpfOrCnpj || undefined,
-        instagram: instagram || undefined,
-        birthday: birthday || undefined,
-        tags: tagsInput ? tagsInput.split(",").map(t => t.trim()).filter(Boolean) : [],
-        source,
-        notes: notes || undefined,
-        address: addressData
-      };
+    const payload = {
+      name,
+      email: email || undefined,
+      phone,
+      isWhatsapp,
+      cpf: cpf || undefined,
+      instagram: instagram || undefined,
+      birthday: birthday || undefined,
+      tags: tagsInput ? tagsInput.split(",").map(t => t.trim()).filter(Boolean) : [],
+      source,
+      notes: notes || undefined,
+      address: addressData
+    };
 
-      const result = CustomerSchema.safeParse(payload);
-      if (!result.success) {
-        const errorMap: Record<string, string> = {};
-        result.error.issues.forEach(issue => {
-          const path = issue.path.join(".");
-          errorMap[path] = issue.message;
+    const result = CustomerSchema.safeParse(payload);
+    if (!result.success) {
+      const errorMap: Record<string, string> = {};
+      result.error.issues.forEach(issue => {
+        const path = issue.path.join(".");
+        errorMap[path] = issue.message;
+      });
+      setErrors(errorMap);
+      return;
+    }
+
+    try {
+      if (editingId) {
+        await updateDoc("customers", editingId, payload);
+      } else {
+        await createDoc("customers", {
+          ...payload,
+          metrics: { totalOrders: 0, totalSpent: 0 }
         });
-        setErrors(errorMap);
-        return;
       }
-
-      try {
-        if (editingId) {
-          await updateDoc("customers", editingId, payload);
-        } else {
-          await createDoc("customers", {
-            ...payload,
-            metrics: { totalOrders: 0, totalSpent: 0 }
-          });
-        }
-      } catch (err: any) {
-        alert(err.message || "Erro ao salvar cliente.");
-        return;
-      }
-
-    } else {
-      // Fornecedores
-      const payload = {
-        name,
-        cnpj: cpfOrCnpj || undefined,
-        email: email || undefined,
-        phone: phone || undefined,
-        isWhatsapp,
-        contactPerson: contactPerson || undefined,
-        address: addressData
-      };
-
-      const result = SupplierSchema.safeParse(payload);
-      if (!result.success) {
-        const errorMap: Record<string, string> = {};
-        result.error.issues.forEach(issue => {
-          const path = issue.path.join(".");
-          errorMap[path] = issue.message;
-        });
-        setErrors(errorMap);
-        return;
-      }
-
-      try {
-        if (editingId) {
-          await updateDoc("suppliers", editingId, payload);
-        } else {
-          await createDoc("suppliers", payload);
-        }
-      } catch (err: any) {
-        alert(err.message || "Erro ao salvar fornecedor.");
-        return;
-      }
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar cliente.");
+      return;
     }
 
     setDrawerOpen(false);
     await loadData();
   };
 
-  // Filtragem local
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.phone.includes(searchQuery) ||
     c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const filteredSuppliers = suppliers.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.cnpj?.includes(searchQuery) ||
-    s.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.contactPerson?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getSourceBadgeStyle = (src: string) => {
@@ -354,8 +278,8 @@ export default function ContactsPage() {
       {/* 1. Header do Módulo */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl border border-border bg-card/40 backdrop-blur-md">
         <div className="space-y-1">
-          <h1 className="text-2xl font-display font-light">Contatos do <span className="font-semibold text-rosegold-500">ERP & SaaS</span></h1>
-          <p className="text-xs text-muted-foreground">Gerenciamento completo do relacionamento de clientes e fornecedores.</p>
+          <h1 className="text-2xl font-display font-light">Clientes do <span className="font-semibold text-rosegold-500">ERP & SaaS</span></h1>
+          <p className="text-xs text-muted-foreground">Gerenciamento completo do relacionamento e preferências de clientes.</p>
         </div>
         
         <button
@@ -363,39 +287,17 @@ export default function ContactsPage() {
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
         >
           <Plus className="h-4 w-4" />
-          <span>Novo {activeTab === "customers" ? "Cliente" : "Fornecedor"}</span>
+          <span>Novo Cliente</span>
         </button>
       </div>
 
-      {/* 2. Seleção de Abas & Filtro */}
+      {/* 2. Filtro & Busca */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         
-        {/* Abas */}
-        <div className="flex border border-border bg-card/40 rounded-xl p-1 shrink-0 self-start">
-          <button
-            onClick={() => { setActiveTab("customers"); setSearchQuery(""); }}
-            className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors",
-              activeTab === "customers"
-                ? "bg-primary text-primary-foreground shadow"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Users className="h-4 w-4" />
-            <span>Clientes ({customers.length})</span>
-          </button>
-          <button
-            onClick={() => { setActiveTab("suppliers"); setSearchQuery(""); }}
-            className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors",
-              activeTab === "suppliers"
-                ? "bg-primary text-primary-foreground shadow"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Building2 className="h-4 w-4" />
-            <span>Fornecedores ({suppliers.length})</span>
-          </button>
+        {/* Total Badge */}
+        <div className="flex border border-border bg-card/40 rounded-xl p-2.5 shrink-0 self-start text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+          <Users className="h-4 w-4 text-primary" />
+          <span>Clientes Cadastrados: <strong className="text-foreground">{customers.length}</strong></span>
         </div>
 
         {/* Busca */}
@@ -407,7 +309,7 @@ export default function ContactsPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={activeTab === "customers" ? "Buscar por nome, telefone, email ou tag..." : "Buscar por nome, CNPJ, email..."}
+            placeholder="Buscar por nome, telefone, email ou tag..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 placeholder-muted-foreground text-xs focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
           />
         </div>
@@ -416,172 +318,109 @@ export default function ContactsPage() {
       {/* 3. Tabela de Conteúdo */}
       <div className="border border-border bg-card/40 rounded-2xl overflow-hidden">
         {loading ? (
-          <div className="py-20 text-center text-xs text-muted-foreground animate-pulse">Carregando contatos...</div>
+          <div className="py-20 text-center text-xs text-muted-foreground animate-pulse">Carregando clientes...</div>
         ) : (
           <div className="overflow-x-auto">
-            {activeTab === "customers" ? (
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                    <th className="p-4">Cliente</th>
-                    <th className="p-4">Idade</th>
-                    <th className="p-4">Contato</th>
-                    <th className="p-4">Redes Sociais</th>
-                    <th className="p-4">Canal</th>
-                    <th className="p-4">Tags</th>
-                    <th className="p-4">Métricas</th>
-                    <th className="p-4 text-right">Ações</th>
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                  <th className="p-4">Cliente</th>
+                  <th className="p-4">Idade</th>
+                  <th className="p-4">Contato</th>
+                  <th className="p-4">Redes Sociais</th>
+                  <th className="p-4">Canal</th>
+                  <th className="p-4">Tags</th>
+                  <th className="p-4">Métricas</th>
+                  <th className="p-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {filteredCustomers.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {filteredCustomers.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
-                    </tr>
-                  ) : (
-                    filteredCustomers.map((c) => (
-                      <tr key={c.id} className="hover:bg-muted/10 transition-colors">
-                        <td className="p-4">
-                          <div className="font-semibold text-foreground">{c.name}</div>
-                          {c.cpf && <span className="text-[10px] text-muted-foreground font-mono">CPF: {c.cpf}</span>}
-                        </td>
-                        <td className="p-4 text-xs text-muted-foreground">
-                          {calculateAge(c.birthday) || "-"}
-                        </td>
-                        <td className="p-4">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
-                              {c.isWhatsapp && (
-                                <a 
-                                  href={`https://wa.me/55${c.phone.replace(/\D/g, "")}`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  className="text-emerald-500 hover:text-emerald-600 transition-colors cursor-pointer" 
-                                  title="Conversar no WhatsApp"
-                                >
-                                  <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
-                                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
-                                  </svg>
-                                </a>
-                              )}
-                              <Phone className="h-3 w-3 shrink-0" />
-                              <span>{c.phone}</span>
-                            </span>
-                            {c.email && <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Mail className="h-3 w-3 shrink-0" /> {c.email}</span>}
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          {c.instagram ? (
-                            <a href={`https://instagram.com/${c.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-pink-500 hover:underline">
-                              <Instagram className="h-3.5 w-3.5" />
-                              <span>{c.instagram}</span>
-                            </a>
-                          ) : <span className="text-muted-foreground">-</span>}
-                        </td>
-                        <td className="p-4">
-                          <span className={cn("px-2 py-0.5 rounded-full border text-[10px] font-medium capitalize", getSourceBadgeStyle(c.source))}>
-                            {c.source}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex flex-wrap gap-1">
-                            {c.tags.map((tag, idx) => (
-                              <span key={idx} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border border-rosegold-200/50 bg-rosegold-50 dark:bg-rosegold-950/20 text-rosegold-700 dark:text-rosegold-400 text-[10px] font-medium">
-                                <Tag className="h-2.5 w-2.5 shrink-0" />
-                                <span>{tag}</span>
-                              </span>
-                            ))}
-                            {c.tags.length === 0 && <span className="text-muted-foreground">-</span>}
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <div className="text-[11px]">
-                            <span className="font-semibold text-foreground">{c.metrics.totalOrders} Pedidos</span>
-                            <div className="text-[10px] text-muted-foreground">Total: R$ {c.metrics.totalSpent.toFixed(2)}</div>
-                          </div>
-                        </td>
-                        <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button onClick={() => handleEdit(c)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Editar">
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-                            <button onClick={() => handleDelete(c.id, c.name)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" title="Excluir">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            ) : (
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                    <th className="p-4">Fornecedor</th>
-                    <th className="p-4">CNPJ</th>
-                    <th className="p-4">Contato</th>
-                    <th className="p-4">Pessoa de Contato</th>
-                    <th className="p-4 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {filteredSuppliers.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-8 text-center text-muted-foreground">Nenhum fornecedor cadastrado ou encontrado.</td>
-                    </tr>
-                  ) : (
-                    filteredSuppliers.map((s) => (
-                      <tr key={s.id} className="hover:bg-muted/10 transition-colors">
-                        <td className="p-4 font-semibold text-foreground">{s.name}</td>
-                        <td className="p-4 font-mono text-muted-foreground">{s.cnpj || "-"}</td>
-                        <td className="p-4">
-                          <div className="flex flex-col gap-0.5">
-                            {s.phone && (
-                              <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
-                                {s.isWhatsapp && (
-                                  <a 
-                                    href={`https://wa.me/55${s.phone.replace(/\D/g, "")}`} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="text-emerald-500 hover:text-emerald-600 transition-colors cursor-pointer" 
-                                    title="Conversar no WhatsApp"
-                                  >
-                                    <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
-                                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
-                                    </svg>
-                                  </a>
-                                )}
-                                <Phone className="h-3 w-3" />
-                                <span>{s.phone}</span>
-                              </span>
+                ) : (
+                  filteredCustomers.map((c) => (
+                    <tr key={c.id} className="hover:bg-muted/10 transition-colors">
+                      <td className="p-4">
+                        <div className="font-semibold text-foreground">{c.name}</div>
+                        {c.cpf && <span className="text-[10px] text-muted-foreground font-mono">CPF: {c.cpf}</span>}
+                      </td>
+                      <td className="p-4 text-xs text-muted-foreground">
+                        {calculateAge(c.birthday) || "-"}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
+                            {c.isWhatsapp && (
+                              <a 
+                                href={`https://wa.me/55${c.phone.replace(/\D/g, "")}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-emerald-500 hover:text-emerald-600 transition-colors cursor-pointer" 
+                                title="Conversar no WhatsApp"
+                              >
+                                <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
+                                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm5.835-3.279c1.652.981 3.256 1.488 4.962 1.489 5.372 0 9.743-4.368 9.746-9.743.001-2.605-1.013-5.053-2.86-6.902C15.895 3.717 13.456 2.7 10.997 2.7 5.626 2.7 1.256 7.07 1.253 12.446c-.001 1.774.478 3.493 1.393 5.044L1.706 22l4.186-1.279zm12.381-5.111c-.302-.151-1.785-.882-2.057-.981-.273-.099-.471-.148-.669.151-.197.297-.767.981-.941 1.18-.173.197-.347.222-.648.072-1.08-.541-1.928-.971-2.695-1.688-.636-.596-1.127-1.326-1.253-1.523-.125-.197-.013-.304.112-.429.112-.113.25-.297.375-.446.125-.148.165-.25.25-.421.082-.172.04-.322-.02-.471-.06-.151-.471-1.14-.648-1.564-.173-.421-.347-.363-.471-.369h-.402c-.136 0-.36.051-.548.257-.188.206-.718.702-.718 1.71 0 1.008.734 1.984.836 2.12.102.136 1.442 2.202 3.493 3.086.488.21 1.002.348 1.411.479.553.176 1.056.151 1.455.091.445-.067 1.365-.558 1.558-1.097.193-.538.193-1.002.136-1.097-.058-.096-.215-.148-.517-.297z"/>
+                                </svg>
+                              </a>
                             )}
-                            {s.email && <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Mail className="h-3 w-3" /> {s.email}</span>}
-                          </div>
-                        </td>
-                        <td className="p-4 text-muted-foreground">{s.contactPerson || "-"}</td>
-                        <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button onClick={() => handleEdit(s)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Editar">
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-                            <button onClick={() => handleDelete(s.id, s.name)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" title="Excluir">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
+                            <Phone className="h-3 w-3 shrink-0" />
+                            <span>{c.phone}</span>
+                          </span>
+                          {c.email && <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Mail className="h-3 w-3 shrink-0" /> {c.email}</span>}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        {c.instagram ? (
+                          <a href={`https://instagram.com/${c.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-pink-500 hover:underline">
+                            <Instagram className="h-3.5 w-3.5" />
+                            <span>{c.instagram}</span>
+                          </a>
+                        ) : <span className="text-muted-foreground">-</span>}
+                      </td>
+                      <td className="p-4">
+                        <span className={cn("px-2 py-0.5 rounded-full border text-[10px] font-medium capitalize", getSourceBadgeStyle(c.source))}>
+                          {c.source}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-wrap gap-1">
+                          {c.tags.map((tag, idx) => (
+                            <span key={idx} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border border-rosegold-200/50 bg-rosegold-50 dark:bg-rosegold-950/20 text-rosegold-700 dark:text-rosegold-400 text-[10px] font-medium">
+                              <Tag className="h-2.5 w-2.5 shrink-0" />
+                              <span>{tag}</span>
+                            </span>
+                          ))}
+                          {c.tags.length === 0 && <span className="text-muted-foreground">-</span>}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="text-[11px]">
+                          <span className="font-semibold text-foreground">{c.metrics.totalOrders} Pedidos</span>
+                          <div className="text-[10px] text-muted-foreground">Total: R$ {c.metrics.totalSpent.toFixed(2)}</div>
+                        </div>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button onClick={() => handleEdit(c)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Editar">
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => handleDelete(c.id, c.name)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" title="Excluir">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* 4. Slide-over Form Drawer (Clientes / Fornecedores) */}
+      {/* 4. Slide-over Form Drawer (Clientes) */}
       {drawerOpen && (
         <>
           <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" />
@@ -591,7 +430,7 @@ export default function ContactsPage() {
             <div className="flex items-center justify-between pb-4 border-b border-border mb-6">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <UserCheck className="h-4.5 w-4.5 text-rosegold-500" />
-                <span>{editingId ? "Editar" : "Novo"} {activeTab === "customers" ? "Cliente" : "Fornecedor"}</span>
+                <span>{editingId ? "Editar Cliente" : "Novo Cliente"}</span>
               </h3>
               <button onClick={() => setDrawerOpen(false)} className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
@@ -609,7 +448,7 @@ export default function ContactsPage() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={activeTab === "customers" ? "Ex: Mariana Silva" : "Ex: Natura Distribuidora"}
+                  placeholder="Ex: Mariana Silva"
                   className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 />
                 {errors.name && <p className="text-[10px] text-destructive mt-0.5">{errors.name}</p>}
@@ -653,108 +492,86 @@ export default function ContactsPage() {
                 </div>
               </div>
 
-              {/* CPF / CNPJ */}
+              {/* CPF */}
               <div className="space-y-1">
-                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">
-                  {activeTab === "customers" ? "CPF" : "CNPJ"}
-                </label>
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CPF</label>
                 <input
                   type="text"
-                  value={cpfOrCnpj}
-                  onChange={(e) => setCpfOrCnpj(activeTab === "customers" ? maskCpf(e.target.value) : maskCnpj(e.target.value))}
-                  placeholder={activeTab === "customers" ? "000.000.000-00" : "00.000.000/0000-00"}
+                  value={cpf}
+                  onChange={(e) => setCpf(maskCpf(e.target.value))}
+                  placeholder="000.000.000-00"
                   className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary font-mono"
                 />
                 {errors.cpf && <p className="text-[10px] text-destructive mt-0.5">{errors.cpf}</p>}
-                {errors.cnpj && <p className="text-[10px] text-destructive mt-0.5">{errors.cnpj}</p>}
               </div>
 
-              {/* Campos específicos de Clientes */}
-              {activeTab === "customers" && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Instagram */}
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Instagram</label>
-                      <input
-                        type="text"
-                        value={instagram}
-                        onChange={(e) => setInstagram(e.target.value)}
-                        placeholder="@usuario"
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                      />
-                    </div>
-                    {/* Birthday */}
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Aniversário (DD/MM/AAAA)</label>
-                      <input
-                        type="text"
-                        value={birthday}
-                        onChange={(e) => setBirthday(maskDate(e.target.value))}
-                        placeholder="Ex: 15/08/1992"
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                      />
-                      {errors.birthday && <p className="text-[10px] text-destructive mt-0.5">{errors.birthday}</p>}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Tags */}
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tags (separadas por vírgula)</label>
-                      <input
-                        type="text"
-                        value={tagsInput}
-                        onChange={(e) => setTagsInput(e.target.value)}
-                        placeholder="Ex: VIP, Skincare, Perfumes"
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                      />
-                    </div>
-                    {/* Origem (Source) */}
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Origem / Canal</label>
-                      <select
-                        value={source}
-                        onChange={(e) => setSource(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                      >
-                        <option value="instagram">Instagram</option>
-                        <option value="shopee">Shopee</option>
-                        <option value="whatsapp">WhatsApp</option>
-                        <option value="mercadolivre">Mercado Livre</option>
-                        <option value="walk-in">Loja Física / Presencial</option>
-                        <option value="other">Outro</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Notas */}
-                  <div className="space-y-1">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Notas de Preferência / Observações</label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Ex: Prefere fragrâncias florais doces, tem alergia a..."
-                      rows={2}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary resize-none"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Campos específicos de Fornecedores */}
-              {activeTab === "suppliers" && (
+              <div className="grid grid-cols-2 gap-3">
+                {/* Instagram */}
                 <div className="space-y-1">
-                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Pessoa de Contato / Vendedor</label>
+                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Instagram</label>
                   <input
                     type="text"
-                    value={contactPerson}
-                    onChange={(e) => setContactPerson(e.target.value)}
-                    placeholder="Ex: Carlos Silva - Supervisor Regional"
+                    value={instagram}
+                    onChange={(e) => setInstagram(e.target.value)}
+                    placeholder="@usuario"
                     className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                   />
                 </div>
-              )}
+                {/* Birthday */}
+                <div className="space-y-1">
+                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Aniversário (DD/MM/AAAA)</label>
+                  <input
+                    type="text"
+                    value={birthday}
+                    onChange={(e) => setBirthday(maskDate(e.target.value))}
+                    placeholder="Ex: 15/08/1992"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  />
+                  {errors.birthday && <p className="text-[10px] text-destructive mt-0.5">{errors.birthday}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Tags */}
+                <div className="space-y-1">
+                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tags (separadas por vírgula)</label>
+                  <input
+                    type="text"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="Ex: VIP, Skincare, Perfumes"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  />
+                </div>
+                {/* Origem (Source) */}
+                <div className="space-y-1">
+                  <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Origem / Canal</label>
+                  <select
+                    value={source}
+                    onChange={(e) => setSource(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+                  >
+                    <option value="instagram">Instagram</option>
+                    <option value="shopee">Shopee</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="mercadolivre">Mercado Livre</option>
+                    <option value="walk-in">Loja Física / Presencial</option>
+                    <option value="other">Outro</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Notas */}
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Notas de Preferência / Observações</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Ex: Prefere fragrâncias florais doces, tem alergia a..."
+                  rows={2}
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary resize-none"
+                />
+              </div>
 
               {/* Checkbox de Endereço */}
               <div className="flex items-center gap-2 pt-2 pb-1 border-t border-border">
@@ -864,7 +681,7 @@ export default function ContactsPage() {
                 </div>
               )}
 
-              {/* Botões de Ação do Drawer */}
+              {/* Botões de Ação */}
               <div className="flex gap-3.5 pt-4 border-t border-border mt-6">
                 <button
                   type="button"
