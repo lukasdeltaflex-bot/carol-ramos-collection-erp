@@ -79,12 +79,16 @@ export default function AccountsReceivablePage() {
         getDocs("bank_accounts")
       ]);
 
-      setReceivables(recs as AccountsReceivable[]);
-      setCustomers(custs as Customer[]);
-      setBankAccounts((banks as BankAccount[]).filter(b => b.status === "active"));
+      const safeReceivables = (recs as AccountsReceivable[]) || [];
+      const safeCustomers = (custs as Customer[]) || [];
+      const safeBanks = (banks as BankAccount[]) || [];
 
-      if (banks.length > 0) {
-        setPaymentBankAccountId(banks[0].id);
+      setReceivables(safeReceivables);
+      setCustomers(safeCustomers);
+      setBankAccounts(safeBanks.filter(b => b.status === "active"));
+
+      if (safeBanks.length > 0) {
+        setPaymentBankAccountId(safeBanks[0].id);
       }
     } catch (err: any) {
       console.error("Erro ao carregar dados do contas a receber:", err);
@@ -99,6 +103,25 @@ export default function AccountsReceivablePage() {
       loadData();
     }
   }, [tenantId, loadData]);
+
+  // Auto-open modal from URL query params (?new=true or ?id=XYZ)
+  useEffect(() => {
+    if (typeof window === "undefined" || loading) return;
+    const params = new URLSearchParams(window.location.search);
+    const newParam = params.get("new");
+    const idParam = params.get("id");
+    if (newParam === "true") {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      handleOpenCreate();
+    } else if (idParam && receivables.length > 0) {
+      const item = receivables.find(r => r.id === idParam);
+      if (item) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        handleOpenEdit(item);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, receivables]);
 
   // Open Create Form
   const handleOpenCreate = () => {

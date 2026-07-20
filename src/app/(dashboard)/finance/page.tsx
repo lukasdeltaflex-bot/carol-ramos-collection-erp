@@ -319,6 +319,29 @@ export default function FinancePage() {
     setDrawerOpen(true);
   };
 
+  // 1b. Abrir Drawer de Edição de Conta Bancária
+  const handleEditBankAccount = (account: BankAccount) => {
+    setDrawerType("bank_account");
+    setEditingId(account.id);
+    setErrors({});
+    setBName(account.name);
+    setBType(account.type as any);
+    setBBalance(account.balance);
+    setDrawerOpen(true);
+  };
+
+  // 1c. Excluir Conta Bancária
+  const handleDeleteBankAccount = async (id: string, name: string) => {
+    if (!confirm(`Deseja realmente excluir a conta "${name}"?\n\nEsta ação não pode ser desfeita.`)) return;
+    try {
+      await deleteDoc("bank_accounts", id);
+      await loadFinancialData();
+    } catch (err: any) {
+      console.error("Erro ao excluir conta bancária:", err);
+      alert("Erro ao excluir conta: " + (err.message || "tente novamente."));
+    }
+  };
+
   // 2. Adicionar Item de Compra de Estoque
   const addPurchaseItem = (productId: string) => {
     const prod = products.find(p => p.id === productId);
@@ -371,7 +394,11 @@ export default function FinancePage() {
           return;
         }
 
-        await createDoc("bank_accounts", { ...payload, currency: "BRL", status: "active" as const });
+        if (editingId) {
+          await updateDoc("bank_accounts", editingId, { ...payload, updatedAt: new Date().toISOString() });
+        } else {
+          await createDoc("bank_accounts", { ...payload, currency: "BRL", status: "active" as const });
+        }
       } 
       
       else if (drawerType === "transaction") {
@@ -716,11 +743,17 @@ export default function FinancePage() {
 
         {activeTab !== "dre" && activeTab !== "accounts" && (
           <button
-            onClick={() => handleOpenDrawer(
-              activeTab === "cashflow" ? "transaction" : 
-              activeTab === "payable" ? "payable" : 
-              activeTab === "purchases" ? "purchase" : "receivable"
-            )}
+            onClick={() => {
+              if (activeTab === "payable") {
+                window.location.href = "/payable?new=true";
+              } else if (activeTab === "receivable") {
+                window.location.href = "/receivable?new=true";
+              } else {
+                handleOpenDrawer(
+                  activeTab === "cashflow" ? "transaction" : "purchase"
+                );
+              }
+            }}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
           >
             <Plus className="h-4 w-4" />
@@ -872,7 +905,7 @@ export default function FinancePage() {
                   );
 
                   return (
-                    <div key={a.id} className="p-5 rounded-xl border border-border bg-card/50 flex flex-col justify-between h-32 hover:border-primary/20 transition-all select-none">
+                    <div key={a.id} className="p-5 rounded-xl border border-border bg-card/50 flex flex-col justify-between h-36 hover:border-primary/20 transition-all select-none group">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <span className="text-xs font-semibold text-foreground truncate block">{a.name}</span>
@@ -880,15 +913,31 @@ export default function FinancePage() {
                             {a.type === "checking" ? "Corrente" : a.type === "wallet" ? "Digital" : "Caixa"}
                           </span>
                         </div>
-                        {bankMatch ? (
-                          <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shadow-sm shrink-0 border", bankMatch.color)}>
-                            {bankMatch.brand}
-                          </div>
-                        ) : (
-                          <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                            <Building2 className="h-4 w-4" />
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => handleEditBankAccount(a)}
+                            title="Editar conta"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBankAccount(a.id, a.name)}
+                            title="Excluir conta"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                          {bankMatch ? (
+                            <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shadow-sm border", bankMatch.color)}>
+                              {bankMatch.brand}
+                            </div>
+                          ) : (
+                            <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                              <Building2 className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="mt-2">
                         <span className="text-[10px] text-muted-foreground uppercase">Saldo Disponível</span>
@@ -1200,7 +1249,7 @@ export default function FinancePage() {
               <h3 className="text-sm font-semibold flex items-center gap-1.5">
                 <Receipt className="h-4.5 w-4.5 text-rosegold-500" />
                 <span>
-                  {drawerType === "bank_account" ? "Nova Conta Bancária" :
+                  {drawerType === "bank_account" ? (editingId ? "Editar Conta Bancária" : "Nova Conta Bancária") :
                    drawerType === "transaction" ? "Novo Lançamento Rápido" : "Registrar Compra de Fornecedor"}
                 </span>
               </h3>

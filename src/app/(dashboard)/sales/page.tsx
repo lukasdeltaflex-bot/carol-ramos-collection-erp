@@ -24,6 +24,7 @@ import {
   Sparkles,
   Calculator,
   ShieldAlert,
+  AlertCircle,
   Layers,
   X,
   Printer,
@@ -60,6 +61,7 @@ export default function SalesPOSPage() {
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'debit_card' | 'pix' | 'cash' | 'split' | 'term'>("pix");
   const [installments, setInstallments] = useState(1);
+  const [isCustomInstallments, setIsCustomInstallments] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
 
@@ -304,12 +306,14 @@ export default function SalesPOSPage() {
     });
   };
 
-  // Regenerar parcelas se o total mudar enquanto estiver em modo a prazo
+  // Regenerar parcelas se o total ou método mudar
   useEffect(() => {
-    if (paymentMethod === "term") {
+    if (paymentMethod === "term" || paymentMethod === "credit_card") {
       generateDefaultInstallments(installments, total);
+    } else {
+      setGeneratedInstallments([]);
     }
-  }, [total]);
+  }, [total, paymentMethod, installments]);
 
   // 7. Concluir Venda (Checkout)
   const handleCheckout = async (e: React.FormEvent) => {
@@ -394,7 +398,7 @@ export default function SalesPOSPage() {
         ? (customers.find(c => c.id === selectedCustomerId)?.name || "Cliente") 
         : "Não Identificado";
 
-      if (paymentMethod === "term") {
+      if (paymentMethod === "term" || (paymentMethod === "credit_card" && installments > 1)) {
         for (const inst of generatedInstallments) {
           await createDoc("accounts_receivable", {
             customerId: selectedCustomerId || undefined,
@@ -403,7 +407,7 @@ export default function SalesPOSPage() {
             amount: inst.amount,
             dueDate: inst.dueDate,
             status: "pending" as const,
-            paymentMethod: "split" as const,
+            paymentMethod: paymentMethod,
             installments: generatedInstallments.length,
             currentInstallment: inst.number
           });
@@ -444,6 +448,7 @@ export default function SalesPOSPage() {
       setGlobalDiscount(0);
       setPaymentMethod("pix");
       setInstallments(1);
+      setIsCustomInstallments(false);
       setCheckoutSuccess(true);
       await loadPOSData();
     } catch (err: any) {
@@ -720,17 +725,96 @@ export default function SalesPOSPage() {
 
               {/* Configurações Extra de Pagamento */}
               {paymentMethod === "credit_card" && (
-                <div className="p-3 rounded-xl border border-border bg-muted/20 space-y-1 animate-in fade-in duration-200">
-                  <label className="text-[8px] font-bold text-muted-foreground uppercase">Parcelamento</label>
-                  <select
-                    value={installments}
-                    onChange={(e) => setInstallments(parseInt(e.target.value) || 1)}
-                    className="w-full p-2 rounded-lg border border-border bg-card"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
-                      <option key={n} value={n}>{n}x de {formatCurrency(total / n)} {(n === 1 ? "sem juros" : "")}</option>
-                    ))}
-                  </select>
+                <div className="p-3.5 rounded-xl border border-border bg-card/60 space-y-3 animate-in fade-in duration-200 text-xs">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-primary uppercase tracking-wider">Configurar Parcelas (Cartão)</label>
+                    <span className="text-[10px] font-mono font-semibold text-muted-foreground bg-muted/40 px-2 py-0.5 rounded">Total: {formatCurrency(total)}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase">Nº de Parcelas</label>
+                      <select
+                        value={isCustomInstallments ? "custom" : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(installments) ? installments : "custom"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "custom") {
+                            setIsCustomInstallments(true);
+                          } else {
+                            setIsCustomInstallments(false);
+                            const count = parseInt(val) || 1;
+                            setInstallments(count);
+                            generateDefaultInstallments(count, total);
+                          }
+                        }}
+                        className="w-full p-2 rounded-lg border border-border bg-card text-xs font-semibold"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
+                          <option key={n} value={n}>{n}x de {formatCurrency(total / n)} {(n === 1 ? "sem juros" : "")}</option>
+                        ))}
+                        <option value="custom">Outra quantidade...</option>
+                      </select>
+                    </div>
+
+                    {(isCustomInstallments || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(installments)) && (
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-muted-foreground uppercase">Qtd (Máx 36)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={36}
+                          value={installments}
+                          onChange={(e) => {
+                            const val = Math.min(36, Math.max(1, parseInt(e.target.value) || 1));
+                            setInstallments(val);
+                            generateDefaultInstallments(val, total);
+                          }}
+                          className="w-full p-2.5 rounded-lg border border-border bg-card font-mono text-center font-bold text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Parcelas geradas com edição individual */}
+                  {generatedInstallments.length > 0 && installments > 1 && (
+                    <div className="space-y-2 pt-2 border-t border-border/50">
+                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Lista de Vencimentos & Valores</span>
+                      <div className="max-h-48 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                        {generatedInstallments.map((inst, idx) => (
+                          <div key={inst.number} className="grid grid-cols-12 gap-2 items-center bg-muted/20 p-2 rounded-lg border border-border/40">
+                            <span className="col-span-3 font-semibold text-[10px] text-muted-foreground text-center">#{inst.number}</span>
+                            
+                            <div className="col-span-5 relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={inst.amount}
+                                onChange={(e) => handleUpdateInstallmentAmount(idx, parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-1 py-1.5 rounded border border-border bg-card font-mono text-xs"
+                              />
+                            </div>
+
+                            <input
+                              type="date"
+                              value={inst.dueDate}
+                              onChange={(e) => handleUpdateInstallmentDate(idx, e.target.value)}
+                              className="col-span-4 p-1.5 rounded border border-border bg-card font-mono text-[10px]"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Validação de soma */}
+                      {Math.abs(total - generatedInstallments.reduce((sum, item) => sum + item.amount, 0)) > 0.01 && (
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-2 rounded-lg text-[10px] flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          <span>Diferença nas parcelas: <strong>{formatCurrency(total - generatedInstallments.reduce((sum, item) => sum + item.amount, 0))}</strong>.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -745,13 +829,13 @@ export default function SalesPOSPage() {
                     <div className="col-span-2 space-y-1">
                       <label className="text-[9px] font-bold text-muted-foreground uppercase">Nº de Parcelas</label>
                       <select
-                        value={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(installments) ? installments : "custom"}
+                        value={isCustomInstallments ? "custom" : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(installments) ? installments : "custom"}
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === "custom") {
-                            setInstallments(2);
-                            generateDefaultInstallments(2, total);
+                            setIsCustomInstallments(true);
                           } else {
+                            setIsCustomInstallments(false);
                             const count = parseInt(val) || 1;
                             setInstallments(count);
                             generateDefaultInstallments(count, total);
@@ -766,7 +850,7 @@ export default function SalesPOSPage() {
                       </select>
                     </div>
 
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(installments) ? null : (
+                    {(isCustomInstallments || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(installments)) && (
                       <div className="space-y-1">
                         <label className="text-[9px] font-bold text-muted-foreground uppercase">Qtd (Máx 36)</label>
                         <input
@@ -819,7 +903,7 @@ export default function SalesPOSPage() {
                       {/* Validação de soma */}
                       {Math.abs(total - generatedInstallments.reduce((sum, item) => sum + item.amount, 0)) > 0.01 && (
                         <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-2 rounded-lg text-[10px] flex items-center gap-1.5">
-                          <ShieldAlert className="h-4 w-4 shrink-0" />
+                          <AlertCircle className="h-4 w-4 shrink-0" />
                           <span>Diferença nas parcelas: <strong>{formatCurrency(total - generatedInstallments.reduce((sum, item) => sum + item.amount, 0))}</strong>.</span>
                         </div>
                       )}

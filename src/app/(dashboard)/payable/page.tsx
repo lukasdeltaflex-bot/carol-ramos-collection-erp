@@ -78,12 +78,16 @@ export default function AccountsPayablePage() {
         getDocs("bank_accounts")
       ]);
 
-      setPayables(pays as AccountsPayable[]);
-      setSuppliers(supps as Supplier[]);
-      setBankAccounts((banks as BankAccount[]).filter(b => b.status === "active"));
+      const safePayables = (pays as AccountsPayable[]) || [];
+      const safeSuppliers = (supps as Supplier[]) || [];
+      const safeBanks = (banks as BankAccount[]) || [];
 
-      if (banks.length > 0) {
-        setPaymentBankAccountId(banks[0].id);
+      setPayables(safePayables);
+      setSuppliers(safeSuppliers);
+      setBankAccounts(safeBanks.filter(b => b.status === "active"));
+
+      if (safeBanks.length > 0) {
+        setPaymentBankAccountId(safeBanks[0].id);
       }
     } catch (err: any) {
       console.error("Erro ao carregar dados do contas a pagar:", err);
@@ -98,6 +102,25 @@ export default function AccountsPayablePage() {
       loadData();
     }
   }, [tenantId, loadData]);
+
+  // Auto-open modal from URL query params (?new=true or ?id=XYZ)
+  useEffect(() => {
+    if (typeof window === "undefined" || loading) return;
+    const params = new URLSearchParams(window.location.search);
+    const newParam = params.get("new");
+    const idParam = params.get("id");
+    if (newParam === "true") {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      handleOpenCreate();
+    } else if (idParam && payables.length > 0) {
+      const item = payables.find(p => p.id === idParam);
+      if (item) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        handleOpenEdit(item);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, payables]);
 
   // Open Create Form
   const handleOpenCreate = () => {
