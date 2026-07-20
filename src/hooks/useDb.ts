@@ -21,6 +21,24 @@ const activeQueries: Record<string, Promise<any> | undefined> = {};
 const dataCache: Record<string, { data: any[]; timestamp: number } | undefined> = {};
 const CACHE_TTL = 10000; // 10 seconds cache time-to-live
 
+// Helper wrapper to add a timeout to Firestore promises
+const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, ms);
+    promise
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
 export function useDb() {
   const { user, tenantId, isMock } = useAuth();
 
@@ -86,7 +104,7 @@ export function useDb() {
     } else {
       try {
         const auditRef = collection(db, "audit_logs");
-        await addDoc(auditRef, auditData);
+        await withTimeout(addDoc(auditRef, auditData), 4000, "Tempo limite esgotado ao registrar log de auditoria");
       } catch (err) {
         console.error("Falha ao registrar log de auditoria no Firestore:", err);
       }
@@ -126,7 +144,11 @@ export function useDb() {
 
     // Firestore real
     const colRef = collection(db, collectionName);
-    const docRef = await addDoc(colRef, finalData);
+    const docRef = await withTimeout(
+      addDoc(colRef, finalData),
+      5000,
+      `Erro ao criar registro em ${collectionName} (Sem resposta do servidor)`
+    );
     
     // Registrar log de auditoria
     await logAudit("create", collectionName, docRef.id, null, finalData);
@@ -162,13 +184,21 @@ export function useDb() {
 
     // Firestore real
     const docRef = doc(db, collectionName, docId);
-    const snap = await firestoreGetDoc(docRef);
+    const snap = await withTimeout(
+      firestoreGetDoc(docRef),
+      4000,
+      `Erro ao carregar registro em ${collectionName} para atualização`
+    );
     if (!snap.exists()) throw new Error("Documento não encontrado.");
     
     previousData = snap.data();
     const finalData = injectBaseFields(data, "update", previousData);
     
-    await firestoreUpdateDoc(docRef, finalData);
+    await withTimeout(
+      firestoreUpdateDoc(docRef, finalData),
+      5000,
+      `Erro ao atualizar registro em ${collectionName} (Sem resposta do servidor)`
+    );
 
     // Registrar log de auditoria
     await logAudit("update", collectionName, docId, previousData, finalData);
@@ -201,11 +231,19 @@ export function useDb() {
 
     // Firestore real
     const docRef = doc(db, collectionName, docId);
-    const snap = await firestoreGetDoc(docRef);
+    const snap = await withTimeout(
+      firestoreGetDoc(docRef),
+      4000,
+      `Erro ao buscar registro em ${collectionName} para exclusão`
+    );
     if (!snap.exists()) throw new Error("Documento não encontrado.");
     
     previousData = snap.data();
-    await firestoreDeleteDoc(docRef);
+    await withTimeout(
+      firestoreDeleteDoc(docRef),
+      5000,
+      `Erro ao deletar registro em ${collectionName} (Sem resposta do servidor)`
+    );
 
     // Registrar log de auditoria
     await logAudit("delete", collectionName, docId, previousData, null);
@@ -242,7 +280,11 @@ export function useDb() {
         colRef, 
         where("tenantId", "==", targetTenant)
       );
-      const snap = await firestoreGetDocs(q);
+      const snap = await withTimeout(
+        firestoreGetDocs(q),
+        5500,
+        `Erro ao buscar lista de ${collectionName} (Sem resposta do servidor)`
+      );
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     })();
 
@@ -272,7 +314,11 @@ export function useDb() {
 
     // Firestore real
     const docRef = doc(db, collectionName, docId);
-    const snap = await firestoreGetDoc(docRef);
+    const snap = await withTimeout(
+      firestoreGetDoc(docRef),
+      5000,
+      `Erro ao buscar registro por ID em ${collectionName}`
+    );
     if (!snap.exists()) return null;
     return { id: snap.id, ...snap.data() };
   }, [isMock]);

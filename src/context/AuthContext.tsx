@@ -110,10 +110,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user || isMock) return;
 
+    // Timeout de segurança para evitar loading infinito se a conexão com o Firestore travar
+    const safetyTimeout = setTimeout(() => {
+      console.warn("Tempo limite de carregamento do perfil atingido. Continuando...");
+      setLoading(false);
+    }, 6000);
+
     const userDocRef = doc(db, "users", user.uid);
     const unsubscribeProfile = onSnapshot(
       userDocRef,
       async (docSnap) => {
+        clearTimeout(safetyTimeout);
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
           setProfile(data);
@@ -157,12 +164,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       },
       (error) => {
+        clearTimeout(safetyTimeout);
         console.error("Erro ao sincronizar dados do usuário no Firestore:", error);
         setLoading(false);
       }
     );
 
-    return () => unsubscribeProfile();
+    return () => {
+      clearTimeout(safetyTimeout);
+      unsubscribeProfile();
+    };
   }, [user, isMock]);
 
   // Sincroniza dados da Empresa Ativa (Req 2 & 3)
