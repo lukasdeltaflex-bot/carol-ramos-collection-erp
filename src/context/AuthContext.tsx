@@ -23,6 +23,13 @@ export interface UserProfile {
       joinedAt: any;
     }
   };
+  phone?: string;
+  photo?: string;
+  preferences?: {
+    language: string;
+    notifications: boolean;
+  };
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -38,6 +45,7 @@ interface AuthContextType {
   isMock: boolean;
   activeCompany: any | null;
   createCompany: (name: string, cnpj: string) => Promise<string>;
+  updateProfileMock: (newProfile: UserProfile) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -392,8 +400,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return uniqueTenantId;
   }, [profile, isMock, user]);
 
+  const updateProfileMock = useCallback((newProfile: UserProfile) => {
+    setProfile(newProfile);
+    const savedMockSession = localStorage.getItem("mock_auth_session");
+    if (savedMockSession) {
+      const parsed = JSON.parse(savedMockSession);
+      parsed.profile = newProfile;
+      localStorage.setItem("mock_auth_session", JSON.stringify(parsed));
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
       {children}
     </AuthContext.Provider>
   );

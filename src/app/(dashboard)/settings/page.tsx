@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
 import { useToast } from "@/context/ToastContext";
@@ -33,7 +33,10 @@ import {
   MapPin,
   HelpCircle,
   Clock,
-  PlusCircle
+  PlusCircle,
+  MoreVertical,
+  Edit3,
+  Power
 } from "lucide-react";
 
 // Custom SVG Icons for socials (Req 1)
@@ -111,8 +114,8 @@ const DEFAULT_WEEK_SCHEDULE: WeekSchedule = {
 };
 
 export default function SettingsPage() {
-  const { profile, role, tenantId, activeCompany, createCompany, switchTenant } = useAuth();
-  const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
+  const { user, profile, role, tenantId, activeCompany, createCompany, switchTenant, isMock, updateProfileMock } = useAuth();
+  const { createDoc, getDocs, updateDoc, deleteDoc, getDocById } = useDb();
   const { success, error: toastError, info } = useToast();
 
   const [activeTab, setActiveTab] = useState<"profile" | "rbac" | "params" | "integrations" | "logs">("profile");
@@ -206,6 +209,224 @@ export default function SettingsPage() {
   const [newCompanyModalOpen, setNewCompanyModalOpen] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState("");
   const [newCompanyCnpj, setNewCompanyCnpj] = useState("");
+
+  // Multi-Company List and Operations States
+  const [companiesList, setCompaniesList] = useState<any[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+
+  // Edit Company Modal state
+  const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editCompanyName, setEditCompanyName] = useState("");
+  const [editCompanyTradeName, setEditCompanyTradeName] = useState("");
+  const [editCompanyCnpj, setEditCompanyCnpj] = useState("");
+  const [editCompanyStatus, setEditCompanyStatus] = useState<"active" | "inactive">("active");
+
+  const loadCompanies = useCallback(async () => {
+    if (!profile || !profile.tenants) return;
+    setLoadingCompanies(true);
+    try {
+      const list = await Promise.all(
+        Object.keys(profile.tenants).map(async (id) => {
+          let companyData = null;
+          if (isMock) {
+            const saved = localStorage.getItem(`company_profile_${id}`);
+            companyData = saved ? JSON.parse(saved) : null;
+          } else {
+            companyData = await getDocById("companies", id);
+          }
+          return companyData || {
+            id,
+            name: id === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+            tradeName: id === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+            status: "active",
+            cnpj: "12.345.678/0001-99",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+        })
+      );
+      setCompaniesList(list);
+    } catch (err: any) {
+      console.error("Erro ao carregar empresas:", err);
+    } finally {
+      setLoadingCompanies(false);
+    }
+  }, [profile, isMock, getDocById]);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [loadCompanies]);
+
+  const handleSwitchCompanyNoReload = async (id: string, status: string) => {
+    if (status === "inactive") {
+      toastError("Ação inválida", "Esta empresa está desativada e não pode ser selecionada.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await switchTenant(id);
+      success("Empresa alternada", "O contexto operacional foi atualizado com sucesso!");
+    } catch (e: any) {
+      toastError("Erro ao alternar", e.message || "Erro ao trocar a empresa ativa.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleCompanyStatus = async (id: string, currentStatus: "active" | "inactive") => {
+    if (id === tenantId && currentStatus === "active") {
+      toastError("Ação inválida", "Você não pode desativar a empresa que está atualmente ativa. Selecione outra empresa como ativa primeiro.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newStatus = currentStatus === "active" ? "inactive" : "active";
+      if (isMock) {
+        const saved = localStorage.getItem(`company_profile_${id}`);
+        const parsed = saved ? JSON.parse(saved) : { id };
+        parsed.status = newStatus;
+        parsed.updatedAt = new Date().toISOString();
+        localStorage.setItem(`company_profile_${id}`, JSON.stringify(parsed));
+        success("Status atualizado", `Empresa ${newStatus === "active" ? "ativada" : "desativada"} com sucesso!`);
+      } else {
+        await updateDoc("companies", id, { status: newStatus, updatedAt: new Date().toISOString() });
+        success("Status atualizado", `Empresa ${newStatus === "active" ? "ativada" : "desativada"} no Firestore com sucesso!`);
+      }
+      await loadCompanies();
+    } catch (e: any) {
+      toastError("Erro ao alterar status", e.message || "Erro desconhecido.");
+    } finally {
+      setLoading(false);
+      setOpenActionMenuId(null);
+    }
+  };
+
+  const handleDeleteCompany = async (id: string, name: string) => {
+    if (id === tenantId) {
+      toastError("Ação inválida", "Você não pode excluir a empresa que está atualmente ativa. Selecione outra empresa como ativa primeiro.");
+      return;
+    }
+
+    if (!confirm(`Deseja realmente excluir a empresa "${name}"? Esta ação removerá seu acesso a todos os dados dessa loja e é irreversível.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (profile && profile.tenants) {
+        const updatedTenants = { ...profile.tenants };
+        delete updatedTenants[id];
+        
+        if (isMock) {
+          const newProfile = {
+            ...profile,
+            tenants: updatedTenants
+          } as any;
+          updateProfileMock(newProfile);
+          localStorage.removeItem(`company_profile_${id}`);
+        } else {
+          if (user) {
+            await updateDoc("users", user.uid, { tenants: updatedTenants });
+            await deleteDoc("companies", id);
+          }
+        }
+        success("Empresa excluída", "A empresa foi removida da sua conta com sucesso!");
+      }
+      await loadCompanies();
+    } catch (e: any) {
+      toastError("Erro ao excluir", e.message || "Erro desconhecido.");
+    } finally {
+      setLoading(false);
+      setOpenActionMenuId(null);
+    }
+  };
+
+  const handleOpenEditCompany = (company: any) => {
+    setEditingCompanyId(company.id);
+    setEditCompanyName(company.name || "");
+    setEditCompanyTradeName(company.tradeName || "");
+    setEditCompanyCnpj(company.cnpj || "");
+    setEditCompanyStatus(company.status || "active");
+    setEditCompanyModalOpen(true);
+    setOpenActionMenuId(null);
+  };
+
+  const handleSaveEditCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCompanyId) return;
+
+    if (editingCompanyId === tenantId && editCompanyStatus === "inactive") {
+      toastError("Ação inválida", "Você não pode desativar a empresa atualmente ativa. Selecione outra empresa como ativa primeiro.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        name: editCompanyName,
+        tradeName: editCompanyTradeName,
+        cnpj: editCompanyCnpj,
+        status: editCompanyStatus,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (isMock) {
+        const saved = localStorage.getItem(`company_profile_${editingCompanyId}`);
+        const parsed = saved ? JSON.parse(saved) : { id: editingCompanyId };
+        const updatedCompany = { ...parsed, ...payload };
+        localStorage.setItem(`company_profile_${editingCompanyId}`, JSON.stringify(updatedCompany));
+        
+        if (editingCompanyId === tenantId) {
+          // Trigger settings state update
+          setCompName(editCompanyName);
+          setCompTradeName(editCompanyTradeName);
+          setCompCnpj(editCompanyCnpj);
+        }
+        success("Empresa atualizada", "Dados da empresa salvos localmente com sucesso!");
+      } else {
+        await updateDoc("companies", editingCompanyId, payload);
+        success("Empresa atualizada", "Dados da empresa atualizados no Firestore com sucesso!");
+      }
+      setEditCompanyModalOpen(false);
+      await loadCompanies();
+    } catch (e: any) {
+      toastError("Erro ao salvar", e.message || "Erro desconhecido.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUploadCompanyLogo = async (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Logo = reader.result as string;
+        if (isMock) {
+          const saved = localStorage.getItem(`company_profile_${id}`);
+          const parsed = saved ? JSON.parse(saved) : { id };
+          parsed.logo = base64Logo;
+          localStorage.setItem(`company_profile_${id}`, JSON.stringify(parsed));
+          success("Logo atualizado", "Logo da empresa atualizado localmente!");
+        } else {
+          await updateDoc("companies", id, { logo: base64Logo, updatedAt: new Date().toISOString() });
+          success("Logo updated", "Logo da empresa atualizado no Firestore!");
+        }
+        await loadCompanies();
+        setLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toastError("Erro ao enviar logo", err.message || "Falha ao ler arquivo.");
+      setLoading(false);
+    }
+  };
 
   // Synchronize company profile states when activeCompany changes
   useEffect(() => {
@@ -390,9 +611,8 @@ export default function SettingsPage() {
       setNewCompanyName("");
       setNewCompanyCnpj("");
       success("Empresa criada!", `A empresa foi registrada. Alternando contexto para a nova empresa.`);
-      // Switch tenant will automatically reload context
       await switchTenant(newId);
-      window.location.reload();
+      await loadCompanies();
     } catch (err: any) {
       toastError("Erro ao criar empresa", err.message || "Erro desconhecido");
     } finally {
@@ -855,47 +1075,149 @@ export default function SettingsPage() {
                   Alterne instantaneamente o contexto operacional do ERP selecionando uma das empresas abaixo.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                  {profile && Object.keys(profile.tenants).map((id) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                  {companiesList.map((company) => {
+                    const id = company.id;
                     const isActive = id === tenantId;
-                    const cRole = profile.tenants[id].role;
+                    const isDeactivated = company.status === "inactive";
+                    const cRole = profile?.tenants?.[id]?.role || "owner";
+                    const hasActionMenuOpen = openActionMenuId === id;
+                    
                     return (
-                      <button
+                      <div
                         key={id}
-                        onClick={async () => {
-                          if (isActive) return;
-                          try {
-                            await switchTenant(id);
-                            window.location.reload();
-                          } catch (e: any) {
-                            toastError("Erro ao alternar", e.message);
-                          }
-                        }}
                         className={cn(
-                          "p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-all",
+                          "relative p-4 rounded-2xl border text-left flex flex-col justify-between gap-3 transition-all",
                           isActive
-                            ? "border-primary bg-primary/10 shadow"
-                            : "border-border hover:border-primary/30 bg-card hover:bg-muted/40"
+                            ? "border-primary bg-primary/5 shadow-md shadow-primary/5"
+                            : isDeactivated
+                            ? "border-border bg-muted/20 opacity-75"
+                            : "border-border hover:border-primary/20 bg-card hover:bg-muted/30"
                         )}
                       >
-                        <div className="min-w-0 flex-1 flex items-center gap-2">
-                          <div className={cn(
-                            "h-7 w-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0",
-                            isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                          )}>
-                            {(tenantNameMap[id] || id)[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-xs font-semibold text-foreground truncate block">{tenantNameMap[id] || id}</span>
-                            <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">{cRole}</span>
+                        {/* Top Line: Header & Actions Menu */}
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            disabled={isDeactivated && !isActive}
+                            onClick={() => handleSwitchCompanyNoReload(id, company.status)}
+                            className="min-w-0 flex-1 flex items-center gap-3 text-left focus:outline-none"
+                          >
+                            <div className={cn(
+                              "h-10 w-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border overflow-hidden",
+                              isActive
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-muted text-muted-foreground border-border"
+                            )}>
+                              {company.logo ? (
+                                <img src={company.logo} alt="Logo" className="h-full w-full object-cover" />
+                              ) : (
+                                (company.name || id)[0].toUpperCase()
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-semibold text-foreground truncate block">{company.name}</span>
+                              <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider block mt-0.5">{cRole}</span>
+                            </div>
+                          </button>
+
+                          {/* Menu button (⋮) */}
+                          <div className="relative shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenActionMenuId(hasActionMenuOpen ? null : id);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {/* Actions Dropdown */}
+                            {hasActionMenuOpen && (
+                              <div className="absolute right-0 mt-1 w-44 rounded-xl border border-border bg-card shadow-lg p-1.5 z-30 animate-in fade-in-50 slide-in-from-top-1 duration-100">
+                                <button
+                                  onClick={() => handleOpenEditCompany(company)}
+                                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] hover:bg-muted text-foreground transition-colors text-left font-medium"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span>Editar Empresa</span>
+                                </button>
+                                
+                                <label className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] hover:bg-muted text-foreground transition-colors text-left font-medium cursor-pointer">
+                                  <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span>Alterar Logo</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleUploadCompanyLogo(e, id)}
+                                    className="hidden"
+                                  />
+                                </label>
+
+                                <button
+                                  onClick={() => handleToggleCompanyStatus(id, company.status || "active")}
+                                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] hover:bg-muted text-foreground transition-colors text-left font-medium"
+                                >
+                                  <Power className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span>{isDeactivated ? "Ativar Empresa" : "Desativar Empresa"}</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleDeleteCompany(id, company.name)}
+                                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 dark:text-red-400 transition-colors text-left font-medium"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                                  <span>Excluir Empresa</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
-                        {isActive && (
-                          <span className="px-2 py-0.5 rounded bg-primary text-primary-foreground text-[8px] font-bold tracking-widest uppercase">
-                            Ativa
-                          </span>
-                        )}
-                      </button>
+
+                        {/* Middle Line: Details info */}
+                        <div className="pt-2 border-t border-border/50 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+                          <div>
+                            <span className="font-semibold uppercase tracking-wider text-[8px] block">CNPJ</span>
+                            <span className="font-medium text-foreground">{company.cnpj || "Sem CNPJ"}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold uppercase tracking-wider text-[8px] block">Usuários</span>
+                            <span className="font-medium text-foreground">1 vinculado</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="font-semibold uppercase tracking-wider text-[8px] block">Última Atualização</span>
+                            <span className="font-medium text-foreground text-[9px]">
+                              {company.updatedAt ? new Date(company.updatedAt).toLocaleDateString() + " " + new Date(company.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Não disponível"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Bottom Line: Status Indicator */}
+                        <div className="flex items-center justify-between pt-1">
+                          {isDeactivated ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400 text-[9px] font-bold uppercase tracking-wider">
+                              Desativada
+                            </span>
+                          ) : isActive ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-primary text-primary-foreground text-[9px] font-bold uppercase tracking-wider">
+                              Ativa
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400 text-[9px] font-bold uppercase tracking-wider">
+                              Disponível
+                            </span>
+                          )}
+
+                          {!isActive && !isDeactivated && (
+                            <button
+                              onClick={() => handleSwitchCompanyNoReload(id, company.status)}
+                              className="text-[10px] text-primary hover:underline font-semibold"
+                            >
+                              Selecionar
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -2065,6 +2387,91 @@ export default function SettingsPage() {
                   className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 disabled:opacity-50"
                 >
                   {loading ? "Criando..." : "Criar Empresa"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 6. MODAL: EDITAR EMPRESA */}
+      {editCompanyModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm p-6 rounded-2xl border border-border bg-card shadow-2xl space-y-5 relative animate-in zoom-in-95 duration-300">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                <Building2 className="h-4.5 w-4.5 text-primary" />
+                <span>Editar Dados da Empresa</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditCompanyModalOpen(false)}
+                className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditCompany} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Razão Social *</label>
+                <input
+                  type="text"
+                  required
+                  value={editCompanyName}
+                  onChange={(e) => setEditCompanyName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Fantasia</label>
+                <input
+                  type="text"
+                  value={editCompanyTradeName}
+                  onChange={(e) => setEditCompanyTradeName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CNPJ</label>
+                <input
+                  type="text"
+                  value={editCompanyCnpj}
+                  onChange={(e) => setEditCompanyCnpj(maskCnpj(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                  maxLength={18}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Situação Operacional</label>
+                <select
+                  value={editCompanyStatus}
+                  onChange={(e) => setEditCompanyStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
+                >
+                  <option value="active">Ativa (Habilitada)</option>
+                  <option value="inactive">Inativa (Desabilitada)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3.5 pt-3 border-t border-border mt-6">
+                <button
+                  type="button"
+                  onClick={() => setEditCompanyModalOpen(false)}
+                  className="flex-1 py-2 border border-border rounded-xl text-xs font-semibold hover:bg-muted transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 disabled:opacity-50"
+                >
+                  {loading ? "Salvando..." : "Salvar Alterações"}
                 </button>
               </div>
             </form>

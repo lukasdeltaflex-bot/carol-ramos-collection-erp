@@ -4,6 +4,11 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/app/providers";
+import { useToast } from "@/context/ToastContext";
+import { useDb } from "@/hooks/useDb";
+import Modal, { ModalFooter } from "@/components/ui/Modal";
+import { updatePassword } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
 import {
   Menu,
   Bell,
@@ -24,6 +29,12 @@ import {
   AlertTriangle,
   Package,
   DollarSign,
+  Upload,
+  Phone,
+  Mail,
+  Lock,
+  Clock,
+  Laptop
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,13 +49,21 @@ export default function Header({
   setIsMobileOpen,
   sidebarOpen,
 }: HeaderProps) {
-  const { profile, tenantId, switchTenant, logout, activeCompany } = useAuth();
+  const { user, profile, tenantId, switchTenant, logout, activeCompany, isMock, updateProfileMock } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { success, error: toastError, info } = useToast();
+  const { updateDoc } = useDb();
 
   // Dropdown States
   const [tenantDropdownOpen, setTenantDropdownOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // Modals States
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Refs for clicking outside to close
   const tenantRef = useRef<HTMLDivElement>(null);
@@ -66,6 +85,127 @@ export default function Header({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // profile form fields
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profilePhoto, setProfilePhoto] = useState("");
+  const [profilePreferences, setProfilePreferences] = useState({
+    language: "pt-BR",
+    notifications: true
+  });
+
+  // password form fields
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  useEffect(() => {
+    if (profile) {
+      setProfileName(profile.displayName || "");
+      setProfileEmail(profile.email || "");
+      setProfilePhone(profile.phone || "");
+      setProfilePhoto(profile.photo || "");
+      if (profile.preferences) {
+        setProfilePreferences({
+          language: profile.preferences.language ?? "pt-BR",
+          notifications: profile.preferences.notifications ?? true
+        });
+      }
+    }
+  }, [profile, profileModalOpen]);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const updatedData = {
+        displayName: profileName,
+        email: profileEmail,
+        phone: profilePhone,
+        photo: profilePhoto,
+        preferences: profilePreferences
+      };
+
+      if (isMock) {
+        const newProfile = {
+          ...profile,
+          ...updatedData
+        } as any;
+        updateProfileMock(newProfile);
+        success("Perfil atualizado", "Suas alterações de perfil foram salvas localmente!");
+      } else {
+        if (user) {
+          await updateDoc("users", user.uid, updatedData);
+          success("Perfil atualizado", "Suas alterações de perfil foram salvas no Firestore!");
+        }
+      }
+      setProfileModalOpen(false);
+    } catch (err: any) {
+      toastError("Erro ao salvar", err.message || "Erro ao atualizar o perfil.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toastError("Senhas não conferem", "A nova senha e a confirmação devem ser iguais.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toastError("Senha muito curta", "A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      if (isMock) {
+        success("Senha alterada", "Sua senha de simulação foi atualizada com sucesso!");
+        setPasswordModalOpen(false);
+      } else {
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          const isGoogleUser = currentUser.providerData.some(p => p.providerId === "google.com");
+          if (isGoogleUser) {
+            toastError("Ação não permitida", "Como você está conectado via Google, sua senha deve ser alterada nas configurações da sua conta Google.");
+            setSaving(false);
+            return;
+          }
+          
+          await updatePassword(currentUser, newPassword);
+          success("Senha alterada", "Sua senha foi alterada com sucesso!");
+          setPasswordModalOpen(false);
+        } else {
+          throw new Error("Usuário não autenticado.");
+        }
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      if (err.code === "auth/requires-recent-login") {
+        toastError("Reautenticação necessária", "Esta operação é sensível e requer login recente. Por favor, faça logout e login novamente para alterar sua senha.");
+      } else {
+        toastError("Erro ao alterar senha", err.message || "Erro desconhecido.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleTenantSwitch = async (id: string) => {
     try {
@@ -309,14 +449,34 @@ export default function Header({
                   </div>
                   {group.items.map((item) => {
                     const Icon = item.icon;
+                    const isModalAction = item.label === "Seu Perfil" || item.label === "Minha Conta" || item.label === "Alterar Senha";
+
+                    if (isModalAction) {
+                      return (
+                        <button
+                          key={item.label}
+                          onClick={() => {
+                            setProfileDropdownOpen(false);
+                            if (item.label === "Seu Perfil") setProfileModalOpen(true);
+                            if (item.label === "Minha Conta") setAccountModalOpen(true);
+                            if (item.label === "Alterar Senha") setPasswordModalOpen(true);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-left font-medium"
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    }
+
                     return (
                       <Link
                         key={item.href}
-                        href={item.href}
+                        href={item.label === "Empresa" ? "/settings" : item.href}
                         onClick={() => setProfileDropdownOpen(false)}
                         className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <span>{item.label}</span>
                       </Link>
                     );
@@ -343,6 +503,263 @@ export default function Header({
           )}
         </div>
       </div>
+      {/* 1. Modal: Seu Perfil */}
+      <Modal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        title="Seu Perfil de Usuário"
+        description="Atualize suas informações pessoais, foto de perfil e preferências."
+        size="md"
+      >
+        <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
+          {/* Foto de Perfil */}
+          <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-muted/30">
+            <div className="relative h-16 w-16 rounded-2xl bg-primary flex items-center justify-center font-bold text-primary-foreground text-xl overflow-hidden shrink-0 border border-border">
+              {profilePhoto ? (
+                <img src={profilePhoto} alt="Avatar" className="h-full w-full object-cover" />
+              ) : (
+                userInitials
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Foto do Perfil</span>
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold transition-all">
+                <Upload className="h-3.5 w-3.5" />
+                <span>Escolher Imagem</span>
+                <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+              </label>
+            </div>
+          </div>
+
+          {/* Nome */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Completo *</label>
+            <input
+              type="text"
+              required
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+
+          {/* E-mail */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">E-mail de Contato *</label>
+            <input
+              type="email"
+              required
+              value={profileEmail}
+              onChange={(e) => setProfileEmail(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+
+          {/* Telefone */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Telefone / WhatsApp</label>
+            <input
+              type="text"
+              value={profilePhone}
+              onChange={(e) => setProfilePhone(e.target.value)}
+              placeholder="(00) 00000-0000"
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+
+          {/* Preferências */}
+          <div className="p-3 rounded-xl border border-border bg-muted/10 space-y-3">
+            <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Preferências de Conta</span>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-foreground font-medium">Idioma Principal</span>
+              <select
+                value={profilePreferences.language}
+                onChange={(e) => setProfilePreferences(prev => ({ ...prev, language: e.target.value }))}
+                className="px-2 py-1 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="pt-BR">Português (BR)</option>
+                <option value="en-US">English (US)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-foreground font-medium">Notificações por E-mail</span>
+              <input
+                type="checkbox"
+                checked={profilePreferences.notifications}
+                onChange={(e) => setProfilePreferences(prev => ({ ...prev, notifications: e.target.checked }))}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+            </div>
+          </div>
+
+          <ModalFooter>
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(false)}
+              className="px-3.5 py-2 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-semibold disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* 2. Modal: Minha Conta */}
+      <Modal
+        open={accountModalOpen}
+        onClose={() => setAccountModalOpen(false)}
+        title="Detalhes da Sua Conta"
+        description="Informações sobre o plano, credenciais e sessões operacionais ativas."
+        size="md"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Informações Gerais */}
+          <div className="grid grid-cols-2 gap-4 p-4 rounded-xl border border-border bg-muted/20">
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Plano Ativo</span>
+              <span className="px-2 py-0.5 rounded-full bg-rosegold-100 text-rosegold-700 dark:bg-rosegold-950/40 dark:text-rosegold-300 border border-rosegold-200/50 text-[10px] font-bold">
+                Plano Premium Pro
+              </span>
+            </div>
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Nível de Permissão</span>
+              <span className="text-xs font-bold text-foreground capitalize">
+                {profile?.tenants?.[tenantId || ""]?.role || "owner"}
+              </span>
+            </div>
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Data de Criação</span>
+              <span className="text-xs text-foreground font-medium">
+                {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString() : "Não disponível"}
+              </span>
+            </div>
+            <div className="space-y-1">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Último Acesso</span>
+              <span className="text-xs text-foreground font-medium">
+                {new Date().toLocaleDateString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Sessões Ativas */}
+          <div className="space-y-2">
+            <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Sessões Ativas</span>
+            <div className="p-3.5 rounded-xl border border-border bg-card/50 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Laptop className="h-5 w-5 text-primary shrink-0" />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-foreground block">Navegador da Web</span>
+                  <span className="text-[10px] text-muted-foreground block">São Paulo, BR • IP: 186.221.X.X</span>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400 text-[8px] font-bold tracking-widest uppercase">
+                Esta Sessão
+              </span>
+            </div>
+          </div>
+
+          <ModalFooter>
+            <button
+              onClick={() => setAccountModalOpen(false)}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-semibold"
+            >
+              Fechar
+            </button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      {/* 3. Modal: Alterar Senha */}
+      <Modal
+        open={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+        title="Alterar Sua Senha"
+        description="Defina uma nova senha para acessar o sistema com segurança."
+        size="md"
+      >
+        <form onSubmit={handleSavePassword} className="space-y-4 text-xs">
+          {/* Senha Atual */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Senha Atual</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
+                <Lock className="h-4.5 w-4.5" />
+              </span>
+              <input
+                type="password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="••••••"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </div>
+
+          {/* Nova Senha */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nova Senha</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
+                <Key className="h-4.5 w-4.5" />
+              </span>
+              <input
+                type="password"
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </div>
+
+          {/* Confirmar Nova Senha */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Confirmar Nova Senha</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
+                <Key className="h-4.5 w-4.5" />
+              </span>
+              <input
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repita a nova senha"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </div>
+
+          <ModalFooter>
+            <button
+              type="button"
+              onClick={() => setPasswordModalOpen(false)}
+              className="px-3.5 py-2 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/95 text-xs font-semibold disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Alterar Senha"}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
     </header>
   );
 }
