@@ -47,6 +47,12 @@ export default function ContactsPage() {
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -262,6 +268,12 @@ export default function ContactsPage() {
     c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const paginatedCustomers = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredCustomers.slice(start, start + itemsPerPage);
+  }, [filteredCustomers, currentPage, itemsPerPage]);
+
   const getSourceBadgeStyle = (src: string) => {
     switch (src) {
       case "instagram": return "bg-pink-100 text-pink-700 dark:bg-pink-950/20 dark:text-pink-400 border-pink-200/50";
@@ -335,12 +347,12 @@ export default function ContactsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredCustomers.length === 0 ? (
+                {paginatedCustomers.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((c) => (
+                  paginatedCustomers.map((c) => (
                     <tr key={c.id} className="hover:bg-muted/10 transition-colors">
                       <td className="p-4">
                         <div className="font-semibold text-foreground">{c.name}</div>
@@ -416,6 +428,31 @@ export default function ContactsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
+            <span className="text-xs text-muted-foreground">
+              Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredCustomers.length} itens)
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                Anterior
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                Próximo
+              </button>
+            </div>
           </div>
         )}
       </div>

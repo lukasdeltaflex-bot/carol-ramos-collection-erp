@@ -102,6 +102,12 @@ export default function FinancePage() {
 
   const [activeTab, setActiveTab] = useState<"cashflow" | "accounts" | "payable" | "receivable" | "purchases" | "dre">("cashflow");
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchQuery]);
   const [loading, setLoading] = useState(true);
 
   // DB Lists
@@ -637,21 +643,54 @@ export default function FinancePage() {
     };
   };
 
-  const dre = getDREData();
+  const dre = React.useMemo(() => getDREData(), [transactions]);
 
-  // Filtragem local por busca
-  const filteredTransactions = transactions.filter(t =>
-    t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filtragem local por busca (Memoizado)
+  const filteredTransactions = React.useMemo(() => {
+    return transactions.filter(t =>
+      t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.category.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [transactions, searchQuery]);
 
-  const filteredPayables = payables.filter(p =>
-    p.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPayables = React.useMemo(() => {
+    return payables.filter(p =>
+      p.description.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [payables, searchQuery]);
 
-  const filteredReceivables = receivables.filter(r =>
-    r.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredReceivables = React.useMemo(() => {
+    return receivables.filter(r =>
+      r.description.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [receivables, searchQuery]);
+
+  const currentItemsCount = activeTab === "cashflow" ? filteredTransactions.length :
+                            activeTab === "payable" ? filteredPayables.length :
+                            activeTab === "receivable" ? filteredReceivables.length :
+                            activeTab === "purchases" ? purchases.length : 0;
+
+  const totalPages = Math.ceil(currentItemsCount / itemsPerPage);
+
+  const paginatedTransactions = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredTransactions.slice(start, start + itemsPerPage);
+  }, [filteredTransactions, currentPage, itemsPerPage]);
+
+  const paginatedPayables = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredPayables.slice(start, start + itemsPerPage);
+  }, [filteredPayables, currentPage, itemsPerPage]);
+
+  const paginatedReceivables = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredReceivables.slice(start, start + itemsPerPage);
+  }, [filteredReceivables, currentPage, itemsPerPage]);
+
+  const paginatedPurchases = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return purchases.slice(start, start + itemsPerPage);
+  }, [purchases, currentPage, itemsPerPage]);
 
   const getCategoryLabel = (cat: string) => {
     switch (cat) {
@@ -775,12 +814,12 @@ export default function FinancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {filteredTransactions.length === 0 ? (
+                    {paginatedTransactions.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhum lançamento financeiro registrado.</td>
                       </tr>
                     ) : (
-                      filteredTransactions.map((t) => (
+                      paginatedTransactions.map((t) => (
                         <tr key={t.id} className="hover:bg-muted/10 transition-colors">
                           <td className="p-4">
                             <div className="flex items-center gap-2">
@@ -878,12 +917,12 @@ export default function FinancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {filteredPayables.length === 0 ? (
+                    {paginatedPayables.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma conta a pagar cadastrada.</td>
                       </tr>
                     ) : (
-                      filteredPayables.map((p) => {
+                      paginatedPayables.map((p) => {
                         const isOverdue = new Date(p.dueDate) < new Date() && p.status === "pending";
                         return (
                           <tr key={p.id} className="hover:bg-muted/10 transition-colors">
@@ -963,12 +1002,12 @@ export default function FinancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {filteredReceivables.length === 0 ? (
+                    {paginatedReceivables.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma conta a receber cadastrada.</td>
                       </tr>
                     ) : (
-                      filteredReceivables.map((r) => {
+                      paginatedReceivables.map((r) => {
                         const isOverdue = new Date(r.dueDate) < new Date() && r.status === "pending";
                         return (
                           <tr key={r.id} className="hover:bg-muted/10 transition-colors">
@@ -1041,12 +1080,12 @@ export default function FinancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {purchases.length === 0 ? (
+                    {paginatedPurchases.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma ordem de compra registrada.</td>
                       </tr>
                     ) : (
-                      purchases.map((p) => (
+                      paginatedPurchases.map((p) => (
                         <tr key={p.id} className="hover:bg-muted/10 transition-colors">
                           <td className="p-4 font-semibold text-foreground">
                             {suppliers.find(s => s.id === p.supplierId)?.name || "Fornecedor"}
@@ -1117,6 +1156,31 @@ export default function FinancePage() {
                     <span>LUCRO LÍQUIDO DO PERÍODO</span>
                     <span className="font-mono">{formatCurrency(dre.netIncome)}</span>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {activeTab !== "accounts" && activeTab !== "dre" && totalPages > 1 && (
+              <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
+                <span className="text-xs text-muted-foreground">
+                  Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({currentItemsCount} itens)
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Próximo
+                  </button>
                 </div>
               </div>
             )}

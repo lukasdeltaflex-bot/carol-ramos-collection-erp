@@ -131,15 +131,15 @@ export default function Dashboard() {
     };
   };
 
-  const todayStats = getTodayStats();
+  const todayStats = React.useMemo(() => getTodayStats(), [sales]);
 
   // 2. Itens Críticos (Estoque crítico ou abaixo do mínimo de reposição)
-  const criticalItemsCount = products.filter(p => p.currentStock <= 5).length;
+  const criticalItemsCount = React.useMemo(() => products.filter(p => p.currentStock <= 5).length, [products]);
 
   // 3. Contas a Receber Pendentes
-  const totalReceivables = receivables
+  const totalReceivables = React.useMemo(() => receivables
     .filter(r => r.status === "pending")
-    .reduce((sum, r) => sum + r.amount, 0);
+    .reduce((sum, r) => sum + r.amount, 0), [receivables]);
 
   // 4. Montar Gráfico de Evolução (Últimos 7 dias)
   const getChartData = () => {
@@ -162,7 +162,7 @@ export default function Dashboard() {
     return data;
   };
 
-  const chartData = getChartData();
+  const chartData = React.useMemo(() => getChartData(), [sales]);
 
   // 5. Top 5 Produtos Mais Vendidos
   const getTopProducts = () => {
@@ -182,17 +182,18 @@ export default function Dashboard() {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
   };
-  const topProducts = getTopProducts();
+  
+  const topProducts = React.useMemo(() => getTopProducts(), [sales]);
 
   // 6. Últimas 5 Vendas Dinâmicas
-  const recentSales = [...sales]
+  const recentSales = React.useMemo(() => [...sales]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
+    .slice(0, 5), [sales]);
 
   // 7. Ticket Médio
-  const ticketMedio = sales.length > 0
+  const ticketMedio = React.useMemo(() => sales.length > 0
     ? sales.reduce((sum, s) => sum + s.total, 0) / sales.length
-    : 0;
+    : 0, [sales]);
 
   // Helpers para Badges
   const getChannelStyle = (channel: string) => {

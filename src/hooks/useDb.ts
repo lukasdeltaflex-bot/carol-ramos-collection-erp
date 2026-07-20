@@ -12,10 +12,14 @@ import {
   getDoc as firestoreGetDoc, 
   query, 
   where,
-  Timestamp,
-  orderBy
+  Timestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+
+// Global cache objects for query deduplication and results caching to optimize performance
+const activeQueries: Record<string, Promise<any> | undefined> = {};
+const dataCache: Record<string, { data: any[]; timestamp: number } | undefined> = {};
+const CACHE_TTL = 10000; // 10 seconds cache time-to-live
 
 export function useDb() {
   const { user, tenantId, isMock } = useAuth();
@@ -89,9 +93,17 @@ export function useDb() {
     }
   };
 
+  // Helper to invalidate cache for a collection
+  const invalidateCache = useCallback((collectionName: string) => {
+    const key = `${collectionName}_${tenantId || "shared"}`;
+    delete dataCache[key];
+    delete activeQueries[key];
+  }, [tenantId]);
+
   // 1. Criar Documento
   const createDoc = useCallback(async (collectionName: string, data: any) => {
     const finalData = injectBaseFields(data, "create");
+    invalidateCache(collectionName);
 
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
@@ -120,11 +132,12 @@ export function useDb() {
     await logAudit("create", collectionName, docRef.id, null, finalData);
     
     return { id: docRef.id, ...finalData };
-  }, [user, tenantId, isMock]);
+  }, [user, tenantId, isMock, invalidateCache]);
 
   // 2. Atualizar Documento
   const updateDoc = useCallback(async (collectionName: string, docId: string, data: any) => {
     let previousData: any = null;
+    invalidateCache(collectionName);
 
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
@@ -161,11 +174,12 @@ export function useDb() {
     await logAudit("update", collectionName, docId, previousData, finalData);
     
     return { id: docId, ...finalData };
-  }, [user, tenantId, isMock]);
+  }, [user, tenantId, isMock, invalidateCache]);
 
   // 3. Deletar Documento
   const deleteDoc = useCallback(async (collectionName: string, docId: string) => {
     let previousData: any = null;
+    invalidateCache(collectionName);
 
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
@@ -196,30 +210,57 @@ export function useDb() {
     // Registrar log de auditoria
     await logAudit("delete", collectionName, docId, previousData, null);
     return true;
-  }, [user, tenantId, isMock]);
+  }, [user, tenantId, isMock, invalidateCache]);
 
-  // 4. Obter Todos os Documentos do Tenant
+  // 4. Obter Todos os Documentos do Tenant (Com cache e deduplicação de requisições)
   const getDocs = useCallback(async (collectionName: string) => {
-    if (isMock) {
-      const storageKey = `mock_db_${collectionName}`;
-      const existing = localStorage.getItem(storageKey);
-      const list = existing ? JSON.parse(existing) : [];
-      // Filtrar por tenantId
-      const targetTenant = tenantId || "shared";
-      return list.filter((item: any) => item.tenantId === targetTenant);
+    const targetTenant = tenantId || "shared";
+    const cacheKey = `${collectionName}_${targetTenant}`;
+
+    // Check in-memory cache
+    if (dataCache[cacheKey] && (Date.now() - dataCache[cacheKey].timestamp < CACHE_TTL)) {
+      return dataCache[cacheKey].data;
     }
 
-    // Firestore real
-    const colRef = collection(db, collectionName);
-    const q = query(
-      colRef, 
-      where("tenantId", "==", tenantId || "shared")
-    );
-    const snap = await firestoreGetDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Check if there is already an active promise for this request
+    if (activeQueries[cacheKey]) {
+      return activeQueries[cacheKey];
+    }
+
+    // Define query promise
+    const fetchPromise = (async () => {
+      if (isMock) {
+        const storageKey = `mock_db_${collectionName}`;
+        const existing = localStorage.getItem(storageKey);
+        const list = existing ? JSON.parse(existing) : [];
+        return list.filter((item: any) => item.tenantId === targetTenant);
+      }
+
+      // Firestore real
+      const colRef = collection(db, collectionName);
+      const q = query(
+        colRef, 
+        where("tenantId", "==", targetTenant)
+      );
+      const snap = await firestoreGetDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    })();
+
+    activeQueries[cacheKey] = fetchPromise;
+
+    try {
+      const data = await fetchPromise;
+      dataCache[cacheKey] = {
+        data,
+        timestamp: Date.now()
+      };
+      return data;
+    } finally {
+      delete activeQueries[cacheKey];
+    }
   }, [tenantId, isMock]);
 
-  // 5. Obter Documento por ID
+  // 5. Obter Documento por ID (Com cache simples de item)
   const getDocById = useCallback(async (collectionName: string, docId: string) => {
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
@@ -242,5 +283,6 @@ export function useDb() {
     deleteDoc,
     getDocs,
     getDocById,
+    invalidateCache
   };
 }

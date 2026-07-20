@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { 
   User as FirebaseUser, 
   onAuthStateChanged,
@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [tenantId, isMock]);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     if (isMock || isFirebasePlaceholder || email === "admin@carolramos.com.br") {
       // Simulação de login
       if (email === "admin@carolramos.com.br" && password === "123456") {
@@ -243,9 +243,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Login real
     await signInWithEmailAndPassword(auth, email, password);
-  };
+  }, [isMock, isFirebasePlaceholder]);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = useCallback(async () => {
     if (isMock || isFirebasePlaceholder) {
       const mockUser = {
         uid: MOCK_PROFILE.uid,
@@ -266,9 +266,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
-  };
+  }, [isMock, isFirebasePlaceholder]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (isMock) {
       localStorage.removeItem("mock_auth_session");
       setUser(null);
@@ -278,9 +278,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     await signOut(auth);
-  };
+  }, [isMock]);
 
-  const switchTenant = async (newTenantId: string) => {
+  const switchTenant = useCallback(async (newTenantId: string) => {
     if (!profile) return;
     
     if (!profile.tenants[newTenantId]) {
@@ -304,13 +304,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Firestore update
-    const userDocRef = doc(db, "users", user.uid);
-    await updateDoc(userDocRef, {
-      activeTenantId: newTenantId
-    });
-  };
+    if (user) {
+      const userDocRef = doc(db, "users", user.uid);
+      await updateDoc(userDocRef, {
+        activeTenantId: newTenantId
+      });
+    }
+  }, [profile, isMock, user]);
 
-  const createCompany = async (name: string, cnpj: string) => {
+  const createCompany = useCallback(async (name: string, cnpj: string) => {
     if (!profile) throw new Error("Usuário não autenticado.");
 
     // Gerar slug simples para ID do tenant
@@ -363,14 +365,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setDoc(compDocRef, newCompanyObj);
 
     // Update user profile tenants
-    const userDocRef = doc(db, "users", user.uid);
-    await updateDoc(userDocRef, {
-      tenants: updatedTenants,
-      activeTenantId: uniqueTenantId
-    });
+    if (user) {
+      const userDocRef = doc(db, "users", user.uid);
+      await updateDoc(userDocRef, {
+        tenants: updatedTenants,
+        activeTenantId: uniqueTenantId
+      });
+    }
 
     return uniqueTenantId;
-  };
+  }, [profile, isMock, user]);
 
   return (
     <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany }}>

@@ -44,6 +44,12 @@ export default function AccountsPayablePage() {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Edit/Create Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -304,6 +310,12 @@ export default function AccountsPayablePage() {
     return matchesSearch;
   });
 
+  const totalPages = Math.ceil(filteredPayables.length / itemsPerPage);
+  const paginatedPayables = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredPayables.slice(start, start + itemsPerPage);
+  }, [filteredPayables, currentPage, itemsPerPage]);
+
   const totalPayables = payables.reduce((acc, p) => p.status === "pending" ? acc + p.amount : acc, 0);
   const totalPaid = payables.reduce((acc, p) => p.status === "paid" ? acc + (p.paidAmount || p.amount) : acc, 0);
   const totalOverdue = payables.reduce((acc, p) => {
@@ -405,7 +417,7 @@ export default function AccountsPayablePage() {
           <SkeletonCard />
           <SkeletonCard />
         </div>
-      ) : filteredPayables.length === 0 ? (
+      ) : paginatedPayables.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-border bg-card/20 space-y-3">
           <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto" />
           <p className="text-sm font-medium text-muted-foreground">Nenhuma conta a pagar encontrada.</p>
@@ -426,7 +438,7 @@ export default function AccountsPayablePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredPayables.map((pay) => {
+                {paginatedPayables.map((pay) => {
                   const sDate = getNormalizeDate(pay.dueDate);
                   sDate.setHours(0,0,0,0);
                   const isOverdue = pay.status === "pending" && sDate < now;
@@ -489,6 +501,31 @@ export default function AccountsPayablePage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
+              <span className="text-xs text-muted-foreground">
+                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredPayables.length} itens)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

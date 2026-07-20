@@ -44,6 +44,12 @@ export default function AccountsReceivablePage() {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Edit/Create Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -308,6 +314,12 @@ export default function AccountsReceivablePage() {
     return matchesSearch;
   });
 
+  const totalPages = Math.ceil(filteredReceivables.length / itemsPerPage);
+  const paginatedReceivables = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredReceivables.slice(start, start + itemsPerPage);
+  }, [filteredReceivables, currentPage, itemsPerPage]);
+
   const totalReceivables = receivables.reduce((acc, r) => r.status === "pending" ? acc + r.amount : acc, 0);
   const totalReceived = receivables.reduce((acc, r) => r.status === "paid" ? acc + (r.receivedAmount || r.amount) : acc, 0);
   const totalOverdue = receivables.reduce((acc, r) => {
@@ -409,7 +421,7 @@ export default function AccountsReceivablePage() {
           <SkeletonCard />
           <SkeletonCard />
         </div>
-      ) : filteredReceivables.length === 0 ? (
+      ) : paginatedReceivables.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-border bg-card/20 space-y-3">
           <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto" />
           <p className="text-sm font-medium text-muted-foreground">Nenhuma conta a receber encontrada.</p>
@@ -430,7 +442,7 @@ export default function AccountsReceivablePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredReceivables.map((rec) => {
+                {paginatedReceivables.map((rec) => {
                   const sDate = getNormalizeDate(rec.dueDate);
                   sDate.setHours(0,0,0,0);
                   const isOverdue = rec.status === "pending" && sDate < now;
@@ -493,6 +505,31 @@ export default function AccountsReceivablePage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
+              <span className="text-xs text-muted-foreground">
+                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredReceivables.length} itens)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

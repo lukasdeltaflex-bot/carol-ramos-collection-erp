@@ -341,6 +341,12 @@ export default function SuppliersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, categoryFilter]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -411,6 +417,12 @@ export default function SuppliersPage() {
     const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
     return matchesSearch && matchesStatus && matchesCategory;
   });
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedSuppliers = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filtered.slice(start, start + itemsPerPage);
+  }, [filtered, currentPage, itemsPerPage]);
 
   function openNew() {
     setEditingId(null);
@@ -726,8 +738,35 @@ export default function SuppliersPage() {
           <button onClick={() => { setSearch(""); setStatusFilter("all"); setCategoryFilter("all"); }} className="text-xs text-primary hover:underline font-semibold">Limpar Filtros</button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((s) => <SupplierCard key={s.id} supplier={s} onEdit={openEdit} onDelete={handleDelete} />)}
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paginatedSuppliers.map((s) => <SupplierCard key={s.id} supplier={s} onEdit={openEdit} onDelete={handleDelete} />)}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-4 border border-border bg-card/40 rounded-xl select-none">
+              <span className="text-xs text-muted-foreground">
+                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filtered.length} itens)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

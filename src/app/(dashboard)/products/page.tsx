@@ -126,6 +126,12 @@ export default function ProductsPage() {
   const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, stockFilter]);
 
   // DB Lists
   const [products, setProducts] = useState<Product[]>([]);
@@ -459,9 +465,26 @@ export default function ProductsPage() {
     return matchQuery && matchStock;
   });
 
-  // Mapeamento de Categoria e Marca para exibição
-  const categoryMap = categories.reduce((acc, cat) => ({ ...acc, [cat.id]: cat.name }), {} as Record<string, string>);
-  const brandMap = brands.reduce((acc, br) => ({ ...acc, [br.id]: br.name }), {} as Record<string, string>);
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const paginatedProducts = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(start, start + itemsPerPage);
+  }, [filteredProducts, currentPage, itemsPerPage]);
+
+  // Mapeamento de Categoria e Marca para exibição (Otimizado)
+  const categoryMap = React.useMemo(() => {
+    return categories.reduce((acc, cat) => {
+      acc[cat.id] = cat.name;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [categories]);
+
+  const brandMap = React.useMemo(() => {
+    return brands.reduce((acc, br) => {
+      acc[br.id] = br.name;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [brands]);
 
   return (
     <div className="space-y-6">
@@ -568,12 +591,12 @@ export default function ProductsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {filteredProducts.length === 0 ? (
+                  {paginatedProducts.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum produto cadastrado ou encontrado.</td>
                     </tr>
                   ) : (
-                    filteredProducts.map((p) => {
+                    paginatedProducts.map((p) => {
                       const isLowStock = p.availableStock <= p.minStock;
                       return (
                         <tr key={p.id} className="hover:bg-muted/10 transition-colors">
@@ -654,6 +677,31 @@ export default function ProductsPage() {
                   )}
                 </tbody>
               </table>
+            )}
+
+            {/* Pagination Controls */}
+            {activeTab === "products" && totalPages > 1 && (
+              <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
+                <span className="text-xs text-muted-foreground">
+                  Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredProducts.length} itens)
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Próximo
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Listagem Auxiliares (Categorias / Marcas / Locais) */}
