@@ -1,6 +1,6 @@
 import { getApps, initializeApp, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -16,24 +16,6 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
-
-// Initialize Firestore safely checking if we are in browser and avoiding duplicate init errors
-let firestoreDb;
-if (typeof window !== "undefined") {
-  try {
-    firestoreDb = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    });
-  } catch (err) {
-    console.warn("Firestore already initialized, retrieving existing instance.", err);
-    firestoreDb = getFirestore(app);
-  }
-} else {
-  firestoreDb = getFirestore(app);
-}
-
-export const db = firestoreDb;
+export const db = getFirestore(app);
 export const storage = getStorage(app);
 export default app;

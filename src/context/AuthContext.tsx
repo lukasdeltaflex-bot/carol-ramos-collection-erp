@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // 1. Verificar se há sessão mock salva no localStorage
     const savedMockSession = localStorage.getItem("mock_auth_session");
-    if (savedMockSession && isFirebasePlaceholder) {
+    if (savedMockSession) {
       try {
         const parsed = JSON.parse(savedMockSession);
         setUser({ uid: parsed.uid, email: parsed.email, displayName: parsed.displayName });
