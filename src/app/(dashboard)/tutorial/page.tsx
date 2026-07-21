@@ -176,6 +176,25 @@ const GUIDES: Guide[] = [
     ],
   },
   {
+    id: "notifications",
+    title: "Central de Notificações & Sino",
+    category: "Recursos",
+    icon: Bell,
+    color: "text-rose-500 bg-rose-50 dark:bg-rose-950/30",
+    steps: [
+      { step: 1, title: "Sino do Cabeçalho", desc: "No canto superior direito, o ícone de sino exibe um contador numérico em vermelho com o total de notificações não lidas." },
+      { step: 2, title: "Visualizar Notificações Rápidas", desc: "Clique no sino para abrir o painel com alertas recentes de estoque baixo, contas a vencer e integrações." },
+      { step: 3, title: "Marcar Todas como Lidas", desc: "Clique em 'Marcar todas como lidas' no topo do painel do sino ou na Central de Notificações. O contador zerará imediatamente e todas as notificações perderão o destaque de cor." },
+      { step: 4, title: "Marcar Notificação Individual", desc: "Clique em qualquer notificação individual no painel ou na central para marcá-la como lida." },
+      { step: 5, title: "Histórico & Configuração SMTP", desc: "Acesse 'Notificações & E-mails' no menu lateral para visualizar o histórico completo, criar modelos de e-mail e configurar seu servidor SMTP." },
+    ],
+    faqs: [
+      { question: "O que acontece ao clicar em 'Marcar todas como lidas'?", answer: "Todas as notificações não lidas da sua empresa são atualizadas no Firestore com status 'read: true' e data/hora de leitura, zerando instantaneamente o badge do sino." },
+      { question: "As notificações voltam como não lidas após atualizar a página?", answer: "Não. A leitura é gravada de forma persistente no banco de dados Firestore e sincronizada com o cache local." },
+      { question: "Como sei se chegou uma notificação nova?", answer: "Sempre que um novo alerta é gerado (ex.: estoque crítico ou conta pendente), um contador numérico pulsante em vermelho aparecerá sobre o sino." },
+    ],
+  },
+  {
     id: "suppliers",
     title: "Fornecedores",
     category: "Módulos",

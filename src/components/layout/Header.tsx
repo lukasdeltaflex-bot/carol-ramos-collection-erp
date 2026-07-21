@@ -52,7 +52,7 @@ export default function Header({
   const { user, profile, tenantId, switchTenant, logout, activeCompany, isMock, updateProfileMock } = useAuth();
   const { theme, setTheme } = useTheme();
   const { success, error: toastError, info } = useToast();
-  const { updateDoc } = useDb();
+  const { getDocs, createDoc, updateDoc, invalidateCache } = useDb();
 
   // Dropdown States
   const [tenantDropdownOpen, setTenantDropdownOpen] = useState(false);
@@ -217,12 +217,54 @@ export default function Header({
     }
   };
 
-  // Mock Notifications
-  const mockNotifications = [
-    { id: 1, title: "Estoque Baixo", desc: "Body Splash Carol Ramos Collection com menos de 5 un.", type: "warning", time: "10 min atrás", icon: Package },
-    { id: 2, title: "Fatura Pendente", desc: "Fornecedor Natura vence amanhã: R$ 850,00", type: "alert", time: "2 horas atrás", icon: DollarSign },
-    { id: 3, title: "Nova Integração", desc: "Shopee conectada com sucesso", type: "info", time: "1 dia atrás", icon: Sparkles },
-  ];
+  // System Notifications Real State & Handler
+  const [notificationsList, setNotificationsList] = useState<any[]>([]);
+
+  const loadHeaderNotifications = async () => {
+    try {
+      let notifs = await getDocs("system_notifications");
+      let list = (notifs as any[]) || [];
+      if (list.length === 0) {
+        const initial = [
+          { title: "Estoque Baixo", message: "Body Splash Carol Ramos Collection com menos de 5 un.", type: "stock", category: "stock", read: false, createdAt: new Date().toISOString() },
+          { title: "Fatura Pendente", message: "Fornecedor Natura vence amanhã: R$ 850,00", type: "financial", category: "financial", read: false, createdAt: new Date().toISOString() },
+          { title: "Nova Integração", message: "Shopee conectada com sucesso", type: "system", category: "system", read: false, createdAt: new Date().toISOString() }
+        ];
+        for (const item of initial) {
+          await createDoc("system_notifications", item);
+        }
+        notifs = await getDocs("system_notifications");
+        list = (notifs as any[]) || [];
+      }
+      setNotificationsList(list);
+    } catch (e) {
+      console.error("Erro ao carregar notificações no header:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (tenantId) {
+      loadHeaderNotifications();
+    }
+  }, [tenantId, notificationsOpen]);
+
+  const handleHeaderMarkAllRead = async () => {
+    try {
+      const unread = notificationsList.filter(n => !n.read);
+      if (unread.length === 0) {
+        success("Tudo em dia!", "Todas as notificações já estão marcadas como lidas.");
+        return;
+      }
+      await Promise.all(unread.map(n => updateDoc("system_notifications", n.id, { read: true, readAt: new Date().toISOString() })));
+      invalidateCache("system_notifications");
+      setNotificationsList(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
+      success("Notificações Atualizadas", "Todas as notificações foram marcadas como lidas.");
+    } catch (err: any) {
+      toastError("Erro ao atualizar", err.message || "Erro ao marcar notificações como lidas.");
+    }
+  };
+
+  const unreadHeaderCount = notificationsList.filter(n => !n.read).length;
 
   // Map tenant keys to display names
   const tenantNameMap: Record<string, string> = {
@@ -354,41 +396,78 @@ export default function Header({
             aria-label="Notificações"
           >
             <Bell className="h-4.5 w-4.5" />
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
+            {unreadHeaderCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-extrabold text-primary-foreground shadow-xs animate-pulse">
+                {unreadHeaderCount}
+              </span>
+            )}
           </button>
 
           {/* Notifications Panel */}
           {notificationsOpen && (
             <div className="absolute right-0 mt-2 w-80 rounded-xl border border-border bg-card shadow-xl p-0 z-50 animate-in fade-in-50 slide-in-from-top-2 duration-150 overflow-hidden">
               <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/30">
-                <span className="text-xs font-semibold text-foreground">Notificações</span>
-                <button className="text-[10px] text-primary font-semibold hover:underline">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-foreground">Notificações</span>
+                  {unreadHeaderCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                      {unreadHeaderCount} não lida(s)
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleHeaderMarkAllRead}
+                  className="text-[10px] text-primary font-bold hover:underline"
+                >
                   Marcar todas como lidas
                 </button>
               </div>
               <div className="max-h-72 overflow-y-auto">
-                {mockNotifications.map((notif) => {
-                  const Icon = notif.icon;
+                {notificationsList.map((notif) => {
+                  const isUnread = !notif.read;
                   return (
-                    <div key={notif.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors border-b border-border/50 last:border-0">
+                    <div
+                      key={notif.id}
+                      onClick={async () => {
+                        if (isUnread) {
+                          await updateDoc("system_notifications", notif.id, { read: true, readAt: new Date().toISOString() });
+                          invalidateCache("system_notifications");
+                          setNotificationsList(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+                        }
+                      }}
+                      className={cn(
+                        "flex items-start gap-3 px-4 py-3 transition-colors border-b border-border/50 last:border-0 cursor-pointer",
+                        isUnread ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/30 opacity-75"
+                      )}
+                    >
                       <div className={cn(
                         "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
-                        notif.type === "warning" && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-                        notif.type === "alert" && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-                        notif.type === "info" && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+                        notif.type === "stock" && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+                        notif.type === "financial" && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+                        "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
                       )}>
-                        <Icon className="h-3.5 w-3.5" />
+                        <Bell className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-foreground truncate">{notif.title}</span>
-                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">{notif.time}</span>
+                          <span className={cn("text-xs font-semibold truncate", isUnread ? "text-foreground font-bold" : "text-muted-foreground")}>
+                            {notif.title}
+                          </span>
+                          {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />}
                         </div>
-                        <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{notif.desc}</p>
+                        <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                          {notif.message || notif.desc}
+                        </p>
                       </div>
                     </div>
                   );
                 })}
+                {notificationsList.length === 0 && (
+                  <div className="p-6 text-center text-xs text-muted-foreground italic">
+                    Nenhuma notificação no momento.
+                  </div>
+                )}
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-muted/20">
                 <Link

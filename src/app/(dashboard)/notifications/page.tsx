@@ -66,7 +66,7 @@ const INITIAL_TEMPLATES: Partial<EmailTemplate>[] = [
 
 export default function NotificationsPage() {
   const { tenantId, user, activeCompany } = useAuth();
-  const { getDocs, createDoc, updateDoc, deleteDoc } = useDb();
+  const { getDocs, createDoc, updateDoc, deleteDoc, invalidateCache } = useDb();
   const { success, error: toastError } = useToast();
 
   const [activeTab, setActiveTab] = useState<"notifications" | "settings" | "templates">("notifications");
@@ -169,8 +169,9 @@ export default function NotificationsPage() {
   // Mark single read
   const handleMarkAsRead = async (id: string) => {
     try {
-      await updateDoc("system_notifications", id, { read: true });
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      await updateDoc("system_notifications", id, { read: true, readAt: new Date().toISOString() });
+      invalidateCache("system_notifications");
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true, readAt: new Date().toISOString() } : n));
     } catch (e) {
       console.error(e);
     }
@@ -179,11 +180,17 @@ export default function NotificationsPage() {
   // Mark all read
   const handleMarkAllRead = async () => {
     try {
-      await Promise.all(notifications.filter(n => !n.read).map(n => updateDoc("system_notifications", n.id, { read: true })));
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      success("Notificações Atualizadas", "Todas as notificações foram marcadas como lidas.");
+      const unreadList = notifications.filter(n => !n.read);
+      if (unreadList.length === 0) {
+        success("Tudo em dia!", "Todas as notificações já estão marcadas como lidas.");
+        return;
+      }
+      await Promise.all(unreadList.map(n => updateDoc("system_notifications", n.id, { read: true, readAt: new Date().toISOString() })));
+      invalidateCache("system_notifications");
+      setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
+      success("Notificações Atualizadas", "Todas as notificações foram marcadas como lidas com sucesso.");
     } catch (e: any) {
-      toastError("Erro", e.message);
+      toastError("Erro ao atualizar", e.message);
     }
   };
 
