@@ -130,13 +130,18 @@ export default function ProductsPage() {
 
   const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
   const [searchQuery, setSearchQuery] = useState("");
-  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
+  const itemsPerPage = 10;
+
+  // Batch Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, stockFilter]);
+    setSelectedIds([]);
+  }, [searchQuery, selectedCategory, selectedStatusFilter]);
 
   // DB Lists
   const [products, setProducts] = useState<Product[]>([]);
@@ -355,17 +360,80 @@ export default function ProductsPage() {
 
   // Excluir Produto
   const handleDeleteProduct = async (id: string, name: string) => {
-    if (confirm(`Deseja deletar o produto "${name}"?`)) {
+    if (confirm(`Deseja mover o produto "${name}" para a Lixeira Inteligente?`)) {
       try {
         if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
-        await deleteDoc("products", id);
+        await softDeleteDoc("products", id, "Produtos", name);
         invalidateCache("products");
         setProducts(prev => prev.filter(p => p.id !== id));
+        setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
         await loadAllData();
       } catch (err: any) {
         alert(err.message || "Erro ao deletar.");
       }
     }
+  };
+
+  // Batch Handlers
+  const toggleSelectAllProducts = (filteredList: Product[]) => {
+    if (selectedIds.length === filteredList.length && filteredList.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredList.map(p => p.id));
+    }
+  };
+
+  const toggleSelectDocProduct = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const handleBatchDeleteProducts = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja mover os ${selectedIds.length} produtos selecionados para a Lixeira Inteligente?`)) {
+      try {
+        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
+        for (const id of selectedIds) {
+          const prod = products.find(p => p.id === id);
+          await softDeleteDoc("products", id, "Produtos", prod?.name || "Produto");
+        }
+        invalidateCache("products");
+        setProducts(prev => prev.filter(p => !selectedIds.includes(p.id)));
+        setSelectedIds([]);
+        await loadAllData();
+        alert(`${selectedIds.length} produtos movidos para a Lixeira com sucesso.`);
+      } catch (err: any) {
+        alert(err.message || "Erro ao excluir produtos em lote.");
+      }
+    }
+  };
+
+  const handleBatchStatusChangeProducts = async (newStatus: "active" | "inactive") => {
+    if (selectedIds.length === 0) return;
+    try {
+      await Promise.all(selectedIds.map(id => updateDoc("products", id, { status: newStatus })));
+      invalidateCache("products");
+      setProducts(prev => prev.map(p => selectedIds.includes(p.id) ? { ...p, status: newStatus } : p));
+      setSelectedIds([]);
+      alert(`Status de ${selectedIds.length} produtos alterado para ${newStatus === "active" ? "Ativo" : "Inativo"}.`);
+    } catch (err: any) {
+      alert(err.message || "Erro ao alterar status em lote.");
+    }
+  };
+
+  const handleBatchExportProducts = () => {
+    const selectedProducts = products.filter(p => selectedIds.includes(p.id));
+    if (selectedProducts.length === 0) return;
+    let csvContent = `data:text/csv;charset=utf-8,SKU;Nome;PrecoCusto;PrecoVenda;EstoqueAtual;Status\n`;
+    selectedProducts.forEach(p => {
+      csvContent += `"${p.sku}";"${p.name}";"${p.costPrice}";"${p.sellPrice}";"${p.currentStock}";"${p.status}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Produtos_Selecionados_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Salvar Produto
@@ -668,6 +736,14 @@ export default function ProductsPage() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                    <th className="p-4 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.length === paginatedProducts.length && paginatedProducts.length > 0}
+                        onChange={() => toggleSelectAllProducts(paginatedProducts)}
+                        className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                      />
+                    </th>
                     <th className="p-4">Produto</th>
                     <th className="p-4">SKU / Marca</th>
                     <th className="p-4">Preços (Custo/Venda)</th>
@@ -680,13 +756,22 @@ export default function ProductsPage() {
                 <tbody className="divide-y divide-border/60">
                   {paginatedProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum produto cadastrado ou encontrado.</td>
+                      <td colSpan={8} className="p-8 text-center text-muted-foreground">Nenhum produto cadastrado ou encontrado.</td>
                     </tr>
                   ) : (
                     paginatedProducts.map((p) => {
                       const isLowStock = p.availableStock <= p.minStock;
+                      const isSelected = selectedIds.includes(p.id);
                       return (
-                        <tr key={p.id} className="hover:bg-muted/10 transition-colors">
+                        <tr key={p.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
+                          <td className="p-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectDocProduct(p.id)}
+                              className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                            />
+                          </td>
                           <td className="p-4">
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 rounded-lg bg-muted border border-border overflow-hidden flex items-center justify-center shrink-0">
@@ -1308,7 +1393,59 @@ export default function ProductsPage() {
 
             </form>
           </div>
-        </>
+      {/* Floating Batch Action Bar (Produtos) */}
+      {activeTab === "products" && selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground font-extrabold text-xs">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-bold text-foreground">
+              {selectedIds.length === 1 ? "1 produto selecionado" : `${selectedIds.length} produtos selecionados`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-border hidden sm:block" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleBatchStatusChangeProducts("active")}
+              className="px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold transition-all"
+            >
+              Marcar como Ativos
+            </button>
+
+            <button
+              onClick={() => handleBatchStatusChangeProducts("inactive")}
+              className="px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 text-xs font-bold transition-all"
+            >
+              Marcar como Inativos
+            </button>
+
+            <button
+              onClick={handleBatchExportProducts}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition-all"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              onClick={handleBatchDeleteProducts}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Excluir Selecionados</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-all"
+              title="Cancelar Seleção"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       )}
 
     </div>

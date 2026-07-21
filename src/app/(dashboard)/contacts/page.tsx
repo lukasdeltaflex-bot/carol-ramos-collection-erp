@@ -52,8 +52,12 @@ export default function ContactsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
+  // Batch Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds([]);
   }, [searchQuery]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,11 +193,61 @@ export default function ContactsPage() {
         await softDeleteDoc("customers", id, "Clientes", name);
         invalidateCache("customers");
         setCustomers(prev => prev.filter(c => c.id !== id));
+        setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
         await loadData();
       } catch (e: any) {
         alert(e.message || "Erro ao excluir.");
       }
     }
+  };
+
+  // Batch Handlers
+  const toggleSelectAll = () => {
+    if (selectedIds.length === paginatedCustomers.length && paginatedCustomers.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(paginatedCustomers.map(c => c.id));
+    }
+  };
+
+  const toggleSelectDoc = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja mover os ${selectedIds.length} clientes selecionados para a Lixeira Inteligente?`)) {
+      try {
+        if (typeof window !== "undefined") localStorage.setItem("seeded_customers_v1", "true");
+        for (const id of selectedIds) {
+          const cust = customers.find(c => c.id === id);
+          await softDeleteDoc("customers", id, "Clientes", cust?.name || "Cliente");
+        }
+        invalidateCache("customers");
+        setCustomers(prev => prev.filter(c => !selectedIds.includes(c.id)));
+        setSelectedIds([]);
+        await loadData();
+        alert(`${selectedIds.length} clientes movidos para a Lixeira com sucesso.`);
+      } catch (err: any) {
+        alert(err.message || "Erro na exclusão em lote.");
+      }
+    }
+  };
+
+  const handleBatchExport = () => {
+    const selectedCustomers = customers.filter(c => selectedIds.includes(c.id));
+    if (selectedCustomers.length === 0) return;
+    let csvContent = `data:text/csv;charset=utf-8,Nome;Email;Telefone;CPF;Instagram;Canal;Tags\n`;
+    selectedCustomers.forEach(c => {
+      csvContent += `"${c.name}";"${c.email || ""}";"${c.phone}";"${c.cpf || ""}";"${c.instagram || ""}";"${c.source}";"${c.tags.join(",")}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Clientes_Selecionados_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleCepBlur = async () => {
@@ -347,6 +401,14 @@ export default function ContactsPage() {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                  <th className="p-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.length === paginatedCustomers.length && paginatedCustomers.length > 0}
+                      onChange={toggleSelectAll}
+                      className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">Cliente</th>
                   <th className="p-4">Idade</th>
                   <th className="p-4">Contato</th>
@@ -360,15 +422,25 @@ export default function ContactsPage() {
               <tbody className="divide-y divide-border/60">
                 {paginatedCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
+                    <td colSpan={9} className="p-8 text-center text-muted-foreground">Nenhum cliente cadastrado ou encontrado.</td>
                   </tr>
                 ) : (
-                  paginatedCustomers.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="p-4">
-                        <div className="font-semibold text-foreground">{c.name}</div>
-                        {c.cpf && <span className="text-[10px] text-muted-foreground font-mono">CPF: {c.cpf}</span>}
-                      </td>
+                  paginatedCustomers.map((c) => {
+                    const isSelected = selectedIds.includes(c.id);
+                    return (
+                      <tr key={c.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
+                        <td className="p-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectDoc(c.id)}
+                            className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                          />
+                        </td>
+                        <td className="p-4">
+                          <div className="font-semibold text-foreground">{c.name}</div>
+                          {c.cpf && <span className="text-[10px] text-muted-foreground font-mono">CPF: {c.cpf}</span>}
+                        </td>
                       <td className="p-4 text-xs text-muted-foreground">
                         {calculateAge(c.birthday) || "-"}
                       </td>
@@ -435,37 +507,79 @@ export default function ContactsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
+          <span className="text-xs text-muted-foreground">
+            Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredCustomers.length} itens)
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              Anterior
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              Próximo
+            </button>
           </div>
-        )}
-        
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
-            <span className="text-xs text-muted-foreground">
-              Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredCustomers.length} itens)
+        </div>
+      )}
+
+      {/* Floating Batch Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground font-extrabold text-xs">
+              {selectedIds.length}
             </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
-                Anterior
-              </button>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              >
-                Próximo
-              </button>
-            </div>
+            <span className="text-xs font-bold text-foreground">
+              {selectedIds.length === 1 ? "1 cliente selecionado" : `${selectedIds.length} clientes selecionados`}
+            </span>
           </div>
-        )}
+
+          <div className="h-4 w-px bg-border hidden sm:block" />
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBatchExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition-all"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              onClick={handleBatchDelete}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Excluir Selecionados</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-all"
+              title="Cancelar Seleção"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
       </div>
 
       {/* 4. Slide-over Form Drawer (Clientes) */}

@@ -190,14 +190,24 @@ interface SupplierCardProps {
   supplier: Supplier;
   onEdit: (s: Supplier) => void;
   onDelete: (s: Supplier) => void;
+  isSelected?: boolean;
+  onSelectToggle?: () => void;
 }
 
-function SupplierCard({ supplier, onEdit, onDelete }: SupplierCardProps) {
+function SupplierCard({ supplier, onEdit, onDelete, isSelected, onSelectToggle }: SupplierCardProps) {
   const initials = getInitials(supplier.name);
   return (
-    <div className="group relative flex flex-col justify-between gap-4 p-5 rounded-2xl border border-border bg-card/50 backdrop-blur-sm hover:border-primary/30 hover:bg-card/80 transition-all duration-255 hover:shadow-lg hover:shadow-primary/5 select-none">
+    <div className={cn("group relative flex flex-col justify-between gap-4 p-5 rounded-2xl border transition-all duration-255 hover:shadow-lg hover:shadow-primary/5 select-none", isSelected ? "border-primary/50 bg-primary/5" : "border-border bg-card/50 backdrop-blur-sm hover:border-primary/30 hover:bg-card/80")}>
       <div>
         <div className="flex items-start gap-3.5">
+          {onSelectToggle && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={onSelectToggle}
+              className="mt-1 rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer shrink-0"
+            />
+          )}
           <div className="shrink-0 h-12 w-12 rounded-xl overflow-hidden border border-border bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
             {supplier.logo ? (
               <img src={supplier.logo} alt={supplier.name} className="h-full w-full object-cover" />
@@ -335,7 +345,7 @@ function LogoUploader({ value, onChange, name }: { value: string; onChange: (b64
 
 export default function SuppliersPage() {
   const { tenantId } = useAuth();
-  const { getDocs, createDoc, updateDoc, deleteDoc } = useDb();
+  const { getDocs, createDoc, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
   const { success, error: toastError } = useToast();
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -346,8 +356,12 @@ export default function SuppliersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
+  // Batch Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds([]);
   }, [search, statusFilter, categoryFilter]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -635,15 +649,78 @@ export default function SuppliersPage() {
   }
 
   async function handleDelete(s: Supplier) {
-    if (!confirm(`Deseja realmente excluir o fornecedor "${s.name}"?`)) return;
+    if (!confirm(`Deseja mover o fornecedor "${s.name}" para a Lixeira Inteligente?`)) return;
     try {
-      await deleteDoc("suppliers", s.id);
-      success("Fornecedor excluído", `${s.name} foi removido.`);
+      await softDeleteDoc("suppliers", s.id, "Fornecedores", s.name);
+      invalidateCache("suppliers");
+      setSelectedIds(prev => prev.filter(selectedId => selectedId !== s.id));
+      success("Fornecedor movido para a Lixeira", `${s.name} foi enviado para a Lixeira Inteligente.`);
       loadSuppliers();
     } catch (e: any) {
       toastError("Erro ao excluir", e.message || "Não foi possível excluir o fornecedor.");
     }
   }
+
+  // Batch Handlers (Fornecedores)
+  const toggleSelectAllSuppliers = (paginatedList: Supplier[]) => {
+    if (selectedIds.length === paginatedList.length && paginatedList.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(paginatedList.map(s => s.id));
+    }
+  };
+
+  const toggleSelectDocSupplier = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const handleBatchDeleteSuppliers = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja mover os ${selectedIds.length} fornecedores selecionados para a Lixeira Inteligente?`)) {
+      try {
+        for (const id of selectedIds) {
+          const supp = suppliers.find(s => s.id === id);
+          await softDeleteDoc("suppliers", id, "Fornecedores", supp?.name || "Fornecedor");
+        }
+        invalidateCache("suppliers");
+        setSuppliers(prev => prev.filter(s => !selectedIds.includes(s.id)));
+        setSelectedIds([]);
+        await loadSuppliers();
+        success("Operação concluída", `${selectedIds.length} fornecedores foram movidos para a Lixeira.`);
+      } catch (err: any) {
+        toastError("Erro na exclusão em lote", err.message || "Erro ao excluir fornecedores.");
+      }
+    }
+  };
+
+  const handleBatchStatusChangeSuppliers = async (newStatus: "active" | "inactive") => {
+    if (selectedIds.length === 0) return;
+    try {
+      await Promise.all(selectedIds.map(id => updateDoc("suppliers", id, { status: newStatus })));
+      invalidateCache("suppliers");
+      setSuppliers(prev => prev.map(s => selectedIds.includes(s.id) ? { ...s, status: newStatus } : s));
+      setSelectedIds([]);
+      success("Status Atualizado", `Status de ${selectedIds.length} fornecedores alterado para ${newStatus === "active" ? "Ativo" : "Inativo"}.`);
+    } catch (err: any) {
+      toastError("Erro na alteração de status", err.message || "Erro ao atualizar status.");
+    }
+  };
+
+  const handleBatchExportSuppliers = () => {
+    const selectedSuppliers = suppliers.filter(s => selectedIds.includes(s.id));
+    if (selectedSuppliers.length === 0) return;
+    let csvContent = `data:text/csv;charset=utf-8,RazaoSocial;NomeFantasia;CNPJ;Email;Telefone;Categoria;Status\n`;
+    selectedSuppliers.forEach(s => {
+      csvContent += `"${s.name}";"${s.tradeName || ""}";"${s.cnpj || ""}";"${s.email || ""}";"${s.phone || ""}";"${s.category || ""}";"${s.status}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Fornecedores_Selecionados_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -748,8 +825,32 @@ export default function SuppliersPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          <div className="flex items-center justify-between px-1">
+            <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedIds.length === paginatedSuppliers.length && paginatedSuppliers.length > 0}
+                onChange={() => toggleSelectAllSuppliers(paginatedSuppliers)}
+                className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+              />
+              <span>Selecionar Todos da Página</span>
+            </label>
+            {selectedIds.length > 0 && (
+              <span className="text-xs text-primary font-bold">{selectedIds.length} selecionado(s)</span>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {paginatedSuppliers.map((s) => <SupplierCard key={s.id} supplier={s} onEdit={openEdit} onDelete={handleDelete} />)}
+            {paginatedSuppliers.map((s) => (
+              <SupplierCard
+                key={s.id}
+                supplier={s}
+                onEdit={openEdit}
+                onDelete={handleDelete}
+                isSelected={selectedIds.includes(s.id)}
+                onSelectToggle={() => toggleSelectDocSupplier(s.id)}
+              />
+            ))}
           </div>
 
           {/* Pagination Controls */}
@@ -776,6 +877,61 @@ export default function SuppliersPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Floating Batch Action Bar (Fornecedores) */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground font-extrabold text-xs">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-bold text-foreground">
+              {selectedIds.length === 1 ? "1 fornecedor selecionado" : `${selectedIds.length} fornecedores selecionados`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-border hidden sm:block" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleBatchStatusChangeSuppliers("active")}
+              className="px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold transition-all"
+            >
+              Marcar como Ativos
+            </button>
+
+            <button
+              onClick={() => handleBatchStatusChangeSuppliers("inactive")}
+              className="px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 text-xs font-bold transition-all"
+            >
+              Marcar como Inativos
+            </button>
+
+            <button
+              onClick={handleBatchExportSuppliers}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition-all"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              onClick={handleBatchDeleteSuppliers}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Excluir Selecionados</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-all"
+              title="Cancelar Seleção"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 
