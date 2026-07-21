@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
 import { Customer } from "@/features/customers/types";
 import { CustomerSchema } from "@/features/customers/schemas";
