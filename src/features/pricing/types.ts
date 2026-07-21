@@ -1,15 +1,12 @@
 import { BaseDocument } from "@/types/shared";
 
 export interface Marketplace extends BaseDocument {
-  tenantId?: string;
   name: string;
   percentFee: number; // Percentage fee e.g. 20 for 20%
   fixedFee: number;   // Fixed fee e.g. 4.00 for R$ 4.00
   color?: string;     // Tailwind badge/card color class
   description?: string;
   status: 'active' | 'inactive';
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface PricingExtraExpenses {
@@ -71,7 +68,7 @@ export interface CalculationResult {
   profitStatus: 'loss' | 'low_margin' | 'healthy_profit';
 }
 
-export const DEFAULT_MARKETPLACES: Omit<Marketplace, "id">[] = [
+export const DEFAULT_MARKETPLACES: Partial<Marketplace>[] = [
   { name: "Shopee", percentFee: 20, fixedFee: 4.00, color: "bg-orange-500 text-white", description: "Taxas Padrão Shopee Brasil", status: "active" },
   { name: "Mercado Livre", percentFee: 16, fixedFee: 6.50, color: "bg-yellow-400 text-black", description: "Anúncio Clássico / Premium", status: "active" },
   { name: "Amazon", percentFee: 15, fixedFee: 0.00, color: "bg-amber-600 text-white", description: "Comissão padrão por categoria", status: "active" },
