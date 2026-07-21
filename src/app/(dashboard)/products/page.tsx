@@ -126,7 +126,7 @@ const INITIAL_PRODUCTS = (catIds: string[], brandIds: string[], supplierIds: str
 
 export default function ProductsPage() {
   const { tenantId, isMock } = useAuth();
-  const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
+  const { createDoc, getDocs, updateDoc, deleteDoc, invalidateCache } = useDb();
 
   const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
   const [searchQuery, setSearchQuery] = useState("");
@@ -185,8 +185,10 @@ export default function ProductsPage() {
   const [showSimulatorInDrawer, setShowSimulatorInDrawer] = useState<boolean>(false);
 
   // Categoria/Marca auxiliary simple forms
+  const [editingAuxId, setEditingAuxId] = useState<string | null>(null);
   const [auxName, setAuxName] = useState("");
   const [auxDesc, setAuxDesc] = useState("");
+  const [auxStatus, setAuxStatus] = useState<"active" | "inactive">("active");
   const [auxIsVirtual, setAuxIsVirtual] = useState(false);
 
   // Carregar todos os dados do banco (Paralelizado e Reativo)
@@ -207,10 +209,14 @@ export default function ProductsPage() {
       supps = (supps as any[]) || [];
       prods = (prods as Product[]) || [];
 
-      // Pre-seed se o mock ou banco estiver zerado (Paralelizado com Promise.all)
+      // Pre-seed se o mock ou banco estiver zerado (Apenas na primeira vez)
+      const isCatsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_categories_v2") === "true";
+      const isProdsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_products_v2") === "true";
+
       let needsRefetch = false;
-      if (cats.length === 0) {
+      if (cats.length === 0 && !isCatsSeeded) {
         await Promise.all(INITIAL_CATEGORIES.map(c => createDoc("categories", c)));
+        if (typeof window !== "undefined") localStorage.setItem("seeded_categories_v2", "true");
         needsRefetch = true;
       }
       if (brs.length === 0) {
@@ -237,11 +243,10 @@ export default function ProductsPage() {
       const brandIds = (brs as any[]).filter(Boolean).map((b: any) => b.id || "");
       const suppIds = (supps as any[]).filter(Boolean).map((s: any) => s.id || "");
 
-      if (prods.length === 0) {
-        const seedProds = INITIAL_PRODUCTS(catIds, brandIds, suppIds);
-        await Promise.all(seedProds.map(p => createDoc("products", p)));
-        const freshProds = await getDocs("products");
-        prods = (freshProds as Product[]) || [];
+      if (prods.length === 0 && !isProdsSeeded) {
+        await Promise.all(INITIAL_PRODUCTS(catIds, brandIds, suppIds).map(p => createDoc("products", p)));
+        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
+        prods = (await getDocs("products") as Product[]) || [];
       }
 
       setCategories(cats);
@@ -352,7 +357,10 @@ export default function ProductsPage() {
   const handleDeleteProduct = async (id: string, name: string) => {
     if (confirm(`Deseja deletar o produto "${name}"?`)) {
       try {
+        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
         await deleteDoc("products", id);
+        invalidateCache("products");
+        setProducts(prev => prev.filter(p => p.id !== id));
         await loadAllData();
       } catch (err: any) {
         alert(err.message || "Erro ao deletar.");
@@ -424,11 +432,13 @@ export default function ProductsPage() {
     }
 
     try {
+      if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
       if (editingId) {
         await updateDoc("products", editingId, payload);
       } else {
         await createDoc("products", payload);
       }
+      invalidateCache("products");
       setDrawerOpen(false);
       await loadAllData();
     } catch (err: any) {
@@ -436,31 +446,61 @@ export default function ProductsPage() {
     }
   };
 
-  // Salvar Outras Tabelas Auxiliares (Categorias, Marcas, Locais)
+  // Editar Registro Auxiliar (Categorias, Marcas, Locais)
+  const handleEditAuxiliary = (item: any) => {
+    setEditingAuxId(item.id);
+    setAuxName(item.name || "");
+    setAuxDesc(item.description || "");
+    setAuxStatus(item.status || "active");
+    setAuxIsVirtual(item.isVirtual || false);
+  };
+
+  // Salvar Registro Auxiliar (Criar ou Editar Categorias, Marcas, Locais)
   const handleSaveAuxiliary = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auxName.trim()) return;
 
     try {
+      const colName = activeTab === "locations" ? "stock_locations" : activeTab;
+      if (typeof window !== "undefined") {
+        if (activeTab === "categories") localStorage.setItem("seeded_categories_v2", "true");
+      }
+
       if (activeTab === "categories") {
         const slug = auxName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-");
-        const payload = { name: auxName, description: auxDesc, slug };
-        const result = CategorySchema.safeParse(payload);
-        if (!result.success) { alert(result.error.issues[0].message); return; }
-        await createDoc("categories", payload);
+        const payload = { name: auxName, description: auxDesc, slug, status: auxStatus };
+        if (editingAuxId) {
+          await updateDoc("categories", editingAuxId, payload);
+        } else {
+          const result = CategorySchema.safeParse(payload);
+          if (!result.success) { alert(result.error.issues[0].message); return; }
+          await createDoc("categories", payload);
+        }
       } else if (activeTab === "brands") {
         const payload = { name: auxName, description: auxDesc };
-        const result = BrandSchema.safeParse(payload);
-        if (!result.success) { alert(result.error.issues[0].message); return; }
-        await createDoc("brands", payload);
+        if (editingAuxId) {
+          await updateDoc("brands", editingAuxId, payload);
+        } else {
+          const result = BrandSchema.safeParse(payload);
+          if (!result.success) { alert(result.error.issues[0].message); return; }
+          await createDoc("brands", payload);
+        }
       } else if (activeTab === "locations") {
         const payload = { name: auxName, description: auxDesc, isVirtual: auxIsVirtual, status: "active" as const };
-        const result = StockLocationSchema.safeParse(payload);
-        if (!result.success) { alert(result.error.issues[0].message); return; }
-        await createDoc("stock_locations", payload);
+        if (editingAuxId) {
+          await updateDoc("stock_locations", editingAuxId, payload);
+        } else {
+          const result = StockLocationSchema.safeParse(payload);
+          if (!result.success) { alert(result.error.issues[0].message); return; }
+          await createDoc("stock_locations", payload);
+        }
       }
+
+      invalidateCache(colName);
+      setEditingAuxId(null);
       setAuxName("");
       setAuxDesc("");
+      setAuxStatus("active");
       setAuxIsVirtual(false);
       await loadAllData();
     } catch (err: any) {
@@ -472,7 +512,19 @@ export default function ProductsPage() {
   const handleDeleteAuxiliary = async (id: string, name: string) => {
     if (confirm(`Deseja realmente excluir "${name}"?`)) {
       try {
-        await deleteDoc(activeTab === "locations" ? "stock_locations" : activeTab, id);
+        const colName = activeTab === "locations" ? "stock_locations" : activeTab;
+        if (typeof window !== "undefined" && activeTab === "categories") {
+          localStorage.setItem("seeded_categories_v2", "true");
+        }
+        await deleteDoc(colName, id);
+        invalidateCache(colName);
+        if (activeTab === "categories") {
+          setCategories(prev => prev.filter(c => c.id !== id));
+        } else if (activeTab === "brands") {
+          setBrandList(prev => prev.filter(b => b.id !== id));
+        } else {
+          setLocations(prev => prev.filter(l => l.id !== id));
+        }
         await loadAllData();
       } catch (e: any) {
         alert(e.message || "Erro ao excluir.");
@@ -752,12 +804,29 @@ export default function ProductsPage() {
             {activeTab !== "products" && (
               <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* Form Adicionar Rápido */}
+                {/* Form Adicionar/Editar Rápido */}
                 <div className="p-5 rounded-xl border border-border bg-card/50 h-fit space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Plus className="h-4 w-4 text-rosegold-500" />
-                    <span>Adicionar {activeTab === "categories" ? "Categoria" : activeTab === "brands" ? "Marca" : "Local de Estoque"}</span>
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      {editingAuxId ? <Edit2 className="h-4 w-4 text-primary" /> : <Plus className="h-4 w-4 text-rosegold-500" />}
+                      <span>{editingAuxId ? `Editar ${activeTab === "categories" ? "Categoria" : activeTab === "brands" ? "Marca" : "Local"}` : `Adicionar ${activeTab === "categories" ? "Categoria" : activeTab === "brands" ? "Marca" : "Local"}`}</span>
+                    </h3>
+                    {editingAuxId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingAuxId(null);
+                          setAuxName("");
+                          setAuxDesc("");
+                          setAuxStatus("active");
+                          setAuxIsVirtual(false);
+                        }}
+                        className="text-[10px] text-muted-foreground hover:text-foreground font-semibold underline"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
                   
                   <form onSubmit={handleSaveAuxiliary} className="space-y-3.5 text-xs">
                     <div className="space-y-1">
@@ -783,6 +852,20 @@ export default function ProductsPage() {
                       />
                     </div>
 
+                    {activeTab === "categories" && (
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground">Status</label>
+                        <select
+                          value={auxStatus}
+                          onChange={(e) => setAuxStatus(e.target.value as any)}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-semibold text-xs"
+                        >
+                          <option value="active">Ativa</option>
+                          <option value="inactive">Inativa</option>
+                        </select>
+                      </div>
+                    )}
+
                     {activeTab === "locations" && (
                       <div className="flex items-center gap-2 pt-1">
                         <input
@@ -799,7 +882,7 @@ export default function ProductsPage() {
                     )}
 
                     <button type="submit" className="w-full py-2 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/95 transition-all">
-                      Criar Registro
+                      {editingAuxId ? "Salvar Alterações" : "Criar Registro"}
                     </button>
                   </form>
                 </div>
@@ -812,7 +895,14 @@ export default function ProductsPage() {
                     {(activeTab === "categories" ? categories : activeTab === "brands" ? brands : locations).map((item) => (
                       <div key={item.id} className="p-3.5 rounded-xl border border-border bg-card/30 flex items-center justify-between hover:bg-muted/10 transition-all">
                         <div className="space-y-0.5">
-                          <h4 className="font-semibold text-foreground text-xs">{item.name}</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-foreground text-xs">{item.name}</h4>
+                            {activeTab === "categories" && (item as any).status === "inactive" && (
+                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400">
+                                Inativa
+                              </span>
+                            )}
+                          </div>
                           {item.description && <p className="text-[10px] text-muted-foreground">{item.description}</p>}
                           {activeTab === "locations" && (
                             <span className={cn(
@@ -825,13 +915,22 @@ export default function ProductsPage() {
                             </span>
                           )}
                         </div>
-                        <button
-                          onClick={() => handleDeleteAuxiliary(item.id, item.name)}
-                          className="p-1.5 rounded-lg border border-border bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                          title="Excluir"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleEditAuxiliary(item)}
+                            className="p-1.5 rounded-lg border border-border bg-card hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAuxiliary(item.id, item.name)}
+                            className="p-1.5 rounded-lg border border-border bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
 
