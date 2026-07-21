@@ -118,7 +118,7 @@ export default function SettingsPage() {
   const { createDoc, getDocs, updateDoc, deleteDoc, getDocById, invalidateCache } = useDb();
   const { success, error: toastError, info } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"profile" | "rbac" | "params" | "integrations" | "logs">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "rbac" | "params" | "integrations" | "logs" | "backup">("profile");
   const [loading, setLoading] = useState(false);
 
   // Lists
