@@ -126,7 +126,7 @@ const INITIAL_PRODUCTS = (catIds: string[], brandIds: string[], supplierIds: str
 
 export default function ProductsPage() {
   const { tenantId, isMock } = useAuth();
-  const { createDoc, getDocs, updateDoc, deleteDoc, invalidateCache } = useDb();
+  const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
 
   const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
   const [searchQuery, setSearchQuery] = useState("");
