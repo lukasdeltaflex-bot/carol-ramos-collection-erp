@@ -25,7 +25,8 @@ import {
   TrendingDown,
   Calculator,
   Lightbulb,
-  Bell
+  Bell,
+  Trash2
 } from "lucide-react";
 
 interface SidebarProps {
@@ -109,6 +110,12 @@ export default function Sidebar({
       name: "Notificações & E-mails",
       href: "/notifications",
       icon: Bell,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Lixeira",
+      href: "/recycle-bin",
+      icon: Trash2,
       roles: ["owner", "admin", "operator", "viewer"],
     },
     {

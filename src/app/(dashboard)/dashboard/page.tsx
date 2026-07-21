@@ -28,7 +28,8 @@ import {
   Lightbulb,
   Pin,
   CheckCircle2,
-  Calendar
+  Calendar,
+  Trash2
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -93,18 +94,20 @@ export default function Dashboard() {
   const [receivables, setReceivables] = useState<AccountsReceivable[]>([]);
   const [payables, setPayables] = useState<AccountsPayable[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [recycleBinItems, setRecycleBinItems] = useState<any[]>([]);
   const [configs, setConfigs] = useState<IntegrationConfig[]>([]);
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [prods, sls, custs, recs, pays, rems, confs] = await Promise.all([
+      const [prods, sls, custs, recs, pays, rems, rbs, confs] = await Promise.all([
         getDocs("products"),
         getDocs("sales"),
         getDocs("customers"),
         getDocs("accounts_receivable"),
         getDocs("accounts_payable"),
         getDocs("reminders"),
+        getDocs("recycle_bin", true),
         getDocs("integration_configs")
       ]);
 
@@ -114,6 +117,7 @@ export default function Dashboard() {
       setReceivables((recs as AccountsReceivable[]) || []);
       setPayables((pays as AccountsPayable[]) || []);
       setReminders((rems as Reminder[]) || []);
+      setRecycleBinItems((rbs as any[]) || []);
       setConfigs((confs as IntegrationConfig[]) || []);
     } catch (e) {
       console.error("Erro ao carregar dados do dashboard:", e);
@@ -123,6 +127,7 @@ export default function Dashboard() {
       setReceivables([]);
       setPayables([]);
       setReminders([]);
+      setRecycleBinItems([]);
       setConfigs([]);
     } finally {
       setLoading(false);
@@ -591,6 +596,39 @@ export default function Dashboard() {
                   Nenhum lembrete para hoje.
                 </div>
               )}
+          {/* 3c. Card de Itens na Lixeira Inteligente */}
+          <div className="p-5 rounded-2xl border border-border bg-card/40 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-red-500/10 text-red-500 border border-red-500/20">
+                  <Trash2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Itens na Lixeira Inteligente</h3>
+                  <p className="text-xs text-muted-foreground">Documentos e cadastros removidos que podem ser restaurados.</p>
+                </div>
+              </div>
+              <Link href="/recycle-bin" className="text-[10px] font-semibold text-rosegold-500 hover:underline flex items-center gap-0.5">
+                <span>Abrir Lixeira ({recycleBinItems.length})</span>
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3.5 rounded-xl border border-border bg-background/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Total na Lixeira</span>
+                <span className="text-xl font-extrabold font-mono text-foreground mt-1">{recycleBinItems.length}</span>
+              </div>
+              <div className="p-3.5 rounded-xl border border-border bg-background/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Excluídos Hoje</span>
+                <span className="text-xl font-extrabold font-mono text-red-500 mt-1">
+                  {recycleBinItems.filter(i => i.deletedAt && i.deletedAt.startsWith(new Date().toISOString().split("T")[0])).length}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-xl border border-border bg-background/50 flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Próximos de Expirar</span>
+                <span className="text-xl font-extrabold font-mono text-amber-500 mt-1">0</span>
+              </div>
             </div>
           </div>
 

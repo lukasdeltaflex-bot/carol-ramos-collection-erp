@@ -40,7 +40,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): 
 };
 
 export function useDb() {
-  const { user, tenantId, isMock } = useAuth();
+  const { user, profile, tenantId, isMock } = useAuth();
 
   // Helper para injetar metadados base
   const injectBaseFields = (data: any, action: "create" | "update", previousData?: any) => {
@@ -70,7 +70,7 @@ export function useDb() {
 
   // Helper para criar log de auditoria
   const logAudit = async (
-    action: "create" | "update" | "delete",
+    action: "create" | "update" | "delete" | "soft_delete" | "restore",
     collectionName: string,
     docId: string,
     previousValues?: any,
@@ -136,13 +136,10 @@ export function useDb() {
       list.push(newDoc);
       localStorage.setItem(storageKey, JSON.stringify(list));
       
-      // Registrar log de auditoria
       await logAudit("create", collectionName, newDoc.id, null, finalData);
-      
       return newDoc;
     }
 
-    // Firestore real
     const colRef = collection(db, collectionName);
     const docRef = await withTimeout(
       addDoc(colRef, finalData),
@@ -150,9 +147,7 @@ export function useDb() {
       `Erro ao criar registro em ${collectionName} (Sem resposta do servidor)`
     );
     
-    // Registrar log de auditoria
     await logAudit("create", collectionName, docRef.id, null, finalData);
-    
     return { id: docRef.id, ...finalData };
   }, [user, tenantId, isMock, invalidateCache]);
 
@@ -176,13 +171,10 @@ export function useDb() {
       list[idx] = { id: docId, ...finalData };
       localStorage.setItem(storageKey, JSON.stringify(list));
 
-      // Registrar log de auditoria
       await logAudit("update", collectionName, docId, previousData, finalData);
-      
       return list[idx];
     }
 
-    // Firestore real
     const docRef = doc(db, collectionName, docId);
     const snap = await withTimeout(
       firestoreGetDoc(docRef),
@@ -200,16 +192,24 @@ export function useDb() {
       `Erro ao atualizar registro em ${collectionName} (Sem resposta do servidor)`
     );
 
-    // Registrar log de auditoria
     await logAudit("update", collectionName, docId, previousData, finalData);
-    
     return { id: docId, ...finalData };
   }, [user, tenantId, isMock, invalidateCache]);
 
-  // 3. Deletar Documento
-  const deleteDoc = useCallback(async (collectionName: string, docId: string) => {
+  // 3. Exclusão Lógica (Mover para a Lixeira Inteligente)
+  const softDeleteDoc = useCallback(async (
+    collectionName: string, 
+    docId: string, 
+    moduleLabel?: string, 
+    itemName?: string, 
+    itemDetails?: string
+  ) => {
     let previousData: any = null;
     invalidateCache(collectionName);
+    invalidateCache("recycle_bin");
+
+    const userName = profile?.displayName || user?.email || "Usuário";
+    const nowIso = new Date().toISOString();
 
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
@@ -221,46 +221,195 @@ export function useDb() {
       if (idx === -1) throw new Error("Documento não encontrado.");
 
       previousData = list[idx];
-      list.splice(idx, 1);
+      const updatedData = {
+        ...previousData,
+        deleted: true,
+        deletedAt: nowIso,
+        deletedBy: userName,
+        deletedFrom: collectionName,
+      };
+
+      list[idx] = updatedData;
       localStorage.setItem(storageKey, JSON.stringify(list));
 
-      // Registrar log de auditoria
-      await logAudit("delete", collectionName, docId, previousData, null);
+      // Gravar na coleção recycle_bin
+      const rbStorageKey = `mock_db_recycle_bin`;
+      const rbExisting = localStorage.getItem(rbStorageKey);
+      const rbList = rbExisting ? JSON.parse(rbExisting) : [];
+      
+      const displayName = itemName || previousData.name || previousData.title || previousData.sku || previousData.description || `Item #${docId.slice(-4)}`;
+      const details = itemDetails || (previousData.sku ? `SKU: ${previousData.sku}` : previousData.total ? `R$ ${previousData.total}` : previousData.email ? previousData.email : "");
+
+      const rbItem = {
+        id: `rb-${Math.random().toString(36).substr(2, 9)}`,
+        tenantId: tenantId || "shared",
+        originalCollection: collectionName,
+        originalId: docId,
+        moduleName: collectionName,
+        moduleLabel: moduleLabel || collectionName,
+        itemName: displayName,
+        itemDetails: details,
+        deletedBy: userName,
+        deletedAt: nowIso,
+        originalData: previousData,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      rbList.push(rbItem);
+      localStorage.setItem(rbStorageKey, JSON.stringify(rbList));
+
+      await logAudit("soft_delete", collectionName, docId, previousData, updatedData);
       return true;
     }
 
     // Firestore real
     const docRef = doc(db, collectionName, docId);
-    const snap = await withTimeout(
-      firestoreGetDoc(docRef),
-      4000,
-      `Erro ao buscar registro em ${collectionName} para exclusão`
-    );
+    const snap = await withTimeout(firestoreGetDoc(docRef), 4000, "Erro ao buscar documento para lixeira");
     if (!snap.exists()) throw new Error("Documento não encontrado.");
-    
+
     previousData = snap.data();
-    await withTimeout(
-      firestoreDeleteDoc(docRef),
-      5000,
-      `Erro ao deletar registro em ${collectionName} (Sem resposta do servidor)`
-    );
+    const updatedData = {
+      ...previousData,
+      deleted: true,
+      deletedAt: nowIso,
+      deletedBy: userName,
+      deletedFrom: collectionName,
+    };
 
-    // Registrar log de auditoria
-    await logAudit("delete", collectionName, docId, previousData, null);
+    await withTimeout(firestoreUpdateDoc(docRef, updatedData), 5000, "Erro ao mover para a lixeira");
+
+    // Adicionar documento na coleção recycle_bin
+    const rbColRef = collection(db, "recycle_bin");
+    const displayName = itemName || previousData.name || previousData.title || previousData.sku || previousData.description || `Item #${docId.slice(-4)}`;
+    const details = itemDetails || (previousData.sku ? `SKU: ${previousData.sku}` : previousData.total ? `R$ ${previousData.total}` : previousData.email ? previousData.email : "");
+
+    await withTimeout(addDoc(rbColRef, {
+      tenantId: tenantId || "shared",
+      originalCollection: collectionName,
+      originalId: docId,
+      moduleName: collectionName,
+      moduleLabel: moduleLabel || collectionName,
+      itemName: displayName,
+      itemDetails: details,
+      deletedBy: userName,
+      deletedAt: nowIso,
+      originalData: previousData,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }), 5000, "Erro ao salvar na lixeira");
+
+    await logAudit("soft_delete", collectionName, docId, previousData, updatedData);
     return true;
-  }, [user, tenantId, isMock, invalidateCache]);
+  }, [user, profile, tenantId, isMock, invalidateCache]);
 
-  // 4. Obter Todos os Documentos do Tenant (Com cache, deduplicação e resiliência)
-  const getDocs = useCallback(async (collectionName: string) => {
+  // 4. Restaurar Documento da Lixeira
+  const restoreDoc = useCallback(async (recycleBinId: string, originalCollection: string, originalId: string) => {
+    invalidateCache(originalCollection);
+    invalidateCache("recycle_bin");
+
+    if (isMock) {
+      // 1. Remover flag deleted do documento original
+      const storageKey = `mock_db_${originalCollection}`;
+      const existing = localStorage.getItem(storageKey);
+      if (existing) {
+        const list = JSON.parse(existing);
+        const idx = list.findIndex((item: any) => item.id === originalId);
+        if (idx !== -1) {
+          delete list[idx].deleted;
+          delete list[idx].deletedAt;
+          delete list[idx].deletedBy;
+          delete list[idx].deletedFrom;
+          localStorage.setItem(storageKey, JSON.stringify(list));
+        }
+      }
+
+      // 2. Remover da lixeira
+      const rbStorageKey = `mock_db_recycle_bin`;
+      const rbExisting = localStorage.getItem(rbStorageKey);
+      if (rbExisting) {
+        const rbList = JSON.parse(rbExisting);
+        const newRbList = rbList.filter((item: any) => item.id !== recycleBinId && item.originalId !== originalId);
+        localStorage.setItem(rbStorageKey, JSON.stringify(newRbList));
+      }
+
+      await logAudit("restore", originalCollection, originalId, null, { restored: true });
+      return true;
+    }
+
+    // Firestore real
+    const originalRef = doc(db, originalCollection, originalId);
+    await withTimeout(firestoreUpdateDoc(originalRef, {
+      deleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      deletedFrom: null,
+    }), 5000, "Erro ao restaurar documento");
+
+    const rbRef = doc(db, "recycle_bin", recycleBinId);
+    await withTimeout(firestoreDeleteDoc(rbRef), 5000, "Erro ao remover item da lixeira");
+
+    await logAudit("restore", originalCollection, originalId, null, { restored: true });
+    return true;
+  }, [tenantId, isMock, invalidateCache]);
+
+  // 5. Exclusão Permanente (Hard Delete)
+  const permanentlyDeleteDoc = useCallback(async (recycleBinId: string, originalCollection: string, originalId: string) => {
+    invalidateCache(originalCollection);
+    invalidateCache("recycle_bin");
+
+    if (isMock) {
+      // 1. Remover do banco original
+      const storageKey = `mock_db_${originalCollection}`;
+      const existing = localStorage.getItem(storageKey);
+      if (existing) {
+        const list = JSON.parse(existing);
+        const newList = list.filter((item: any) => item.id !== originalId);
+        localStorage.setItem(storageKey, JSON.stringify(newList));
+      }
+
+      // 2. Remover da lixeira
+      const rbStorageKey = `mock_db_recycle_bin`;
+      const rbExisting = localStorage.getItem(rbStorageKey);
+      if (rbExisting) {
+        const rbList = JSON.parse(rbExisting);
+        const newRbList = rbList.filter((item: any) => item.id !== recycleBinId && item.originalId !== originalId);
+        localStorage.setItem(rbStorageKey, JSON.stringify(newRbList));
+      }
+
+      await logAudit("delete", originalCollection, originalId, null, null);
+      return true;
+    }
+
+    // Firestore real
+    try {
+      const originalRef = doc(db, originalCollection, originalId);
+      await firestoreDeleteDoc(originalRef);
+    } catch (e) {
+      console.warn("Documento original já não existia:", e);
+    }
+
+    const rbRef = doc(db, "recycle_bin", recycleBinId);
+    await withTimeout(firestoreDeleteDoc(rbRef), 5000, "Erro ao excluir permanentemente da lixeira");
+
+    await logAudit("delete", originalCollection, originalId, null, null);
+    return true;
+  }, [tenantId, isMock, invalidateCache]);
+
+  // 6. Legado deleteDoc (Mapped to softDeleteDoc by default for maximum safety)
+  const deleteDocWrapper = useCallback(async (collectionName: string, docId: string, moduleLabel?: string) => {
+    return softDeleteDoc(collectionName, docId, moduleLabel);
+  }, [softDeleteDoc]);
+
+  // 7. Obter Todos os Documentos do Tenant (Filtra automaticamente excluídos se includeDeleted = false)
+  const getDocs = useCallback(async (collectionName: string, includeDeleted: boolean = false) => {
     const targetTenant = tenantId || "shared";
-    const cacheKey = `${collectionName}_${targetTenant}`;
+    const cacheKey = `${collectionName}_${targetTenant}_${includeDeleted ? "all" : "active"}`;
 
-    // Check in-memory cache
     if (dataCache[cacheKey] && (Date.now() - dataCache[cacheKey].timestamp < CACHE_TTL)) {
       return dataCache[cacheKey].data || [];
     }
 
-    // Check if there is already an active promise for this request
     if (activeQueries[cacheKey]) {
       try {
         const cachedRes = await activeQueries[cacheKey];
@@ -270,17 +419,21 @@ export function useDb() {
       }
     }
 
-    // Define query promise
     const fetchPromise = (async () => {
       try {
         if (isMock) {
           const storageKey = `mock_db_${collectionName}`;
           const existing = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
           const list = existing ? JSON.parse(existing) : [];
-          return Array.isArray(list) ? list.filter((item: any) => item && item.tenantId === targetTenant) : [];
+          if (!Array.isArray(list)) return [];
+          
+          return list.filter((item: any) => {
+            if (!item || item.tenantId !== targetTenant) return false;
+            if (!includeDeleted && item.deleted === true) return false;
+            return true;
+          });
         }
 
-        // Firestore real
         const colRef = collection(db, collectionName);
         const q = query(
           colRef, 
@@ -289,16 +442,20 @@ export function useDb() {
         const snap = await withTimeout(
           firestoreGetDocs(q),
           5500,
-          `Erro ao buscar lista de ${collectionName} (Sem resposta do servidor)`
+          `Erro ao buscar lista de ${collectionName}`
         );
-        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (!includeDeleted) {
+          return docs.filter((item: any) => item.deleted !== true);
+        }
+        return docs;
       } catch (err) {
         console.warn(`[useDb] Falha ao carregar ${collectionName}:`, err);
         return [];
       }
     })();
 
-    // Prevent unhandled promise rejection warnings on activeQueries map
     fetchPromise.catch(() => {});
     activeQueries[cacheKey] = fetchPromise;
 
@@ -318,7 +475,7 @@ export function useDb() {
     }
   }, [tenantId, isMock]);
 
-  // 5. Obter Documento por ID (Com cache simples e resiliência)
+  // 8. Obter Documento por ID
   const getDocById = useCallback(async (collectionName: string, docId: string) => {
     try {
       if (isMock) {
@@ -329,7 +486,6 @@ export function useDb() {
         return list.find((item: any) => item && item.id === docId) || null;
       }
 
-      // Firestore real
       const docRef = doc(db, collectionName, docId);
       const snap = await withTimeout(
         firestoreGetDoc(docRef),
@@ -347,7 +503,10 @@ export function useDb() {
   return {
     createDoc,
     updateDoc,
-    deleteDoc,
+    deleteDoc: deleteDocWrapper,
+    softDeleteDoc,
+    restoreDoc,
+    permanentlyDeleteDoc,
     getDocs,
     getDocById,
     invalidateCache
