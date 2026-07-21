@@ -6,7 +6,8 @@ import { useDb } from "@/hooks/useDb";
 import { Product } from "@/features/products/types";
 import { Sale } from "@/features/sales/types";
 import { Customer } from "@/features/customers/types";
-import { AccountsReceivable } from "@/features/finance/types";
+import { AccountsReceivable, AccountsPayable } from "@/features/finance/types";
+import { Reminder } from "@/features/reminders/types";
 import { IntegrationConfig } from "@/features/integrations/types";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import {
@@ -23,7 +24,11 @@ import {
   ChevronRight,
   RefreshCw,
   Globe,
-  BarChart2
+  BarChart2,
+  Lightbulb,
+  Pin,
+  CheckCircle2,
+  Calendar
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -86,16 +91,20 @@ export default function Dashboard() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [receivables, setReceivables] = useState<AccountsReceivable[]>([]);
+  const [payables, setPayables] = useState<AccountsPayable[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [configs, setConfigs] = useState<IntegrationConfig[]>([]);
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [prods, sls, custs, recs, confs] = await Promise.all([
+      const [prods, sls, custs, recs, pays, rems, confs] = await Promise.all([
         getDocs("products"),
         getDocs("sales"),
         getDocs("customers"),
         getDocs("accounts_receivable"),
+        getDocs("accounts_payable"),
+        getDocs("reminders"),
         getDocs("integration_configs")
       ]);
 
@@ -103,6 +112,8 @@ export default function Dashboard() {
       setSales((sls as Sale[]) || []);
       setCustomers((custs as Customer[]) || []);
       setReceivables((recs as AccountsReceivable[]) || []);
+      setPayables((pays as AccountsPayable[]) || []);
+      setReminders((rems as Reminder[]) || []);
       setConfigs((confs as IntegrationConfig[]) || []);
     } catch (e) {
       console.error("Erro ao carregar dados do dashboard:", e);
@@ -110,6 +121,8 @@ export default function Dashboard() {
       setSales([]);
       setCustomers([]);
       setReceivables([]);
+      setPayables([]);
+      setReminders([]);
       setConfigs([]);
     } finally {
       setLoading(false);
@@ -531,6 +544,53 @@ export default function Dashboard() {
                   color="text-amber-600 dark:text-amber-400"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* 3b. Card de Lembretes & Ideias de Hoje */}
+          <div className="p-5 rounded-2xl border border-border bg-card/40 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <Lightbulb className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Lembretes & Ideias de Hoje</h3>
+                  <p className="text-xs text-muted-foreground">Tarefas pendentes, ideias fixadas e alertas do dia.</p>
+                </div>
+              </div>
+              <Link href="/reminders" className="text-[10px] font-semibold text-rosegold-500 hover:underline flex items-center gap-0.5">
+                <span>Mural Completo</span>
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {reminders.slice(0, 3).map((r) => (
+                <div key={r.id} className={cn("p-4 rounded-xl border flex flex-col justify-between space-y-2 text-xs", r.color || "bg-card border-border")}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-black/5 dark:bg-white/10">
+                      {r.category === "idea" ? "Ideia" : r.category === "task" ? "Tarefa" : "Lembrete"}
+                    </span>
+                    {r.isPinned && <Pin className="h-3 w-3 text-amber-600 dark:text-amber-400 fill-current" />}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-foreground leading-snug">{r.title}</h4>
+                    {r.description && <p className="text-[11px] opacity-80 line-clamp-2 mt-1">{r.description}</p>}
+                  </div>
+                  {r.dueDate && (
+                    <div className="flex items-center gap-1 text-[10px] opacity-75 font-mono pt-1">
+                      <Calendar className="h-3 w-3" />
+                      <span>{formatDate(r.dueDate)}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {reminders.length === 0 && (
+                <div className="col-span-full py-6 text-center text-muted-foreground italic text-xs">
+                  Nenhum lembrete para hoje.
+                </div>
+              )}
             </div>
           </div>
 

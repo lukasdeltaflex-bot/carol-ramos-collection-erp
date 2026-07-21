@@ -23,7 +23,9 @@ import {
   Palette,
   TrendingUp,
   TrendingDown,
-  Calculator
+  Calculator,
+  Lightbulb,
+  Bell
 } from "lucide-react";
 
 interface SidebarProps {
@@ -95,6 +97,18 @@ export default function Sidebar({
       name: "Agenda & Serviços",
       href: "/schedule",
       icon: Calendar,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Lembretes & Ideias",
+      href: "/reminders",
+      icon: Lightbulb,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Notificações & E-mails",
+      href: "/notifications",
+      icon: Bell,
       roles: ["owner", "admin", "operator", "viewer"],
     },
     {

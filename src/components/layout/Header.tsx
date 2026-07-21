@@ -391,9 +391,13 @@ export default function Header({
                 })}
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-muted/20">
-                <button className="w-full text-[11px] text-center text-muted-foreground hover:text-foreground transition-colors">
-                  Ver todas as notificações
-                </button>
+                <Link
+                  href="/notifications"
+                  onClick={() => setNotificationsOpen(false)}
+                  className="block w-full text-[11px] text-center font-semibold text-primary hover:underline transition-colors"
+                >
+                  Central de Notificações
+                </Link>
               </div>
             </div>
           )}
