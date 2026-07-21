@@ -240,7 +240,7 @@ export default function NotificationsPage() {
 
   // Save Template
   const handleSaveTemplate = async () => {
-    if (!selectedTemplate) return;
+    if (!selectedTemplate || !selectedTemplate.id) return;
     setSaving(true);
     try {
       await updateDoc("email_templates", selectedTemplate.id, {

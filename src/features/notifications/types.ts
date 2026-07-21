@@ -16,7 +16,7 @@ export interface SystemNotification extends BaseDocument {
   actionUrl?: string;
 }
 
-export interface NotificationSettings extends BaseDocument {
+export interface NotificationSettings extends Partial<BaseDocument> {
   tenantId: string;
   smtpHost: string;
   smtpPort: number;
@@ -54,8 +54,8 @@ export interface NotificationSettings extends BaseDocument {
   };
 }
 
-export interface EmailTemplate extends BaseDocument {
-  tenantId: string;
+export interface EmailTemplate extends Partial<BaseDocument> {
+  tenantId?: string;
   category: NotificationCategory;
   name: string;
   subject: string;
