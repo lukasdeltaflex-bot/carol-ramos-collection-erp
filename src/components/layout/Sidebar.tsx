@@ -26,7 +26,8 @@ import {
   Calculator,
   Lightbulb,
   Bell,
-  Trash2
+  Trash2,
+  BarChart2
 } from "lucide-react";
 
 interface SidebarProps {
@@ -110,6 +111,12 @@ export default function Sidebar({
       name: "Notificações & E-mails",
       href: "/notifications",
       icon: Bell,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Central de Relatórios",
+      href: "/reports",
+      icon: BarChart2,
       roles: ["owner", "admin", "operator", "viewer"],
     },
     {

@@ -635,6 +635,47 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* 3d. Card de Relatórios Rápidos */}
+          <div className="p-5 rounded-2xl border border-border bg-card/40 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-rosegold-500/10 text-rosegold-500 border border-rosegold-500/20">
+                  <BarChart2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Relatórios Rápidos</h3>
+                  <p className="text-xs text-muted-foreground">Atalhos diretos para os relatórios e análises mais utilizados.</p>
+                </div>
+              </div>
+              <Link href="/reports" className="text-[10px] font-semibold text-rosegold-500 hover:underline flex items-center gap-0.5">
+                <span>Central Completa</span>
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <Link href="/reports" className="p-3 rounded-xl border border-border bg-background/50 hover:bg-muted/40 transition-all space-y-1 block">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase block">Vendas & Receita</span>
+                <span className="font-semibold text-foreground truncate block">Vendas por Período</span>
+              </Link>
+
+              <Link href="/reports" className="p-3 rounded-xl border border-border bg-background/50 hover:bg-muted/40 transition-all space-y-1 block">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase block">Financeiro</span>
+                <span className="font-semibold text-foreground truncate block">Fluxo de Caixa DRE</span>
+              </Link>
+
+              <Link href="/reports" className="p-3 rounded-xl border border-border bg-background/50 hover:bg-muted/40 transition-all space-y-1 block">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase block">Estoque</span>
+                <span className="font-semibold text-foreground truncate block">Valorização de Estoque</span>
+              </Link>
+
+              <Link href="/reports" className="p-3 rounded-xl border border-border bg-background/50 hover:bg-muted/40 transition-all space-y-1 block">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase block">Clientes</span>
+                <span className="font-semibold text-foreground truncate block">Aniversariantes & Top</span>
+              </Link>
+            </div>
+          </div>
+
           {/* 4. Canais de Venda Integrados */}
           <div className="p-5 rounded-2xl border border-border bg-card/30">
             <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
