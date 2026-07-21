@@ -89,25 +89,29 @@ export default function ContactsPage() {
     setLoading(true);
     try {
       let custs = await getDocs("customers");
+      const safeCusts = (custs as Customer[]) || [];
 
-      if (custs.length === 0) {
+      if (safeCusts.length === 0) {
         for (const c of INITIAL_CUSTOMERS) {
           await createDoc("customers", c);
         }
         custs = await getDocs("customers");
       }
 
-      setCustomers(custs as Customer[]);
+      setCustomers((custs as Customer[]) || []);
     } catch (e) {
       console.error("Erro ao carregar clientes:", e);
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (tenantId) {
+      loadData();
+    }
+  }, [tenantId]);
 
   const handleNew = () => {
     setEditingId(null);

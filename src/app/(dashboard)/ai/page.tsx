@@ -53,11 +53,14 @@ export default function AIPage() {
         getDocs("sales"),
         getDocs("customers")
       ]);
-      setProducts(prods as Product[]);
-      setSales(sls as Sale[]);
-      setCustomers(custs as Customer[]);
+      setProducts((prods as Product[]) || []);
+      setSales((sls as Sale[]) || []);
+      setCustomers((custs as Customer[]) || []);
     } catch (e) {
       console.error("Erro ao carregar dados do ERP para contexto da IA:", e);
+      setProducts([]);
+      setSales([]);
+      setCustomers([]);
     }
   };
 

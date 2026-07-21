@@ -392,18 +392,25 @@ export default function SuppliersPage() {
     setLoading(true);
     try {
       const data = await getDocs("suppliers");
-      const loaded = data as Supplier[];
+      const loaded = (data as Supplier[]) || [];
       setSuppliers(loaded);
-      // Run background migration if needed
-      runMigration(loaded);
+      if (loaded.length > 0) {
+        runMigration(loaded);
+      }
     } catch (e: any) {
+      console.error("Erro ao carregar fornecedores:", e);
+      setSuppliers([]);
       toastError("Erro ao carregar", e.message || "Não foi possível carregar os fornecedores.");
     } finally {
       setLoading(false);
     }
   }, [getDocs, toastError, runMigration]);
 
-  useEffect(() => { loadSuppliers(); }, [loadSuppliers]);
+  useEffect(() => {
+    if (tenantId) {
+      loadSuppliers();
+    }
+  }, [tenantId, loadSuppliers]);
 
   const filtered = suppliers.filter((s) => {
     const q = search.toLowerCase();

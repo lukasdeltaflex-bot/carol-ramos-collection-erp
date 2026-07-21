@@ -250,77 +250,98 @@ export function useDb() {
     return true;
   }, [user, tenantId, isMock, invalidateCache]);
 
-  // 4. Obter Todos os Documentos do Tenant (Com cache e deduplicação de requisições)
+  // 4. Obter Todos os Documentos do Tenant (Com cache, deduplicação e resiliência)
   const getDocs = useCallback(async (collectionName: string) => {
     const targetTenant = tenantId || "shared";
     const cacheKey = `${collectionName}_${targetTenant}`;
 
     // Check in-memory cache
     if (dataCache[cacheKey] && (Date.now() - dataCache[cacheKey].timestamp < CACHE_TTL)) {
-      return dataCache[cacheKey].data;
+      return dataCache[cacheKey].data || [];
     }
 
     // Check if there is already an active promise for this request
     if (activeQueries[cacheKey]) {
-      return activeQueries[cacheKey];
+      try {
+        const cachedRes = await activeQueries[cacheKey];
+        return Array.isArray(cachedRes) ? cachedRes : [];
+      } catch (err) {
+        delete activeQueries[cacheKey];
+      }
     }
 
     // Define query promise
     const fetchPromise = (async () => {
-      if (isMock) {
-        const storageKey = `mock_db_${collectionName}`;
-        const existing = localStorage.getItem(storageKey);
-        const list = existing ? JSON.parse(existing) : [];
-        return list.filter((item: any) => item.tenantId === targetTenant);
-      }
+      try {
+        if (isMock) {
+          const storageKey = `mock_db_${collectionName}`;
+          const existing = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+          const list = existing ? JSON.parse(existing) : [];
+          return Array.isArray(list) ? list.filter((item: any) => item && item.tenantId === targetTenant) : [];
+        }
 
-      // Firestore real
-      const colRef = collection(db, collectionName);
-      const q = query(
-        colRef, 
-        where("tenantId", "==", targetTenant)
-      );
-      const snap = await withTimeout(
-        firestoreGetDocs(q),
-        5500,
-        `Erro ao buscar lista de ${collectionName} (Sem resposta do servidor)`
-      );
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Firestore real
+        const colRef = collection(db, collectionName);
+        const q = query(
+          colRef, 
+          where("tenantId", "==", targetTenant)
+        );
+        const snap = await withTimeout(
+          firestoreGetDocs(q),
+          5500,
+          `Erro ao buscar lista de ${collectionName} (Sem resposta do servidor)`
+        );
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.warn(`[useDb] Falha ao carregar ${collectionName}:`, err);
+        return [];
+      }
     })();
 
+    // Prevent unhandled promise rejection warnings on activeQueries map
+    fetchPromise.catch(() => {});
     activeQueries[cacheKey] = fetchPromise;
 
     try {
       const data = await fetchPromise;
+      const safeData = Array.isArray(data) ? data : [];
       dataCache[cacheKey] = {
-        data,
+        data: safeData,
         timestamp: Date.now()
       };
-      return data;
+      return safeData;
+    } catch (err) {
+      console.warn(`[useDb] Exceção em getDocs (${collectionName}):`, err);
+      return [];
     } finally {
       delete activeQueries[cacheKey];
     }
   }, [tenantId, isMock]);
 
-  // 5. Obter Documento por ID (Com cache simples de item)
+  // 5. Obter Documento por ID (Com cache simples e resiliência)
   const getDocById = useCallback(async (collectionName: string, docId: string) => {
-    if (isMock) {
-      const storageKey = `mock_db_${collectionName}`;
-      const existing = localStorage.getItem(storageKey);
-      if (!existing) return null;
-      const list = JSON.parse(existing);
-      return list.find((item: any) => item.id === docId) || null;
-    }
+    try {
+      if (isMock) {
+        const storageKey = `mock_db_${collectionName}`;
+        const existing = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+        if (!existing) return null;
+        const list = JSON.parse(existing);
+        return list.find((item: any) => item && item.id === docId) || null;
+      }
 
-    // Firestore real
-    const docRef = doc(db, collectionName, docId);
-    const snap = await withTimeout(
-      firestoreGetDoc(docRef),
-      5000,
-      `Erro ao buscar registro por ID em ${collectionName}`
-    );
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() };
+      // Firestore real
+      const docRef = doc(db, collectionName, docId);
+      const snap = await withTimeout(
+        firestoreGetDoc(docRef),
+        5000,
+        `Erro ao buscar registro por ID em ${collectionName}`
+      );
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() };
+    } catch (err) {
+      console.warn(`[useDb] Falha ao carregar documento ${collectionName}/${docId}:`, err);
+      return null;
+    }
   }, [isMock]);
 
   return {

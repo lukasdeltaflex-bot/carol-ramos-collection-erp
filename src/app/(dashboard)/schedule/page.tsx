@@ -83,19 +83,25 @@ export default function SchedulePage() {
         getDocs("customers")
       ]);
 
-      setCustomers(custs as Customer[]);
+      const safeAppts = (appts as Appointment[]) || [];
+      const safeCusts = (custs as Customer[]) || [];
+
+      setCustomers(safeCusts);
 
       // Seed mock appointments if empty
-      if (appts.length === 0 && custs.length > 0) {
+      if (safeAppts.length === 0 && safeCusts.length > 0) {
         const todayStr = new Date().toISOString().split("T")[0];
         const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split("T")[0];
         const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split("T")[0];
 
+        const firstCust = safeCusts[0];
+        const secondCust = safeCusts[1] || safeCusts[0];
+
         const mockAppts = [
           {
-            customerId: custs[0].id,
-            customerName: custs[0].name,
-            customerPhone: custs[0].phone,
+            customerId: firstCust.id,
+            customerName: firstCust.name,
+            customerPhone: firstCust.phone,
             serviceName: "Maquiagem Social Express",
             price: 180.00,
             professionalName: "Carol Ramos",
@@ -105,9 +111,9 @@ export default function SchedulePage() {
             notes: "Maquiagem para casamento à noite."
           },
           {
-            customerId: custs[1]?.id || custs[0].id,
-            customerName: custs[1]?.name || custs[0].name,
-            customerPhone: custs[1]?.phone || custs[0].phone,
+            customerId: secondCust.id,
+            customerName: secondCust.name,
+            customerPhone: secondCust.phone,
             serviceName: "Limpeza de Pele Hidratante",
             price: 150.00,
             professionalName: "Carol Ramos",
@@ -117,9 +123,9 @@ export default function SchedulePage() {
             notes: "Evitar produtos com ácidos agressivos."
           },
           {
-            customerId: custs[0].id,
-            customerName: custs[0].name,
-            customerPhone: custs[0].phone,
+            customerId: firstCust.id,
+            customerName: firstCust.name,
+            customerPhone: firstCust.phone,
             serviceName: "Design de Sobrancelhas",
             price: 60.00,
             professionalName: "Carol Ramos",
@@ -135,12 +141,14 @@ export default function SchedulePage() {
         }
         
         const freshAppts = await getDocs("appointments");
-        setAppointments(freshAppts as Appointment[]);
+        setAppointments((freshAppts as Appointment[]) || []);
       } else {
-        setAppointments(appts as Appointment[]);
+        setAppointments(safeAppts);
       }
     } catch (e) {
       console.error("Erro ao carregar agenda:", e);
+      setAppointments([]);
+      setCustomers([]);
     } finally {
       setLoading(false);
     }

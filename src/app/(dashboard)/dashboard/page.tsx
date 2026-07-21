@@ -99,13 +99,18 @@ export default function Dashboard() {
         getDocs("integration_configs")
       ]);
 
-      setProducts(prods as Product[]);
-      setSales(sls as Sale[]);
-      setCustomers(custs as Customer[]);
-      setReceivables(recs as AccountsReceivable[]);
-      setConfigs(confs as IntegrationConfig[]);
+      setProducts((prods as Product[]) || []);
+      setSales((sls as Sale[]) || []);
+      setCustomers((custs as Customer[]) || []);
+      setReceivables((recs as AccountsReceivable[]) || []);
+      setConfigs((confs as IntegrationConfig[]) || []);
     } catch (e) {
       console.error("Erro ao carregar dados do dashboard:", e);
+      setProducts([]);
+      setSales([]);
+      setCustomers([]);
+      setReceivables([]);
+      setConfigs([]);
     } finally {
       setLoading(false);
     }

@@ -223,6 +223,14 @@ export default function FinancePage() {
         getDocs("suppliers")
       ]);
 
+      bAccounts = (bAccounts as BankAccount[]) || [];
+      trans = (trans as FinancialTransaction[]) || [];
+      pays = (pays as AccountsPayable[]) || [];
+      recs = (recs as AccountsReceivable[]) || [];
+      purcs = (purcs as Purchase[]) || [];
+      prods = (prods as Product[]) || [];
+      supps = (supps as Supplier[]) || [];
+
       // Pre-seed bank accounts (Paralelizado)
       let needsRefetch = false;
       if (bAccounts.length === 0) {
@@ -231,7 +239,7 @@ export default function FinancePage() {
       }
 
       if (needsRefetch) {
-        bAccounts = await getDocs("bank_accounts");
+        bAccounts = (await getDocs("bank_accounts") as BankAccount[]) || [];
       }
 
       const bankIds = (bAccounts as any[]).map((b: any) => b.id);
@@ -259,27 +267,37 @@ export default function FinancePage() {
       }
 
       if (needsRefetchOthers) {
-        [trans, pays, recs] = await Promise.all([
+        const [freshTrans, freshPays, freshRecs] = await Promise.all([
           getDocs("financial_transactions"),
           getDocs("accounts_payable"),
           getDocs("accounts_receivable")
         ]);
+        trans = (freshTrans as FinancialTransaction[]) || [];
+        pays = (freshPays as AccountsPayable[]) || [];
+        recs = (freshRecs as AccountsReceivable[]) || [];
       }
 
-      setBankAccounts(bAccounts as BankAccount[]);
-      setTransactions(trans as FinancialTransaction[]);
-      setPayables(pays as AccountsPayable[]);
-      setReceivables(recs as AccountsReceivable[]);
-      setPurchases(purcs as Purchase[]);
-      setProducts(prods as Product[]);
-      setSuppliers(supps as Supplier[]);
+      setBankAccounts(bAccounts);
+      setTransactions(trans);
+      setPayables(pays);
+      setReceivables(recs);
+      setPurchases(purcs);
+      setProducts(prods);
+      setSuppliers(supps);
 
-      if (bAccounts.length > 0) {
+      if (bAccounts.length > 0 && bAccounts[0]) {
         setTBankAccountId(bAccounts[0].id);
         setPaymentBankAccountId(bAccounts[0].id);
       }
     } catch (e) {
       console.error("Erro ao sincronizar finanças:", e);
+      setBankAccounts([]);
+      setTransactions([]);
+      setPayables([]);
+      setReceivables([]);
+      setPurchases([]);
+      setProducts([]);
+      setSuppliers([]);
     } finally {
       setLoading(false);
     }
