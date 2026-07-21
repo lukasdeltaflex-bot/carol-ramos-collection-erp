@@ -130,8 +130,12 @@ export default function FinancePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
+  // Batch Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds([]);
   }, [activeTab, searchQuery]);
   const [loading, setLoading] = useState(true);
 
@@ -935,11 +939,77 @@ export default function FinancePage() {
 
         await softDeleteDoc(collection, id, moduleLabel, desc);
         invalidateCache(collection);
+        setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
         await loadFinancialData();
       } catch (err: any) {
         alert(err.message || "Erro ao deletar.");
       }
     }
+  };
+
+  // Batch Handlers (Financeiro - Fluxo de Caixa / Lançamentos)
+  const toggleSelectAllTransactions = (filteredList: any[]) => {
+    if (selectedIds.length === filteredList.length && filteredList.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredList.map(item => item.id));
+    }
+  };
+
+  const toggleSelectDocTransaction = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const handleBatchDeleteTransactions = async (collection: string) => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja mover os ${selectedIds.length} registros selecionados para a Lixeira Inteligente?`)) {
+      try {
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+        const moduleLabel = collection === "financial_transactions" ? "Fluxo de Caixa"
+          : collection === "accounts_payable" ? "Contas a Pagar"
+          : collection === "accounts_receivable" ? "Contas a Receber"
+          : collection === "purchases" ? "Compras de Estoque"
+          : "Financeiro";
+
+        for (const id of selectedIds) {
+          let desc = "Registro Financeiro";
+          if (collection === "financial_transactions") {
+            const item = transactions.find(t => t.id === id);
+            if (item) desc = item.description;
+          } else if (collection === "accounts_payable") {
+            const item = payables.find(p => p.id === id);
+            if (item) desc = item.description;
+          } else if (collection === "accounts_receivable") {
+            const item = receivables.find(r => r.id === id);
+            if (item) desc = item.description;
+          }
+          await softDeleteDoc(collection, id, moduleLabel, desc);
+        }
+
+        invalidateCache(collection);
+        setSelectedIds([]);
+        await loadFinancialData();
+        alert(`${selectedIds.length} registros movidos para a Lixeira com sucesso.`);
+      } catch (err: any) {
+        alert(err.message || "Erro na exclusão em lote.");
+      }
+    }
+  };
+
+  const handleBatchExportTransactions = () => {
+    if (selectedIds.length === 0) return;
+    const selectedTrans = transactions.filter(t => selectedIds.includes(t.id));
+    let csvContent = `data:text/csv;charset=utf-8,Data;Tipo;Categoria;Descricao;Valor;Status\n`;
+    selectedTrans.forEach(t => {
+      csvContent += `"${t.paymentDate}";"${t.type}";"${t.category}";"${t.description}";"${t.amount}";"${t.status}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Lancamentos_Financeiros_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // DRE de Caixa Simplificado (Cálculo)
@@ -1144,6 +1214,14 @@ export default function FinancePage() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                      <th className="p-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.length === paginatedTransactions.length && paginatedTransactions.length > 0}
+                          onChange={() => toggleSelectAllTransactions(paginatedTransactions)}
+                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      </th>
                       <th className="p-4">Descrição</th>
                       <th className="p-4">Categoria</th>
                       <th className="p-4">Data Pagamento</th>
@@ -1155,45 +1233,56 @@ export default function FinancePage() {
                   <tbody className="divide-y divide-border/60">
                     {paginatedTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhum lançamento financeiro registrado.</td>
+                        <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum lançamento financeiro registrado.</td>
                       </tr>
                     ) : (
-                      paginatedTransactions.map((t) => (
-                        <tr key={t.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              {t.type === "revenue" ? (
-                                <div className="p-1 rounded-md bg-green-100 text-green-600 dark:bg-green-950/20 dark:text-green-400">
-                                  <ArrowUpRight className="h-3.5 w-3.5" />
-                                </div>
-                              ) : (
-                                <div className="p-1 rounded-md bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400">
-                                  <ArrowDownRight className="h-3.5 w-3.5" />
-                                </div>
-                              )}
-                              <span className="font-semibold text-foreground">{t.description}</span>
-                            </div>
-                          </td>
-                          <td className="p-4">{getCategoryLabel(t.category)}</td>
-                          <td className="p-4 font-mono text-muted-foreground">{t.paymentDate ? formatDate(t.paymentDate) : "-"}</td>
-                          <td className="p-4 text-muted-foreground">
-                            {bankAccounts.find(a => a.id === t.bankAccountId)?.name || "Caixa Geral"}
-                          </td>
-                          <td className="p-4 font-mono font-bold text-foreground">
-                            <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
-                              {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <button
-                              onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
-                              className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                      paginatedTransactions.map((t) => {
+                        const isSelected = selectedIds.includes(t.id);
+                        return (
+                          <tr key={t.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
+                            <td className="p-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectDocTransaction(t.id)}
+                                className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                {t.type === "revenue" ? (
+                                  <div className="p-1 rounded-md bg-green-100 text-green-600 dark:bg-green-950/20 dark:text-green-400">
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                  </div>
+                                ) : (
+                                  <div className="p-1 rounded-md bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400">
+                                    <ArrowDownRight className="h-3.5 w-3.5" />
+                                  </div>
+                                )}
+                                <span className="font-semibold text-foreground">{t.description}</span>
+                              </div>
+                            </td>
+                            <td className="p-4">{getCategoryLabel(t.category)}</td>
+                            <td className="p-4 font-mono text-muted-foreground">{t.paymentDate ? formatDate(t.paymentDate) : "-"}</td>
+                            <td className="p-4 text-muted-foreground">
+                              {bankAccounts.find(a => a.id === t.bankAccountId)?.name || "Caixa Geral"}
+                            </td>
+                            <td className="p-4 font-mono font-bold text-foreground">
+                              <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
+                                {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
+                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -2245,6 +2334,45 @@ export default function FinancePage() {
                 Confirmar Pagamento
               </button>
             </div>
+          </div>
+        </div>
+      {/* Floating Batch Action Bar (Financeiro - Fluxo de Caixa) */}
+      {activeTab === "cashflow" && selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground font-extrabold text-xs">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-bold text-foreground">
+              {selectedIds.length === 1 ? "1 lançamento selecionado" : `${selectedIds.length} lançamentos selecionados`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-border hidden sm:block" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleBatchExportTransactions}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition-all"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              onClick={() => handleBatchDeleteTransactions("financial_transactions")}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Excluir Selecionados</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-all"
+              title="Cancelar Seleção"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
       )}

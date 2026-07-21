@@ -47,8 +47,12 @@ export default function AccountsPayablePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
+  // Batch Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds([]);
   }, [searchQuery, statusFilter]);
 
   // Edit/Create Modal State
@@ -215,6 +219,7 @@ export default function AccountsPayablePage() {
         await softDeleteDoc("accounts_payable", id, "Contas a Pagar", description);
         invalidateCache("accounts_payable");
         setPayables(prev => prev.filter(p => p.id !== id));
+        setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
         success("Excluído", "Conta a pagar movida para a Lixeira.");
         await loadData();
       } catch (err: any) {
@@ -223,6 +228,76 @@ export default function AccountsPayablePage() {
         setLoading(false);
       }
     }
+  };
+
+  // Batch Handlers (Contas a Pagar)
+  const toggleSelectAllPayables = (filteredList: AccountsPayable[]) => {
+    if (selectedIds.length === filteredList.length && filteredList.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredList.map(p => p.id));
+    }
+  };
+
+  const toggleSelectDocPayable = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const handleBatchDeletePayables = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja mover as ${selectedIds.length} contas a pagar selecionadas para a Lixeira Inteligente?`)) {
+      setLoading(true);
+      try {
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+        for (const id of selectedIds) {
+          const pay = payables.find(p => p.id === id);
+          await softDeleteDoc("accounts_payable", id, "Contas a Pagar", pay?.description || "Conta a Pagar");
+        }
+        invalidateCache("accounts_payable");
+        setPayables(prev => prev.filter(p => !selectedIds.includes(p.id)));
+        setSelectedIds([]);
+        await loadData();
+        success("Operação concluída", `${selectedIds.length} contas a pagar foram movidas para a Lixeira.`);
+      } catch (err: any) {
+        toastError("Erro ao excluir em lote", err.message || "Erro na operação.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleBatchMarkPaidPayables = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja marcar as ${selectedIds.length} contas selecionadas como PAGO?`)) {
+      setLoading(true);
+      try {
+        await Promise.all(selectedIds.map(id => updateDoc("accounts_payable", id, { status: "paid", paidDate: new Date().toISOString() })));
+        invalidateCache("accounts_payable");
+        setSelectedIds([]);
+        await loadData();
+        success("Contas Pagas", `${selectedIds.length} contas marcadas como pagas com sucesso.`);
+      } catch (err: any) {
+        toastError("Erro ao atualizar", err.message || "Erro na baixa em lote.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleBatchExportPayables = () => {
+    const selectedPayables = payables.filter(p => selectedIds.includes(p.id));
+    if (selectedPayables.length === 0) return;
+    let csvContent = `data:text/csv;charset=utf-8,Descricao;Valor;Vencimento;Status;Metodo\n`;
+    selectedPayables.forEach(p => {
+      csvContent += `"${p.description}";"${p.amount}";"${p.dueDate}";"${p.status}";"${p.paymentMethod}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Contas_A_Pagar_Selecionadas_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Open Payment Liquidation modal
@@ -455,6 +530,14 @@ export default function AccountsPayablePage() {
             <table className="w-full text-xs text-left">
               <thead className="bg-muted/40 text-muted-foreground uppercase text-[9px] tracking-wider border-b border-border">
                 <tr>
+                  <th className="p-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.length === paginatedPayables.length && paginatedPayables.length > 0}
+                      onChange={() => toggleSelectAllPayables(paginatedPayables)}
+                      className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">Vencimento</th>
                   <th className="p-4">Descrição</th>
                   <th className="p-4">Fornecedor</th>
@@ -469,9 +552,18 @@ export default function AccountsPayablePage() {
                   sDate.setHours(0,0,0,0);
                   const isOverdue = pay.status === "pending" && sDate < now;
                   const supplierName = suppliers.find(s => s.id === pay.supplierId)?.name || "Geral / Avulso";
+                  const isSelected = selectedIds.includes(pay.id);
 
                   return (
-                    <tr key={pay.id} className="hover:bg-muted/20 transition-colors">
+                    <tr key={pay.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/20")}>
+                      <td className="p-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectDocPayable(pay.id)}
+                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-4 font-mono font-semibold">
                         {getNormalizedDateStr(pay.dueDate)}
                       </td>
@@ -729,8 +821,55 @@ export default function AccountsPayablePage() {
               </button>
             </div>
           </div>
+      {/* Floating Batch Action Bar (Contas a Pagar) */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground font-extrabold text-xs">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-bold text-foreground">
+              {selectedIds.length === 1 ? "1 conta selecionada" : `${selectedIds.length} contas selecionadas`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-border hidden sm:block" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleBatchMarkPaidPayables}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold transition-all"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Marcar como Pago</span>
+            </button>
+
+            <button
+              onClick={handleBatchExportPayables}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition-all"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              onClick={handleBatchDeletePayables}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Excluir Selecionados</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-all"
+              title="Cancelar Seleção"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
+
     </div>
   );
 }

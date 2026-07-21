@@ -47,8 +47,12 @@ export default function AccountsReceivablePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
+  // Batch Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds([]);
   }, [searchQuery, statusFilter]);
 
   // Edit/Create Modal State
@@ -219,6 +223,7 @@ export default function AccountsReceivablePage() {
         await softDeleteDoc("accounts_receivable", id, "Contas a Receber", description);
         invalidateCache("accounts_receivable");
         setReceivables(prev => prev.filter(r => r.id !== id));
+        setSelectedIds(prev => prev.filter(selectedId => selectedId !== id));
         success("Excluído", "Conta a receber movida para a Lixeira.");
         await loadData();
       } catch (err: any) {
@@ -227,6 +232,76 @@ export default function AccountsReceivablePage() {
         setLoading(false);
       }
     }
+  };
+
+  // Batch Handlers (Contas a Receber)
+  const toggleSelectAllReceivables = (filteredList: AccountsReceivable[]) => {
+    if (selectedIds.length === filteredList.length && filteredList.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredList.map(r => r.id));
+    }
+  };
+
+  const toggleSelectDocReceivable = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const handleBatchDeleteReceivables = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja mover as ${selectedIds.length} contas a receber selecionadas para a Lixeira Inteligente?`)) {
+      setLoading(true);
+      try {
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+        for (const id of selectedIds) {
+          const rec = receivables.find(r => r.id === id);
+          await softDeleteDoc("accounts_receivable", id, "Contas a Receber", rec?.description || "Conta a Receber");
+        }
+        invalidateCache("accounts_receivable");
+        setReceivables(prev => prev.filter(r => !selectedIds.includes(r.id)));
+        setSelectedIds([]);
+        await loadData();
+        success("Operação concluída", `${selectedIds.length} contas a receber foram movidas para a Lixeira.`);
+      } catch (err: any) {
+        toastError("Erro ao excluir em lote", err.message || "Erro na operação.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleBatchMarkPaidReceivables = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Deseja marcar as ${selectedIds.length} contas selecionadas como RECEBIDO?`)) {
+      setLoading(true);
+      try {
+        await Promise.all(selectedIds.map(id => updateDoc("accounts_receivable", id, { status: "paid", receivedDate: new Date().toISOString() })));
+        invalidateCache("accounts_receivable");
+        setSelectedIds([]);
+        await loadData();
+        success("Contas Recebidas", `${selectedIds.length} contas marcadas como recebidas com sucesso.`);
+      } catch (err: any) {
+        toastError("Erro ao atualizar", err.message || "Erro no recebimento em lote.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleBatchExportReceivables = () => {
+    const selectedReceivables = receivables.filter(r => selectedIds.includes(r.id));
+    if (selectedReceivables.length === 0) return;
+    let csvContent = `data:text/csv;charset=utf-8,Descricao;Valor;Vencimento;Status;Metodo\n`;
+    selectedReceivables.forEach(r => {
+      csvContent += `"${r.description}";"${r.amount}";"${r.dueDate}";"${r.status}";"${r.paymentMethod}"\n`;
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Contas_A_Receber_Selecionadas_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Open Payment Liquidation modal
@@ -459,6 +534,14 @@ export default function AccountsReceivablePage() {
             <table className="w-full text-xs text-left">
               <thead className="bg-muted/40 text-muted-foreground uppercase text-[9px] tracking-wider border-b border-border">
                 <tr>
+                  <th className="p-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.length === paginatedReceivables.length && paginatedReceivables.length > 0}
+                      onChange={() => toggleSelectAllReceivables(paginatedReceivables)}
+                      className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">Vencimento</th>
                   <th className="p-4">Descrição</th>
                   <th className="p-4">Cliente</th>
@@ -473,9 +556,18 @@ export default function AccountsReceivablePage() {
                   sDate.setHours(0,0,0,0);
                   const isOverdue = rec.status === "pending" && sDate < now;
                   const customerName = customers.find(c => c.id === rec.customerId)?.name || "Consumidor Final";
+                  const isSelected = selectedIds.includes(rec.id);
 
                   return (
-                    <tr key={rec.id} className="hover:bg-muted/20 transition-colors">
+                    <tr key={rec.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/20")}>
+                      <td className="p-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectDocReceivable(rec.id)}
+                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-4 font-mono font-semibold">
                         {getNormalizedDateStr(rec.dueDate)}
                       </td>
@@ -747,8 +839,55 @@ export default function AccountsReceivablePage() {
               </button>
             </div>
           </div>
+      {/* Floating Batch Action Bar (Contas a Receber) */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground font-extrabold text-xs">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-bold text-foreground">
+              {selectedIds.length === 1 ? "1 conta selecionada" : `${selectedIds.length} contas selecionadas`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-border hidden sm:block" />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleBatchMarkPaidReceivables}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold transition-all"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Marcar como Recebido</span>
+            </button>
+
+            <button
+              onClick={handleBatchExportReceivables}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition-all"
+            >
+              Exportar CSV
+            </button>
+
+            <button
+              onClick={handleBatchDeleteReceivables}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Excluir Selecionados</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedIds([])}
+              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted text-xs transition-all"
+              title="Cancelar Seleção"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
+
     </div>
   );
 }
