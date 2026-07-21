@@ -61,7 +61,7 @@ export default function AccountsPayablePage() {
   const [supplierId, setSupplierId] = useState("");
   const [amount, setAmount] = useState<number>(0);
   const [dueDate, setDueDate] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'bank_slip' | 'pix' | 'cash'>("pix");
+  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'company_credit_card' | 'bank_slip' | 'pix' | 'cash' | 'transfer' | 'bank_account'>("pix");
 
   // Liquidation Modal State
   const [payModalOpen, setPayModalOpen] = useState(false);
