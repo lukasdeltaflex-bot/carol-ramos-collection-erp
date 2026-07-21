@@ -596,6 +596,9 @@ export default function Dashboard() {
                   Nenhum lembrete para hoje.
                 </div>
               )}
+            </div>
+          </div>
+
           {/* 3c. Card de Itens na Lixeira Inteligente */}
           <div className="p-5 rounded-2xl border border-border bg-card/40 space-y-4">
             <div className="flex items-center justify-between">
