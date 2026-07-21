@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { BookOpen, Search, ChevronDown, ChevronRight, LayoutDashboard, Package, Users, ShoppingCart, DollarSign, Sparkles, Settings, Truck, Calendar, MessageCircle, Palette, ExternalLink, CheckCircle2, Lightbulb, Star, Trash2, BarChart2 } from "lucide-react";
+import { BookOpen, Search, ChevronDown, ChevronRight, LayoutDashboard, Package, Users, ShoppingCart, DollarSign, Sparkles, Settings, Truck, Calendar, MessageCircle, Palette, ExternalLink, CheckCircle2, Lightbulb, Star, Trash2, BarChart2, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
