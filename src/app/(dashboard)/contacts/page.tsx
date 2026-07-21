@@ -649,7 +649,6 @@ export default function ContactsPage() {
           </div>
         </div>
       )}
-      </div>
 
       {/* 4. Slide-over Form Drawer (Clientes) */}
       {drawerOpen && (
