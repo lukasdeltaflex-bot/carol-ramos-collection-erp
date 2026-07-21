@@ -21,10 +21,15 @@ import {
   X,
   Upload,
   Layers,
-  Coins
+  Coins,
+  Calculator,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import PricingSimulator from "@/features/pricing/components/PricingSimulator";
+import { ProductPricingData } from "@/features/pricing/types";
 
 // Mock Inicial de Categorias
 const INITIAL_CATEGORIES = [
@@ -175,6 +180,10 @@ export default function ProductsPage() {
   const [imageBase64, setImageBase64] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Pricing Simulator State
+  const [pricingData, setPricingData] = useState<ProductPricingData | undefined>(undefined);
+  const [showSimulatorInDrawer, setShowSimulatorInDrawer] = useState<boolean>(false);
+
   // Categoria/Marca auxiliary simple forms
   const [auxName, setAuxName] = useState("");
   const [auxDesc, setAuxDesc] = useState("");
@@ -279,6 +288,8 @@ export default function ProductsPage() {
     setCurrentStock(0);
     setReservedStock(0);
     setImageBase64("");
+    setPricingData(undefined);
+    setShowSimulatorInDrawer(false);
     setErrors({});
     setDrawerOpen(true);
   };
@@ -300,6 +311,8 @@ export default function ProductsPage() {
     setPromoPrice(item.promoPrice || 0);
     setMinStock(item.minStock || 0);
     setWeightGrams(item.weightGrams || 0);
+    setPricingData(item.pricingData);
+    setShowSimulatorInDrawer(false);
     
     if (item.dimensions) {
       setWidth(item.dimensions.width || 0);
@@ -379,6 +392,7 @@ export default function ProductsPage() {
       dimensions: dimensionsPayload,
       images: imagesPayload,
       channels: {},
+      pricingData: pricingData || undefined,
       status: "active"
     };
 
@@ -663,6 +677,15 @@ export default function ProductsPage() {
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  window.location.href = `/pricing?productId=${p.id}`;
+                                }}
+                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                                title="Simular precificação e taxas de marketplace"
+                              >
+                                <Calculator className="h-3.5 w-3.5" />
+                              </button>
                               <button onClick={() => handleEditProduct(p)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Editar">
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
@@ -1110,6 +1133,41 @@ export default function ProductsPage() {
                   </div>
                 </div>
               )}
+
+              {/* Aba / Seção do Simulador de Custos e Precificação no Produto */}
+              <div className="pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowSimulatorInDrawer(!showSimulatorInDrawer)}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all text-xs font-bold text-primary select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    <Calculator className="h-4 w-4" />
+                    <span>Simulador de Custos & Precificação (Marketplaces)</span>
+                  </div>
+                  {showSimulatorInDrawer ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+
+                {showSimulatorInDrawer && (
+                  <div className="mt-3 p-4 rounded-xl border border-border bg-card/50 space-y-4 animate-in fade-in duration-200">
+                    <p className="text-[11px] text-muted-foreground">
+                      Simule taxas, despesas e margens reais deste produto para Shopee, Mercado Livre, Amazon e outros canais.
+                    </p>
+                    <PricingSimulator
+                      initialCostPrice={costPrice}
+                      initialSellPrice={sellPrice}
+                      initialPricingData={pricingData}
+                      isEmbeddedInProductModal={true}
+                      onSaveToProduct={(data, calculatedSellPrice) => {
+                        setPricingData(data);
+                        if (calculatedSellPrice && calculatedSellPrice > 0) {
+                          setSellPrice(calculatedSellPrice);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
 
               {/* Botões de Ação */}
               <div className="flex gap-3.5 pt-4 border-t border-border mt-6">

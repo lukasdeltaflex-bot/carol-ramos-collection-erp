@@ -22,7 +22,8 @@ import {
   BookOpen,
   Palette,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Calculator
 } from "lucide-react";
 
 interface SidebarProps {
@@ -52,6 +53,12 @@ export default function Sidebar({
       name: "Produtos & Estoque",
       href: "/products",
       icon: Package,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Simulador & Precificação",
+      href: "/pricing",
+      icon: Calculator,
       roles: ["owner", "admin", "operator", "viewer"],
     },
     {

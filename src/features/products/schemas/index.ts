@@ -38,5 +38,6 @@ export const ProductSchema = z.object({
     height: z.number().min(0, "Altura não pode ser negativa"),
     depth: z.number().min(0, "Profundidade não pode ser negativa"),
   }).optional(),
+  pricingData: z.any().optional(),
   status: z.enum(["active", "inactive"]).default("active"),
 });
