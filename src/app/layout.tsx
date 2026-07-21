@@ -19,6 +19,7 @@ export const metadata: Metadata = {
     "ERP Web profissional para cosméticos, beleza, skincare e autocuidado. Integração de múltiplos canais de venda e assistente inteligente IA (Gemini).",
   keywords: [
     "ERP",
+    "PWA",
     "SaaS",
     "Cosméticos",
     "Maquiagem",
@@ -32,12 +33,23 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Carol Ramos Collection" }],
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Carol Ramos ERP",
+  },
+  icons: {
+    icon: "/icons/icon-192x192.png",
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#B76E79",
+  themeColor: "#b76e79",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({

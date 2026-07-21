@@ -34,7 +34,8 @@ import {
   Mail,
   Lock,
   Clock,
-  Laptop
+  Laptop,
+  Download
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -371,8 +372,18 @@ export default function Header({
         </div>
       </div>
 
-      {/* Direita: Tema, Notificações, Perfil */}
+      {/* Direita: PWA Install, Tema, Notificações, Perfil */}
       <div className="flex items-center gap-2">
+
+        {/* PWA Install Button */}
+        <button
+          data-pwa-install="true"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs transition-all shadow-xs"
+          title="Instalar Carol Ramos Collection ERP no seu dispositivo"
+        >
+          <Download className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Instalar App</span>
+        </button>
 
         {/* Toggle de Tema */}
         <button

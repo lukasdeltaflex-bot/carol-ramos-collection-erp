@@ -5,6 +5,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { AppearanceProvider } from "@/context/AppearanceContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { useAuth } from "@/context/AuthContext";
+import PwaManager from "@/components/pwa/PwaManager";
 
 type Theme = "light" | "dark" | "system";
 
@@ -77,6 +78,7 @@ function InnerProviders({ children }: { children: React.ReactNode }) {
   return (
     <AppearanceProvider userId={profile?.uid}>
       <ToastProvider>
+        <PwaManager />
         {children}
       </ToastProvider>
     </AppearanceProvider>

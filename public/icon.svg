@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b18" />
+      <stop offset="50%" stop-color="#2d221c" />
+      <stop offset="100%" stop-color="#0f0c0a" />
+    </linearGradient>
+
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4C430" />
+      <stop offset="35%" stop-color="#E5AA70" />
+      <stop offset="70%" stop-color="#B76E79" />
+      <stop offset="100%" stop-color="#9C525C" />
+    </linearGradient>
+
+    <linearGradient id="roseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F6E7E1" />
+      <stop offset="50%" stop-color="#E8C5B8" />
+      <stop offset="100%" stop-color="#B76E79" />
+    </linearGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Layer -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Outer Rosegold Decorative Ring -->
+  <circle cx="256" cy="256" r="216" fill="none" stroke="url(#goldGrad)" stroke-width="4" stroke-opacity="0.4" stroke-dasharray="12 8" />
+  <circle cx="256" cy="256" r="200" fill="none" stroke="url(#goldGrad)" stroke-width="2" stroke-opacity="0.2" />
+
+  <!-- Crown / Emblem Icon -->
+  <g transform="translate(0, -10)" filter="url(#glow)">
+    <!-- Crown Top Jewels -->
+    <circle cx="176" cy="180" r="10" fill="url(#goldGrad)" />
+    <circle cx="256" cy="155" r="14" fill="url(#roseGrad)" />
+    <circle cx="336" cy="180" r="10" fill="url(#goldGrad)" />
+
+    <!-- Crown Body -->
+    <path d="M 160 270 L 176 195 L 216 235 L 256 175 L 296 235 L 336 195 L 352 270 Z" fill="url(#goldGrad)" />
+    <path d="M 160 270 C 160 290, 352 290, 352 270 L 340 310 C 290 325, 222 325, 172 310 Z" fill="url(#roseGrad)" opacity="0.9" />
+
+    <!-- Crown Base Band -->
+    <rect x="170" y="300" width="172" height="18" rx="9" fill="url(#goldGrad)" />
+    <circle cx="216" cy="309" r="4" fill="#ffffff" />
+    <circle cx="256" cy="309" r="5" fill="#ffffff" />
+    <circle cx="296" cy="309" r="4" fill="#ffffff" />
+  </g>
+
+  <!-- Brand Typography / Subtitle -->
+  <text x="256" y="380" font-family="'Outfit', sans-serif" font-weight="800" font-size="34" letter-spacing="6" text-anchor="middle" fill="url(#roseGrad)">CAROL RAMOS</text>
+  <text x="256" y="415" font-family="'Inter', sans-serif" font-weight="600" font-size="18" letter-spacing="10" text-anchor="middle" fill="url(#goldGrad)" opacity="0.85">COLLECTION ERP</text>
+</svg>
