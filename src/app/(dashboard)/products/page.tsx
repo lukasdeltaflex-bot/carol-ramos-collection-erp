@@ -201,6 +201,12 @@ export default function ProductsPage() {
         getDocs("products")
       ]);
 
+      cats = (cats as Category[]) || [];
+      brs = (brs as Brand[]) || [];
+      locs = (locs as StockLocation[]) || [];
+      supps = (supps as any[]) || [];
+      prods = (prods as Product[]) || [];
+
       // Pre-seed se o mock ou banco estiver zerado (Paralelizado com Promise.all)
       let needsRefetch = false;
       if (cats.length === 0) {
@@ -217,30 +223,39 @@ export default function ProductsPage() {
       }
 
       if (needsRefetch) {
-        [cats, brs, locs] = await Promise.all([
+        const [freshCats, freshBrs, freshLocs] = await Promise.all([
           getDocs("categories"),
           getDocs("brands"),
           getDocs("stock_locations")
         ]);
+        cats = (freshCats as Category[]) || [];
+        brs = (freshBrs as Brand[]) || [];
+        locs = (freshLocs as StockLocation[]) || [];
       }
 
-      const catIds = (cats as any[]).map((c: any) => c.id);
-      const brandIds = (brs as any[]).map((b: any) => b.id);
-      const suppIds = (supps as any[]).map((s: any) => s.id);
+      const catIds = (cats as any[]).filter(Boolean).map((c: any) => c.id || "");
+      const brandIds = (brs as any[]).filter(Boolean).map((b: any) => b.id || "");
+      const suppIds = (supps as any[]).filter(Boolean).map((s: any) => s.id || "");
 
       if (prods.length === 0) {
         const seedProds = INITIAL_PRODUCTS(catIds, brandIds, suppIds);
         await Promise.all(seedProds.map(p => createDoc("products", p)));
-        prods = await getDocs("products");
+        const freshProds = await getDocs("products");
+        prods = (freshProds as Product[]) || [];
       }
 
-      setCategories(cats as Category[]);
-      setBrandList(brs as Brand[]);
-      setLocations(locs as StockLocation[]);
+      setCategories(cats);
+      setBrandList(brs);
+      setLocations(locs);
       setSuppliers(supps);
-      setProducts(prods as Product[]);
+      setProducts(prods);
     } catch (e) {
       console.error("Erro ao sincronizar tabelas de produtos:", e);
+      setCategories([]);
+      setBrandList([]);
+      setLocations([]);
+      setSuppliers([]);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -250,7 +265,7 @@ export default function ProductsPage() {
     if (tenantId) {
       loadAllData();
     }
-  }, [tenantId, isMock]);
+  }, [tenantId]);
 
   // Conversão de arquivo para Base64 para visualização em modo mock
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -466,14 +481,20 @@ export default function ProductsPage() {
   };
 
   // Filtragem de Produtos
-  const filteredProducts = products.filter(p => {
-    const matchQuery = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredProducts = (products || []).filter(p => {
+    if (!p) return false;
+    const nameStr = (p.name || "").toLowerCase();
+    const skuStr = (p.sku || "").toLowerCase();
+    const searchStr = (searchQuery || "").toLowerCase();
+    const matchQuery = nameStr.includes(searchStr) || skuStr.includes(searchStr);
     
     let matchStock = true;
+    const avail = p.availableStock ?? 0;
+    const min = p.minStock ?? 0;
     if (stockFilter === "low") {
-      matchStock = p.availableStock <= p.minStock;
+      matchStock = avail <= min;
     } else if (stockFilter === "out") {
-      matchStock = p.availableStock === 0;
+      matchStock = avail === 0;
     }
 
     return matchQuery && matchStock;
@@ -487,15 +508,15 @@ export default function ProductsPage() {
 
   // Mapeamento de Categoria e Marca para exibição (Otimizado)
   const categoryMap = React.useMemo(() => {
-    return categories.reduce((acc, cat) => {
-      acc[cat.id] = cat.name;
+    return (categories || []).reduce((acc, cat) => {
+      if (cat && cat.id) acc[cat.id] = cat.name || "";
       return acc;
     }, {} as Record<string, string>);
   }, [categories]);
 
   const brandMap = React.useMemo(() => {
-    return brands.reduce((acc, br) => {
-      acc[br.id] = br.name;
+    return (brands || []).reduce((acc, br) => {
+      if (br && br.id) acc[br.id] = br.name || "";
       return acc;
     }, {} as Record<string, string>);
   }, [brands]);
