@@ -39,7 +39,11 @@ export const metadata: Metadata = {
     title: "Carol Ramos ERP",
   },
   icons: {
-    icon: "/icons/icon-192x192.png",
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" }
+    ],
+    shortcut: "/favicon.png",
     apple: "/icons/apple-touch-icon.png",
   },
 };
