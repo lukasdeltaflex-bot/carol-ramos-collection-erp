@@ -1,4 +1,4 @@
-"use "client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 import { Wifi, WifiOff, Download, Sparkles, X, Share, PlusSquare, ArrowUpRight } from "lucide-react";
