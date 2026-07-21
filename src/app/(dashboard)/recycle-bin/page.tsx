@@ -48,7 +48,7 @@ const MODULE_CONFIG: Record<string, { label: string; icon: any; color: string }>
 };
 
 export default function RecycleBinPage() {
-  const { profile, tenantId } = useAuth();
+  const { role, profile, tenantId } = useAuth();
   const { getDocs, restoreDoc, permanentlyDeleteDoc, createDoc, updateDoc } = useDb();
   const { success, error: toastError } = useToast();
 
@@ -70,7 +70,7 @@ export default function RecycleBinPage() {
   const [targetItem, setTargetItem] = useState<RecycleBinItem | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const isAdmin = profile?.role === "admin" || !profile?.role;
+  const isAdmin = role === "owner" || role === "admin" || !role;
 
   // Load Recycle Bin Data
   const loadRecycleBin = async () => {
