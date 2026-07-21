@@ -46,7 +46,7 @@ const INITIAL_CUSTOMERS = [
 
 export default function ContactsPage() {
   const { tenantId } = useAuth();
-  const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
+  const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -92,11 +92,13 @@ export default function ContactsPage() {
     try {
       let custs = await getDocs("customers");
       const safeCusts = (custs as Customer[]) || [];
+      const isSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_customers_v1") === "true";
 
-      if (safeCusts.length === 0) {
+      if (safeCusts.length === 0 && !isSeeded) {
         for (const c of INITIAL_CUSTOMERS) {
           await createDoc("customers", c);
         }
+        if (typeof window !== "undefined") localStorage.setItem("seeded_customers_v1", "true");
         custs = await getDocs("customers");
       }
 
@@ -181,9 +183,12 @@ export default function ContactsPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Tem certeza que deseja excluir o cadastro de "${name}"?`)) {
+    if (confirm(`Deseja mover o cliente "${name}" para a Lixeira Inteligente?`)) {
       try {
-        await deleteDoc("customers", id);
+        if (typeof window !== "undefined") localStorage.setItem("seeded_customers_v1", "true");
+        await softDeleteDoc("customers", id, "Clientes", name);
+        invalidateCache("customers");
+        setCustomers(prev => prev.filter(c => c.id !== id));
         await loadData();
       } catch (e: any) {
         alert(e.message || "Erro ao excluir.");

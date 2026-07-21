@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { BookOpen, Search, ChevronDown, ChevronRight, LayoutDashboard, Package, Users, ShoppingCart, DollarSign, Sparkles, Settings, Truck, Calendar, MessageCircle, Palette, ExternalLink, CheckCircle2, Lightbulb, Star } from "lucide-react";
+import { BookOpen, Search, ChevronDown, ChevronRight, LayoutDashboard, Package, Users, ShoppingCart, DollarSign, Sparkles, Settings, Truck, Calendar, MessageCircle, Palette, ExternalLink, CheckCircle2, Lightbulb, Star, Trash2, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -120,6 +120,59 @@ const GUIDES: Guide[] = [
       { question: "O assistente acessa dados em tempo real?", answer: "Sim. O assistente consulta os dados do seu ERP (produtos, vendas, clientes) no momento da pergunta, garantindo respostas sempre atualizadas." },
       { question: "O Gemini pode gerar relatórios automaticamente?", answer: "O assistente pode gerar análises textuais detalhadas. Para relatórios em PDF, utilize o módulo de Exportação em Configurações > Dados." },
       { question: "As conversas são salvas?", answer: "O histórico do chat é salvo localmente no navegador. Ao limpar o cache ou usar outro dispositivo, o histórico não estará disponível." },
+    ],
+  },
+  {
+    id: "customers",
+    title: "Clientes & Lixeira Inteligente",
+    category: "Módulos",
+    icon: Users,
+    color: "text-orange-500 bg-orange-50 dark:bg-orange-950/30",
+    steps: [
+      { step: 1, title: "Acesse Clientes & Contatos", desc: "No menu lateral, clique em 'Clientes & Contatos' para visualizar sua lista ativa de clientes." },
+      { step: 2, title: "Exclusão Segura (Soft Delete)", desc: "Ao clicar no ícone de lixeira em um cliente, o registro NÃO é removido permanentemente. Ele é enviado com segurança para a Lixeira Inteligente." },
+      { step: 3, title: "Remoção Imediata da Lista Ativa", desc: "O cliente enviado para a Lixeira desaparece imediatamente da sua listagem de clientes e não retorna mesmo após atualizar a página ou fazer novo login." },
+      { step: 4, title: "Restauração de Clientes", desc: "Se você excluiu um cliente por engano, acesse a '🗑️ Lixeira' no menu lateral, localize o cliente e clique em 'Restaurar'. Ele retornará intacto para a lista de clientes ativos." },
+      { step: 5, title: "Exclusão Permanente", desc: "Caso deseje apagar definitivamente um cliente do banco de dados do Firestore, acesse a Lixeira e confirme a 'Exclusão Permanente'. Essa ação é irreversível." },
+    ],
+    faqs: [
+      { question: "O que acontece com as vendas do cliente excluído?", answer: "As vendas e o histórico financeiro do cliente continuam intactos no ERP. Apenas o cadastro de contato é enviado para a Lixeira." },
+      { question: "Qual a diferença entre exclusão lógica e exclusão definitiva?", answer: "Na exclusão lógica (soft delete), o registro é apenas marcado como inativo e movido para a Lixeira, podendo ser restaurado. Na exclusão definitiva, o documento é apagado do banco Firestore sem possibilidade de recuperação." },
+      { question: "Clientes na Lixeira aparecem em buscas ou relatórios?", answer: "Não. Consultas normais, pesquisas do PDV e relatórios ignoram automaticamente registros marcados na Lixeira." },
+    ],
+  },
+  {
+    id: "recycle-bin",
+    title: "Lixeira Inteligente",
+    category: "Recursos",
+    icon: Trash2,
+    color: "text-red-500 bg-red-50 dark:bg-red-950/30",
+    steps: [
+      { step: 1, title: "Acesse a Lixeira", desc: "Clique em '🗑️ Lixeira' no menu lateral para visualizar todos os itens removidos do sistema." },
+      { step: 2, title: "Filtros por Módulo e Data", desc: "Filtre facilmente os itens excluídos por módulo (Clientes, Produtos, Categorias, Contas, Vendas) ou período de exclusão." },
+      { step: 3, title: "Ações em Lote (Batch)", desc: "Selecione múltiplos itens pelas caixas de seleção e restaure ou exclua todos de uma única vez." },
+      { step: 4, title: "Configurações de Limpeza Automática", desc: "Configure a Lixeira para expurgar automaticamente registros antigos após 15, 30, 60 ou 90 dias." },
+    ],
+    faqs: [
+      { question: "Quais cadastros vão para a Lixeira?", answer: "Produtos, Categorias, Clientes, Fornecedores, Contas a Pagar, Contas a Receber, Vendas e Lembretes." },
+      { question: "Apenas administradores podem apagar definitivamente?", answer: "Sim. Nas configurações da Lixeira você pode restringir a exclusão permanente apenas a perfis administradores." },
+    ],
+  },
+  {
+    id: "reports-bi",
+    title: "Relatórios & Business Intelligence (BI)",
+    category: "Gestão",
+    icon: BarChart2,
+    color: "text-purple-500 bg-purple-50 dark:bg-purple-950/30",
+    steps: [
+      { step: 1, title: "Central de Relatórios", desc: "Acesse '📊 Relatórios' para gerar relatórios detalhados de Vendas, Estoque, Financeiro, Clientes, Fornecedores e Empresas." },
+      { step: 2, title: "Exportação em PDF, Excel e CSV", desc: "Exporte qualquer relatório filtrado nos formatos PDF, Excel (.xlsx), CSV ou envie diretamente para impressão." },
+      { step: 3, title: "Business Intelligence (BI)", desc: "Acesse '📈 Business Intelligence' para acompanhar indicadores estratégicos executivos (Faturamento, Lucro Líquido, ROI, Ticket Médio, Giro de Estoque)." },
+      { step: 4, title: "Previsões & Metas", desc: "Acompanhe previsões preditivas para o próximo mês e defina metas comerciais com barras de progresso." },
+    ],
+    faqs: [
+      { question: "Como agendar o envio automático de relatórios?", answer: "Na Central de Relatórios, selecione um relatório e clique em 'Agendar Envio'. Defina a frequência (Diário, Semanal, Mensal) e o e-mail destinatário." },
+      { question: "Como salvar relatórios favoritos?", answer: "Clique na estrela ⭐ ao lado de qualquer relatório no catálogo para adicioná-lo à sua seção de Relatórios Favoritos." },
     ],
   },
   {
