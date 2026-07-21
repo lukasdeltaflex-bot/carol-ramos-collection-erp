@@ -26,6 +26,7 @@ export interface Customer extends BaseDocument {
     totalSpent: number;
     lastPurchaseDate?: any;
   };
+  vipTier?: 'gold' | 'silver' | 'bronze';
 }
 
 export interface Supplier extends BaseDocument {

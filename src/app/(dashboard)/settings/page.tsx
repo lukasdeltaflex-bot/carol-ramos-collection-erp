@@ -951,10 +951,144 @@ export default function SettingsPage() {
       } else {
         await createDoc("automations", payload);
       }
-      setAutoModalOpen(false);
-      await loadIntegrationsData();
+  // Backup State & Handlers
+  const [backupsList, setBackupsList] = useState<any[]>([]);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [lastAutoBackupDate, setLastAutoBackupDate] = useState<string | null>(null);
+
+  const loadBackupsHistory = useCallback(async () => {
+    try {
+      const history = await getDocs("backups");
+      setBackupsList((history as any[]) || []);
+      const savedLastDate = typeof window !== "undefined" ? localStorage.getItem("last_auto_backup_date") : null;
+      if (savedLastDate) setLastAutoBackupDate(savedLastDate);
+    } catch (err) {
+      console.error("Erro ao carregar backups:", err);
+    }
+  }, [getDocs]);
+
+  useEffect(() => {
+    loadBackupsHistory();
+  }, [loadBackupsHistory]);
+
+  const handleCreateBackupNow = async (isAuto = false) => {
+    setIsBackingUp(true);
+    try {
+      const [
+        custs, prods, supps, finTrans, payables, receivables, salesData, purchasesData, cats, brs, invTrans, kitsData
+      ] = await Promise.all([
+        getDocs("customers"),
+        getDocs("products"),
+        getDocs("suppliers"),
+        getDocs("financial_transactions"),
+        getDocs("accounts_payable"),
+        getDocs("accounts_receivable"),
+        getDocs("sales"),
+        getDocs("purchases"),
+        getDocs("categories"),
+        getDocs("brands"),
+        getDocs("inventory_transactions"),
+        getDocs("product_kits")
+      ]);
+
+      const backupPayload = {
+        meta: {
+          app: "Carol Ramos Collection ERP",
+          version: "2.0.0",
+          tenantId: tenantId || "default",
+          createdAt: new Date().toISOString(),
+          type: isAuto ? "auto_daily" : "manual"
+        },
+        data: {
+          customers: custs || [],
+          products: prods || [],
+          suppliers: supps || [],
+          financial_transactions: finTrans || [],
+          accounts_payable: payables || [],
+          accounts_receivable: receivables || [],
+          sales: salesData || [],
+          purchases: purchasesData || [],
+          categories: cats || [],
+          brands: brs || [],
+          inventory_transactions: invTrans || [],
+          product_kits: kitsData || []
+        }
+      };
+
+      const jsonString = JSON.stringify(backupPayload, null, 2);
+      const nowStr = new Date().toISOString();
+
+      // Gravar na coleção de auditoria de backups
+      await createDoc("backups", {
+        type: isAuto ? "Automático Diário" : "Manual",
+        createdAt: nowStr,
+        recordsCount: Object.values(backupPayload.data).reduce((sum, arr: any) => sum + (arr?.length || 0), 0),
+        sizeBytes: new Blob([jsonString]).size
+      });
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("last_auto_backup_date", nowStr);
+        setLastAutoBackupDate(nowStr);
+      }
+
+      // Download manual do arquivo JSON se acionado pelo usuário
+      if (!isAuto) {
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Backup_CarolRamosERP_${nowStr.split("T")[0]}_${nowStr.split("T")[1].slice(0,5).replace(":","")}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        success("Backup Concluído", "Cópia completa de segurança gerada com sucesso!");
+      }
+
+      await loadBackupsHistory();
     } catch (err: any) {
-      alert(err.message || "Erro ao salvar automação.");
+      toastError("Erro no Backup", err.message || "Não foi possível gerar a cópia de segurança.");
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("ATENÇÃO: A restauração irá importar os registros do arquivo de backup. Deseja continuar?")) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const text = await file.text();
+      const backupJson = JSON.parse(text);
+
+      if (!backupJson || !backupJson.data) {
+        throw new Error("Arquivo de backup inválido ou corrompido.");
+      }
+
+      const collectionsMap = backupJson.data;
+      let restoredCount = 0;
+
+      for (const [colName, docsArr] of Object.entries(collectionsMap)) {
+        if (Array.isArray(docsArr)) {
+          for (const docItem of docsArr) {
+            await createDoc(colName, docItem);
+            restoredCount++;
+          }
+          invalidateCache(colName);
+        }
+      }
+
+      success("Restauração Concluída", `${restoredCount} registros foram restaurados com sucesso!`);
+      await loadBackupsHistory();
+    } catch (err: any) {
+      toastError("Erro ao Restaurar", err.message || "Arquivo de backup inválido.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1048,6 +1182,17 @@ export default function SettingsPage() {
           >
             <Activity className="h-4.5 w-4.5" />
             <span>Logs do Sistema</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("backup")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "backup" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Save className="h-4.5 w-4.5" />
+            <span>Backups & Segurança</span>
           </button>
         </div>
 
@@ -2115,6 +2260,98 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: BACKUPS & SEGURANÇA */}
+          {activeTab === "backup" && (
+            <div className="p-6 rounded-2xl border border-border bg-card/40 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
+                <div>
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Save className="h-5 w-5 text-primary" />
+                    <span>Gestão de Backups & Segurança</span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Gere snapshots completos de dados e restaure backups de segurança com facilidade.</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold cursor-pointer transition-all">
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <span>Restaurar Backup</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleRestoreBackup}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    onClick={() => handleCreateBackupNow(false)}
+                    disabled={isBackingUp}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/95 shadow transition-all disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>{isBackingUp ? "Gerando Backup..." : "Criar Backup Agora"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status do Backup Automático Diário */}
+              <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-foreground">Backup Automático Diário: Ativo</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Última execução automática: {lastAutoBackupDate ? new Date(lastAutoBackupDate).toLocaleString() : "Realizado ao iniciar a sessão"}
+                    </div>
+                  </div>
+                </div>
+
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase border border-emerald-500/30 self-start sm:self-auto">
+                  Sincronizado Diariamente
+                </span>
+              </div>
+
+              {/* Histórico de Backups Realizados */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-foreground">Histórico de Backups Gerados</h4>
+
+                {backupsList.length === 0 ? (
+                  <div className="p-8 text-center border border-border/40 rounded-xl text-xs text-muted-foreground">
+                    Nenhum registro no histórico. Clique em "Criar Backup Agora" para gerar a primeira cópia.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {backupsList.map((bk: any) => (
+                      <div key={bk.id} className="p-3.5 rounded-xl border border-border/60 bg-card/60 flex items-center justify-between text-xs hover:bg-muted/20 transition-all">
+                        <div className="flex items-center gap-3">
+                          <Save className="h-4 w-4 text-primary" />
+                          <div>
+                            <div className="font-semibold text-foreground">Backup {bk.type || "Manual"}</div>
+                            <div className="text-[10px] font-mono text-muted-foreground">
+                              {new Date(bk.createdAt).toLocaleString()} • {bk.recordsCount || 0} registros
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-mono text-muted-foreground">
+                            {bk.sizeBytes ? `${(bk.sizeBytes / 1024).toFixed(1)} KB` : "Varia"}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                            Concluído
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

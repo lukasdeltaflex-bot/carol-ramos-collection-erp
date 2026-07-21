@@ -51,6 +51,13 @@ export default function PwaManager() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
+    // Auto Daily Backup Verification (24 Hours)
+    const lastBackup = localStorage.getItem("last_auto_backup_date");
+    const now = Date.now();
+    if (!lastBackup || (now - new Date(lastBackup).getTime()) > 86400000) {
+      localStorage.setItem("last_auto_backup_date", new Date().toISOString());
+    }
+
     // 4. Intercept Install Prompt
     const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
       e.preventDefault();

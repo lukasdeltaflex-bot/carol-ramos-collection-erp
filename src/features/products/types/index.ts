@@ -63,4 +63,22 @@ export interface Product extends BaseDocument {
   status: 'active' | 'inactive';
   lastSaleDate?: any;
   lastPurchaseDate?: any;
+  isKit?: boolean;
+  kitId?: string;
+}
+
+export interface ProductKitItem {
+  productId: string;
+  quantity: number;
+}
+
+export interface ProductKit extends BaseDocument {
+  tenantId: string;
+  name: string;
+  description?: string;
+  sku: string;
+  image?: string;
+  items: ProductKitItem[];
+  price: number;
+  status: 'active' | 'inactive';
 }

@@ -7,6 +7,7 @@ import { useToast } from "@/context/ToastContext";
 import { Product, Category } from "@/features/products/types";
 import { Sale } from "@/features/sales/types";
 import { Customer } from "@/features/customers/types";
+import { getCustomerVipTier } from "@/features/customers/utils";
 import { AccountsPayable, AccountsReceivable } from "@/features/finance/types";
 import { ReportCategory, ReportDefinition, ScheduledReport } from "@/features/reports/types";
 import Modal, { ModalFooter } from "@/components/ui/Modal";
@@ -239,7 +240,7 @@ export default function ReportsPage() {
     });
   }, [products, selectedCatId, selectedStatus]);
 
-  // Export CSV
+  // Export CSV / Excel
   const handleExportCSV = () => {
     const activeRep = REPORT_CATALOG.find(r => r.id === selectedReportId);
     let csvContent = `data:text/csv;charset=utf-8,`;
@@ -249,14 +250,40 @@ export default function ReportsPage() {
     csvContent += `Data: ${new Date().toLocaleString()}\n\n`;
 
     if (selectedReportId.startsWith("sales")) {
-      csvContent += `ID Venda;Data;Cliente;Canal;Forma Pagamento;Total;Lucro Est.\n`;
+      csvContent += `ID Venda;Data;Cliente;Canal;Forma Pagamento;Total (R$)\n`;
       filteredSales.forEach(s => {
-        csvContent += `"${s.id}";"${formatDate(s.createdAt)}";"${s.customerId || "Consumidor"}";"${s.channel}";"${s.paymentMethod}";"${s.total}";"${(s.total * 0.4).toFixed(2)}"\n`;
+        const custName = customers.find(c => c.id === s.customerId)?.name || "Consumidor Final";
+        csvContent += `"${s.id}";"${formatDate(s.createdAt)}";"${custName}";"${s.channel || "PDV"}";"${s.paymentMethod}";"${s.total}"\n`;
+      });
+    } else if (selectedReportId.startsWith("stock") || selectedReportId.startsWith("product")) {
+      csvContent += `SKU;Nome;Categoria;Estoque Atual;Estoque Minimo;Preco Custo (R$);Preco Venda (R$);Margem (%)\n`;
+      filteredProducts.forEach(p => {
+        const catName = categories.find(c => c.id === p.categoryId)?.name || "Geral";
+        csvContent += `"${p.sku}";"${p.name}";"${catName}";"${p.currentStock}";"${p.minStock}";"${p.costPrice}";"${p.sellPrice}";"${p.profitMargin || 0}"\n`;
+      });
+    } else if (selectedReportId.startsWith("fin")) {
+      csvContent += `Tipo;Descricao;Valor (R$);Vencimento/Data;Status\n`;
+      payables.forEach(p => {
+        csvContent += `"Conta a Pagar";"${p.description}";"${p.amount}";"${p.dueDate}";"${p.status}"\n`;
+      });
+      receivables.forEach(r => {
+        csvContent += `"Conta a Receber";"${r.description}";"${r.amount}";"${r.dueDate}";"${r.status}"\n`;
+      });
+    } else if (selectedReportId.startsWith("cust")) {
+      csvContent += `Nome;Email;Telefone;Total Pedidos;Total Gasto (R$);Classificacao VIP\n`;
+      customers.forEach(c => {
+        const vip = getCustomerVipTier(c);
+        csvContent += `"${c.name}";"${c.email || ""}";"${c.phone}";"${c.metrics?.totalOrders || 0}";"${c.metrics?.totalSpent || 0}";"${vip.label}"\n`;
+      });
+    } else if (selectedReportId.startsWith("supp")) {
+      csvContent += `Razao Social;CNPJ;Email;Telefone;Cidade\n`;
+      suppliers.forEach(s => {
+        csvContent += `"${s.name}";"${s.cnpj || ""}";"${s.email || ""}";"${s.phone || ""}";"${s.address?.city || ""}"\n`;
       });
     } else {
-      csvContent += `SKU;Nome;Categoria;Estoque Atual;Preco Custo;Preco Venda;Status\n`;
+      csvContent += `SKU;Nome;Categoria;Estoque;Preco Venda\n`;
       filteredProducts.forEach(p => {
-        csvContent += `"${p.sku}";"${p.name}";"${p.categoryId}";"${p.currentStock}";"${p.costPrice}";"${p.sellPrice}";"${p.status}"\n`;
+        csvContent += `"${p.sku}";"${p.name}";"${p.categoryId}";"${p.currentStock}";"${p.sellPrice}"\n`;
       });
     }
 
@@ -267,7 +294,7 @@ export default function ReportsPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    success("Download Concluído", "O arquivo CSV foi gerado com sucesso.");
+    success("Download Concluído", "O relatório em planilha CSV/Excel foi exportado com sucesso!");
   };
 
   // Export Excel (.xlsx table text file)

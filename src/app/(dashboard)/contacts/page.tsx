@@ -44,11 +44,14 @@ const INITIAL_CUSTOMERS = [
   { name: "Ana Beatriz", email: "ana.beatriz@outlook.com", phone: "+5511977776666", instagram: "@anabea_beauty", birthday: "1988-12-05", tags: ["Maquiagem", "VIP"], source: "walk-in", notes: "Sempre compra lançamentos de batons.", metrics: { totalOrders: 12, totalSpent: 1890.00 } }
 ];
 
+import { getCustomerVipTier, VIP_TIERS, VipTier } from "@/features/customers/utils";
+
 export default function ContactsPage() {
   const { tenantId } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [vipFilter, setVipFilter] = useState<"all" | VipTier>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
@@ -58,7 +61,7 @@ export default function ContactsPage() {
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds([]);
-  }, [searchQuery]);
+  }, [searchQuery, vipFilter]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -319,19 +322,25 @@ export default function ContactsPage() {
       }
     } catch (err: any) {
       alert(err.message || "Erro ao salvar cliente.");
-      return;
-    }
-
     setDrawerOpen(false);
     await loadData();
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.phone.includes(searchQuery) ||
-    c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.phone.includes(searchQuery) ||
+      c.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    if (vipFilter !== "all") {
+      const vipTier = getCustomerVipTier(c).id;
+      return vipTier === vipFilter;
+    }
+
+    return true;
+  });
 
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
   const paginatedCustomers = React.useMemo(() => {
@@ -350,7 +359,7 @@ export default function ContactsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       
       {/* 1. Header do Módulo */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl border border-border bg-card/40 backdrop-blur-md">
@@ -371,10 +380,52 @@ export default function ContactsPage() {
       {/* 2. Filtro & Busca */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         
-        {/* Total Badge */}
-        <div className="flex border border-border bg-card/40 rounded-xl p-2.5 shrink-0 self-start text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-          <Users className="h-4 w-4 text-primary" />
-          <span>Clientes Cadastrados: <strong className="text-foreground">{customers.length}</strong></span>
+        {/* Total Badge & VIP Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex border border-border bg-card/40 rounded-xl p-2.5 text-xs font-semibold text-muted-foreground items-center gap-1.5">
+            <Users className="h-4 w-4 text-primary" />
+            <span>Clientes: <strong className="text-foreground">{customers.length}</strong></span>
+          </div>
+
+          {/* Filtro VIP */}
+          <div className="flex items-center p-1 rounded-xl border border-border bg-card/40 gap-1 text-xs">
+            <button
+              onClick={() => setVipFilter("all")}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-semibold transition-all text-xs",
+                vipFilter === "all" ? "bg-primary text-primary-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setVipFilter("gold")}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-semibold transition-all text-xs flex items-center gap-1",
+                vipFilter === "gold" ? "bg-amber-500 text-white shadow-xs" : "text-amber-500 hover:bg-amber-500/10"
+              )}
+            >
+              🥇 Ouro
+            </button>
+            <button
+              onClick={() => setVipFilter("silver")}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-semibold transition-all text-xs flex items-center gap-1",
+                vipFilter === "silver" ? "bg-slate-400 text-white shadow-xs" : "text-slate-400 hover:bg-slate-400/10"
+              )}
+            >
+              🥈 Prata
+            </button>
+            <button
+              onClick={() => setVipFilter("bronze")}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-semibold transition-all text-xs flex items-center gap-1",
+                vipFilter === "bronze" ? "bg-amber-800 text-white shadow-xs" : "text-amber-700 hover:bg-amber-800/10"
+              )}
+            >
+              🥉 Bronze
+            </button>
+          </div>
         </div>
 
         {/* Busca */}
@@ -438,7 +489,25 @@ export default function ContactsPage() {
                           />
                         </td>
                         <td className="p-4">
-                          <div className="font-semibold text-foreground">{c.name}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-foreground">{c.name}</span>
+                            {(() => {
+                              const vip = getCustomerVipTier(c);
+                              return (
+                                <span
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-full text-[9px] font-bold border inline-flex items-center gap-0.5",
+                                    vip.bgClass,
+                                    vip.colorClass,
+                                    vip.borderClass
+                                  )}
+                                  title={`Status: ${vip.label}`}
+                                >
+                                  {vip.badge}
+                                </span>
+                              );
+                            })()}
+                          </div>
                           {c.cpf && <span className="text-[10px] text-muted-foreground font-mono">CPF: {c.cpf}</span>}
                         </td>
                       <td className="p-4 text-xs text-muted-foreground">

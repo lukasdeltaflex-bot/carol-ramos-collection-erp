@@ -128,7 +128,7 @@ export default function ProductsPage() {
   const { tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
 
-  const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
+  const [activeTab, setActiveTab] = useState<"products" | "kits" | "categories" | "brands" | "locations">("products");
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -197,16 +197,28 @@ export default function ProductsPage() {
   const [auxStatus, setAuxStatus] = useState<"active" | "inactive">("active");
   const [auxIsVirtual, setAuxIsVirtual] = useState(false);
 
+  // Product Kits State
+  const [kits, setKits] = useState<ProductKit[]>([]);
+  const [kitModalOpen, setKitModalOpen] = useState(false);
+  const [editingKitId, setEditingKitId] = useState<string | null>(null);
+  const [kitName, setKitName] = useState("");
+  const [kitSku, setKitSku] = useState("");
+  const [kitDescription, setKitDescription] = useState("");
+  const [kitPrice, setKitPrice] = useState(0);
+  const [kitImage, setKitImage] = useState("");
+  const [kitItems, setKitItems] = useState<ProductKitItem[]>([]);
+
   // Carregar todos os dados do banco (Paralelizado e Reativo)
   const loadAllData = async () => {
     setLoading(true);
     try {
-      let [cats, brs, locs, supps, prods] = await Promise.all([
+      let [cats, brs, locs, supps, prods, fetchedKits] = await Promise.all([
         getDocs("categories"),
         getDocs("brands"),
         getDocs("stock_locations"),
         getDocs("suppliers"),
-        getDocs("products")
+        getDocs("products"),
+        getDocs("product_kits")
       ]);
 
       cats = (cats as Category[]) || [];
@@ -214,6 +226,7 @@ export default function ProductsPage() {
       locs = (locs as StockLocation[]) || [];
       supps = (supps as any[]) || [];
       prods = (prods as Product[]) || [];
+      setKits((fetchedKits as ProductKit[]) || []);
 
       // Pre-seed se o mock ou banco estiver zerado (Apenas na primeira vez)
       const isCatsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_categories_v2") === "true";
@@ -601,6 +614,110 @@ export default function ProductsPage() {
     }
   };
 
+  // Handlers para Kits de Produtos
+  const handleOpenKitModal = (kit?: ProductKit) => {
+    if (kit) {
+      setEditingKitId(kit.id);
+      setKitName(kit.name);
+      setKitSku(kit.sku);
+      setKitDescription(kit.description || "");
+      setKitPrice(kit.price);
+      setKitImage(kit.image || "");
+      setKitItems(kit.items || []);
+    } else {
+      setEditingKitId(null);
+      setKitName("");
+      setKitSku(`KIT-${Date.now().toString().slice(-5)}`);
+      setKitDescription("");
+      setKitPrice(0);
+      setKitImage("");
+      setKitItems([]);
+    }
+    setKitModalOpen(true);
+  };
+
+  const handleSaveKit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!kitName || kitItems.length === 0 || kitPrice <= 0) {
+      alert("Por favor, preencha o nome do kit, valor e selecione ao menos 1 produto componente.");
+      return;
+    }
+
+    try {
+      const kitPayload = {
+        name: kitName,
+        sku: kitSku,
+        description: kitDescription,
+        price: kitPrice,
+        image: kitImage,
+        items: kitItems,
+        status: "active" as const
+      };
+
+      let savedKitId = editingKitId;
+      if (editingKitId) {
+        await updateDoc("product_kits", editingKitId, kitPayload);
+      } else {
+        const newKitDoc = await createDoc("product_kits", kitPayload);
+        savedKitId = newKitDoc.id;
+      }
+
+      // Sync correspondente como produto especial no catálogo (para o PDV)
+      const kitProductPayload = {
+        sku: kitSku,
+        name: `[KIT] ${kitName}`,
+        description: kitDescription,
+        categoryId: categories[0]?.id || "kits",
+        brandId: brands[0]?.id || "kits",
+        costPrice: kitPrice * 0.5,
+        sellPrice: kitPrice,
+        profitMargin: 50,
+        currentStock: 999, // Estoque virtual gerenciado dinamicamente pelos componentes
+        availableStock: 999,
+        reservedStock: 0,
+        minStock: 1,
+        images: kitImage ? [{ url: kitImage, path: "kit", isPrimary: true }] : [],
+        channels: { ecommerce: { id: "1", active: true } },
+        status: "active" as const,
+        isKit: true,
+        kitId: savedKitId
+      };
+
+      const existingProdKit = products.find(p => p.isKit && p.kitId === savedKitId);
+      if (existingProdKit) {
+        await updateDoc("products", existingProdKit.id, kitProductPayload);
+      } else {
+        await createDoc("products", kitProductPayload);
+      }
+
+      invalidateCache("product_kits");
+      invalidateCache("products");
+      setKitModalOpen(false);
+      await loadAllData();
+      alert("Kit de produtos salvo com sucesso!");
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar kit.");
+    }
+  };
+
+  const handleDeleteKit = async (id: string, name: string) => {
+    if (confirm(`Deseja realmente excluir o Kit "${name}"?`)) {
+      try {
+        await deleteDoc("product_kits", id);
+        const kitProd = products.find(p => p.isKit && p.kitId === id);
+        if (kitProd) {
+          await deleteDoc("products", kitProd.id);
+        }
+        invalidateCache("product_kits");
+        invalidateCache("products");
+        await loadAllData();
+        alert("Kit excluído com sucesso.");
+      } catch (err: any) {
+        alert(err.message || "Erro ao excluir Kit.");
+      }
+    }
+  };
+
   // Filtragem de Produtos
   const filteredProducts = (products || []).filter(p => {
     if (!p) return false;
@@ -661,6 +778,16 @@ export default function ProductsPage() {
             <span>Novo Produto</span>
           </button>
         )}
+
+        {activeTab === "kits" && (
+          <button
+            onClick={() => handleOpenKitModal()}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Novo Kit de Produtos</span>
+          </button>
+        )}
       </div>
 
       {/* 2. Seleção de Abas & Filtros */}
@@ -670,12 +797,13 @@ export default function ProductsPage() {
         <div className="flex border border-border bg-card/40 rounded-xl p-1 overflow-x-auto scrollbar-none shrink-0">
           {[
             { id: "products", label: "Catálogo de Produtos", icon: Package },
-            { id: "categories", label: "Categorias", icon: Layers },
+            { id: "kits", label: "Kits de Produtos", icon: Layers },
+            { id: "categories", label: "Categorias", icon: Tag },
             { id: "brands", label: "Marcas", icon: Bookmark },
             { id: "locations", label: "Locais de Estoque", icon: MapPin }
           ].map((tab) => {
             const Icon = tab.icon;
-            const count = tab.id === "products" ? products.length : tab.id === "categories" ? categories.length : tab.id === "brands" ? brands.length : locations.length;
+            const count = tab.id === "products" ? products.length : tab.id === "kits" ? kits.length : tab.id === "categories" ? categories.length : tab.id === "brands" ? brands.length : locations.length;
             return (
               <button
                 key={tab.id}
@@ -886,8 +1014,90 @@ export default function ProductsPage() {
               </div>
             )}
 
+            {/* Listagem de Kits de Produtos */}
+            {activeTab === "kits" && (
+              <div className="p-6">
+                {kits.length === 0 ? (
+                  <div className="text-center py-12 space-y-3">
+                    <Layers className="h-10 w-10 text-muted-foreground/40 mx-auto" />
+                    <div className="text-sm font-semibold text-foreground">Nenhum Kit de produtos cadastrado</div>
+                    <p className="text-xs text-muted-foreground">Crie kits combinando produtos (ex: Kit Victoria Secret com Body Splash + Hidratante).</p>
+                    <button
+                      onClick={() => handleOpenKitModal()}
+                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95"
+                    >
+                      + Criar Primeiro Kit
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {kits.map((kit) => (
+                      <div key={kit.id} className="p-5 rounded-2xl border border-border bg-card/60 space-y-4 hover:border-primary/40 transition-all shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center overflow-hidden shrink-0">
+                              {kit.image ? (
+                                <img src={kit.image} alt={kit.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <Layers className="h-6 w-6 text-primary" />
+                              )}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-foreground">{kit.name}</h3>
+                              <span className="text-[10px] font-mono text-muted-foreground">SKU: {kit.sku}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenKitModal(kit)}
+                              className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+                              title="Editar Kit"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteKit(kit.id, kit.name)}
+                              className="p-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                              title="Excluir Kit"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {kit.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">{kit.description}</p>
+                        )}
+
+                        <div className="border-t border-border/40 pt-3 space-y-2">
+                          <div className="text-[11px] font-semibold text-foreground">Composição do Kit:</div>
+                          <div className="space-y-1">
+                            {kit.items.map((item, idx) => {
+                              const prod = products.find(p => p.id === item.productId);
+                              return (
+                                <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg">
+                                  <span>{prod?.name || "Produto Removido"}</span>
+                                  <span className="font-bold text-foreground">{item.quantity}x</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                          <span className="text-xs font-semibold text-muted-foreground">Preço do Kit</span>
+                          <span className="text-base font-bold text-primary font-mono">{formatCurrency(kit.price)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Listagem Auxiliares (Categorias / Marcas / Locais) */}
-            {activeTab !== "products" && (
+            {activeTab !== "products" && activeTab !== "kits" && (
               <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 {/* Form Adicionar/Editar Rápido */}
@@ -1448,6 +1658,175 @@ export default function ProductsPage() {
             >
               <X className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+      {/* MODAL: Criar / Editar Kit de Produtos */}
+      {kitModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border/40 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <Layers className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-foreground">
+                    {editingKitId ? "Editar Kit de Produtos" : "Novo Kit de Produtos"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">Combine múltiplos produtos e defina um preço de oferta para o kit.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setKitModalOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveKit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Nome do Kit *</label>
+                  <input
+                    type="text"
+                    required
+                    value={kitName}
+                    onChange={(e) => setKitName(e.target.value)}
+                    placeholder="Ex: Kit Victoria Secret"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-card text-xs focus:ring-2 focus:ring-primary/40 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">SKU do Kit</label>
+                  <input
+                    type="text"
+                    value={kitSku}
+                    onChange={(e) => setKitSku(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-card text-xs font-mono focus:ring-2 focus:ring-primary/40 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Descrição do Kit</label>
+                <textarea
+                  value={kitDescription}
+                  onChange={(e) => setKitDescription(e.target.value)}
+                  placeholder="Detalhes ou frascos inclusos no combo..."
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-card text-xs focus:ring-2 focus:ring-primary/40 focus:outline-none resize-none h-16"
+                />
+              </div>
+
+              {/* Composição de Produtos */}
+              <div className="space-y-2 border-t border-border/40 pt-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-foreground">Produtos Componentes do Kit *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (products.length > 0) {
+                        setKitItems(prev => [...prev, { productId: products[0].id, quantity: 1 }]);
+                      } else {
+                        alert("Cadastre produtos normais no catálogo primeiro para adicioná-los ao Kit.");
+                      }
+                    }}
+                    className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
+                  >
+                    + Adicionar Item
+                  </button>
+                </div>
+
+                {kitItems.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic bg-muted/20 p-3 rounded-xl text-center">Nenhum produto adicionado ao Kit ainda. Clique em '+ Adicionar Item'.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {kitItems.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2 bg-muted/30 p-2.5 rounded-xl border border-border/40">
+                        <select
+                          value={item.productId}
+                          onChange={(e) => {
+                            const newId = e.target.value;
+                            setKitItems(prev => prev.map((it, i) => i === index ? { ...it, productId: newId } : it));
+                          }}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs focus:outline-none"
+                        >
+                          {products.filter(p => !p.isKit).map(p => (
+                            <option key={p.id} value={p.id}>{p.name} (Estoque: {p.currentStock})</option>
+                          ))}
+                        </select>
+
+                        <div className="flex items-center gap-1 w-24">
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const q = parseInt(e.target.value) || 1;
+                              setKitItems(prev => prev.map((it, i) => i === index ? { ...it, quantity: q } : it));
+                            }}
+                            className="w-full text-center px-2 py-1 rounded-lg border border-border bg-card text-xs font-bold font-mono"
+                          />
+                          <span className="text-[10px] text-muted-foreground">un.</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setKitItems(prev => prev.filter((_, i) => i !== index))}
+                          className="p-1 rounded-lg text-red-500 hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Preço do Kit */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-border/40 pt-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Preço Total do Kit (R$) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={kitPrice}
+                    onChange={(e) => setKitPrice(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-card text-xs font-mono font-bold text-primary focus:ring-2 focus:ring-primary/40 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">URL da Imagem do Kit</label>
+                  <input
+                    type="text"
+                    value={kitImage}
+                    onChange={(e) => setKitImage(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-card text-xs focus:ring-2 focus:ring-primary/40 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/40">
+                <button
+                  type="button"
+                  onClick={() => setKitModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/95 shadow"
+                >
+                  Salvar Kit
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

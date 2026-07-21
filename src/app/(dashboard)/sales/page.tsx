@@ -5,6 +5,7 @@ import { useDb } from "@/hooks/useDb";
 import { useAuth } from "@/context/AuthContext";
 import { Product, Category, StockLocation } from "@/features/products/types";
 import { Customer } from "@/features/customers/types";
+import { calculateVipTier } from "@/features/customers/utils";
 import { Sale, CashRegister } from "@/features/sales/types";
 import { CashRegisterSchema, SaleSchema } from "@/features/sales/schemas";
 import {
@@ -370,27 +371,63 @@ export default function SalesPOSPage() {
         cashRegisterId: activeRegister.id
       });
 
-      // 2. Abater Estoque Físico & Criar Histórico de Estoque
+      // 2. Abater Estoque Físico & Criar Histórico de Estoque (Suporte a Kits e Produtos Individuais)
       for (const item of cart) {
         const prod = item.product;
-        const newCurrent = prod.currentStock - item.quantity;
-        const newAvailable = prod.availableStock - item.quantity;
 
-        // Atualizar produto
-        await updateDoc("products", prod.id, {
-          currentStock: newCurrent,
-          availableStock: newAvailable
-        });
+        if (prod.isKit && prod.kitId) {
+          // Se for Kit, carregar o kit e abater o estoque de cada produto componente!
+          try {
+            const kitDoc: any = await getDocs("product_kits");
+            const kit = (kitDoc || []).find((k: any) => k.id === prod.kitId);
+            if (kit && kit.items) {
+              for (const kitComp of kit.items) {
+                const compProd = products.find(p => p.id === kitComp.productId);
+                if (compProd) {
+                  const qtyDeduct = kitComp.quantity * item.quantity;
+                  const newCurrent = compProd.currentStock - qtyDeduct;
+                  const newAvailable = compProd.availableStock - qtyDeduct;
 
-        // Registrar InventoryTransaction
-        await createDoc("inventory_transactions", {
-          productId: prod.id,
-          locationId: "loja-fisica", // ID Local Loja Física
-          type: "out" as const,
-          quantity: item.quantity,
-          costPriceAtTime: prod.costPrice,
-          reason: `Venda PDV Ref #${newSale.id}`
-        });
+                  await updateDoc("products", compProd.id, {
+                    currentStock: newCurrent,
+                    availableStock: newAvailable
+                  });
+
+                  await createDoc("inventory_transactions", {
+                    productId: compProd.id,
+                    locationId: "loja-fisica",
+                    type: "out" as const,
+                    quantity: qtyDeduct,
+                    costPriceAtTime: compProd.costPrice,
+                    reason: `Venda do Kit "${kit.name}" Ref #${newSale.id}`
+                  });
+                }
+              }
+            }
+          } catch (errKit) {
+            console.error("Erro ao abater estoque dos componentes do kit:", errKit);
+          }
+        } else {
+          // Produto normal
+          const newCurrent = prod.currentStock - item.quantity;
+          const newAvailable = prod.availableStock - item.quantity;
+
+          // Atualizar produto
+          await updateDoc("products", prod.id, {
+            currentStock: newCurrent,
+            availableStock: newAvailable
+          });
+
+          // Registrar InventoryTransaction
+          await createDoc("inventory_transactions", {
+            productId: prod.id,
+            locationId: "loja-fisica",
+            type: "out" as const,
+            quantity: item.quantity,
+            costPriceAtTime: prod.costPrice,
+            reason: `Venda PDV Ref #${newSale.id}`
+          });
+        }
       }
 
       // 3. Registrar Lançamento Financeiro (Revenue) ou Contas a Receber (Receivables)
@@ -426,17 +463,22 @@ export default function SalesPOSPage() {
         });
       }
 
-      // 4. Incrementar métricas de compras do cliente
+      // 4. Incrementar métricas de compras e atualizar VIP Tier do cliente
       if (selectedCustomerId) {
         const client = customers.find(c => c.id === selectedCustomerId);
         if (client) {
+          const newOrders = (client.metrics?.totalOrders || 0) + 1;
+          const newSpent = (client.metrics?.totalSpent || 0) + total;
+          const newVipTier = calculateVipTier(newSpent, newOrders);
+
           const updatedMetrics = {
-            totalOrders: (client.metrics?.totalOrders || 0) + 1,
-            totalSpent: (client.metrics?.totalSpent || 0) + total,
+            totalOrders: newOrders,
+            totalSpent: newSpent,
             lastPurchaseDate: new Date().toISOString()
           };
           await updateDoc("customers", selectedCustomerId, {
-            metrics: updatedMetrics
+            metrics: updatedMetrics,
+            vipTier: newVipTier
           });
         }
       }
