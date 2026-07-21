@@ -821,6 +821,9 @@ export default function AccountsPayablePage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
       {/* Floating Batch Action Bar (Contas a Pagar) */}
       {selectedIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/95 backdrop-blur-2xl border border-primary/40 shadow-2xl rounded-2xl p-3 px-5 flex flex-wrap items-center gap-4 animate-in fade-in-50 slide-in-from-bottom-5 duration-200">
