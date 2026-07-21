@@ -951,6 +951,13 @@ export default function SettingsPage() {
       } else {
         await createDoc("automations", payload);
       }
+      setAutoModalOpen(false);
+      await loadIntegrationsData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar automação.");
+    }
+  };
+
   // Backup State & Handlers
   const [backupsList, setBackupsList] = useState<any[]>([]);
   const [isBackingUp, setIsBackingUp] = useState(false);

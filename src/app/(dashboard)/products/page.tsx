@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useDb } from "@/hooks/useDb";
-import { Product, Category, Brand, StockLocation } from "@/features/products/types";
+import { Product, Category, Brand, StockLocation, ProductKit, ProductKitItem } from "@/features/products/types";
 import { CategorySchema, BrandSchema, StockLocationSchema, ProductSchema } from "@/features/products/schemas";
 import {
   Package,

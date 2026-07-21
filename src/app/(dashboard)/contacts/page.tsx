@@ -322,6 +322,7 @@ export default function ContactsPage() {
       }
     } catch (err: any) {
       alert(err.message || "Erro ao salvar cliente.");
+    }
     setDrawerOpen(false);
     await loadData();
   };
@@ -583,6 +584,7 @@ export default function ContactsPage() {
           </table>
         </div>
       )}
+      </div>
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
