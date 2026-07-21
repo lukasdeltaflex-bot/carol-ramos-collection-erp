@@ -113,9 +113,13 @@ export function useDb() {
 
   // Helper to invalidate cache for a collection
   const invalidateCache = useCallback((collectionName: string) => {
-    const key = `${collectionName}_${tenantId || "shared"}`;
-    delete dataCache[key];
-    delete activeQueries[key];
+    const prefix = `${collectionName}_${tenantId || "shared"}`;
+    Object.keys(dataCache).forEach(k => {
+      if (k.startsWith(prefix)) delete dataCache[k];
+    });
+    Object.keys(activeQueries).forEach(k => {
+      if (k.startsWith(prefix)) delete activeQueries[k];
+    });
   }, [tenantId]);
 
   // 1. Criar Documento
