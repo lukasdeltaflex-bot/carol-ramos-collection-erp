@@ -130,6 +130,7 @@ export default function ProductsPage() {
 
   const [activeTab, setActiveTab] = useState<"products" | "categories" | "brands" | "locations">("products");
   const [searchQuery, setSearchQuery] = useState("");
+  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -141,7 +142,7 @@ export default function ProductsPage() {
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds([]);
-  }, [searchQuery, selectedCategory, selectedStatusFilter]);
+  }, [searchQuery, stockFilter, selectedCategory, selectedStatusFilter]);
 
   // DB Lists
   const [products, setProducts] = useState<Product[]>([]);
