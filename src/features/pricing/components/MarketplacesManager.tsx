@@ -270,10 +270,10 @@ export default function MarketplacesManager() {
 
       {/* Modal para Criar / Editar Marketplace */}
       <Modal
-        isOpen={modalOpen}
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? "Editar Marketplace" : "Novo Marketplace"}
-        subtitle="Configure as taxas cobradas por este canal de vendas."
+        description="Configure as taxas cobradas por este canal de vendas."
       >
         <form onSubmit={handleSave} className="space-y-4 text-xs">
           <div>
