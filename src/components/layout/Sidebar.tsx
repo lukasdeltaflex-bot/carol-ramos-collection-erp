@@ -27,7 +27,8 @@ import {
   Lightbulb,
   Bell,
   Trash2,
-  BarChart2
+  BarChart2,
+  LineChart
 } from "lucide-react";
 
 interface SidebarProps {
@@ -51,6 +52,12 @@ export default function Sidebar({
       name: "Dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
+      roles: ["owner", "admin", "operator", "viewer"],
+    },
+    {
+      name: "Business Intelligence (BI)",
+      href: "/bi",
+      icon: LineChart,
       roles: ["owner", "admin", "operator", "viewer"],
     },
     {
