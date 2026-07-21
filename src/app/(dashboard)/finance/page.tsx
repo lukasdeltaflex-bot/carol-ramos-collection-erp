@@ -123,7 +123,7 @@ const INITIAL_RECEIVABLES = [
 
 export default function FinancePage() {
   const { tenantId, isMock } = useAuth();
-  const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
+  const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
 
   const [activeTab, setActiveTab] = useState<"cashflow" | "accounts" | "cards" | "payable" | "receivable" | "purchases" | "dre">("cashflow");
   const [searchQuery, setSearchQuery] = useState("");
@@ -296,10 +296,13 @@ export default function FinancePage() {
       prods = (prods as Product[]) || [];
       supps = (supps as Supplier[]) || [];
 
+      const isFinSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_financial_v1") === "true";
+
       // Pre-seed bank accounts
       let needsRefetchBank = false;
-      if (bAccounts.length === 0) {
+      if (bAccounts.length === 0 && !isFinSeeded) {
         await Promise.all(INITIAL_BANK_ACCOUNTS.map(ba => createDoc("bank_accounts", ba)));
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         needsRefetchBank = true;
       }
       if (needsRefetchBank) {
@@ -308,8 +311,9 @@ export default function FinancePage() {
 
       // Pre-seed credit cards
       let needsRefetchCards = false;
-      if (cCards.length === 0) {
+      if (cCards.length === 0 && !isFinSeeded) {
         await Promise.all(INITIAL_COMPANY_CARDS.map(cc => createDoc("company_credit_cards", cc)));
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         needsRefetchCards = true;
       }
       if (needsRefetchCards) {
@@ -323,21 +327,22 @@ export default function FinancePage() {
       let needsRefetchOthers = false;
       const seedPromises = [];
 
-      if (trans.length === 0) {
+      if (trans.length === 0 && !isFinSeeded) {
         seedPromises.push(Promise.all(INITIAL_TRANSACTIONS(bankIds).map(t => createDoc("financial_transactions", t))));
         needsRefetchOthers = true;
       }
-      if (pays.length === 0) {
+      if (pays.length === 0 && !isFinSeeded) {
         seedPromises.push(Promise.all(INITIAL_PAYABLES(supplierIds).map(p => createDoc("accounts_payable", p))));
         needsRefetchOthers = true;
       }
-      if (recs.length === 0) {
+      if (recs.length === 0 && !isFinSeeded) {
         seedPromises.push(Promise.all(INITIAL_RECEIVABLES.map(r => createDoc("accounts_receivable", r))));
         needsRefetchOthers = true;
       }
 
       if (seedPromises.length > 0) {
         await Promise.all(seedPromises);
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
       }
 
       if (needsRefetchOthers) {
@@ -468,9 +473,12 @@ export default function FinancePage() {
 
   // 1c. Excluir Conta Bancária
   const handleDeleteBankAccount = async (id: string, name: string) => {
-    if (!confirm(`Deseja realmente excluir a conta "${name}"?\n\nEsta ação não pode ser desfeita.`)) return;
+    if (!confirm(`Deseja mover a conta "${name}" para a Lixeira Inteligente?`)) return;
     try {
-      await deleteDoc("bank_accounts", id);
+      if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+      await softDeleteDoc("bank_accounts", id, "Contas Bancárias", name);
+      invalidateCache("bank_accounts");
+      setBankAccounts(prev => prev.filter(b => b.id !== id));
       await loadFinancialData();
     } catch (err: any) {
       console.error("Erro ao excluir conta bancária:", err);
@@ -501,9 +509,12 @@ export default function FinancePage() {
 
   // 1e. Excluir Cartão Corporativo
   const handleDeleteCompanyCard = async (id: string, name: string) => {
-    if (!confirm(`Deseja realmente excluir o cartão "${name}"?\n\nEsta ação não pode ser desfeita.`)) return;
+    if (!confirm(`Deseja mover o cartão "${name}" para a Lixeira Inteligente?`)) return;
     try {
-      await deleteDoc("company_credit_cards", id);
+      if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+      await softDeleteDoc("company_credit_cards", id, "Cartões Corporativos", name);
+      invalidateCache("company_credit_cards");
+      setCompanyCards(prev => prev.filter(c => c.id !== id));
       await loadFinancialData();
     } catch (err: any) {
       console.error("Erro ao excluir cartão:", err);
@@ -913,9 +924,17 @@ export default function FinancePage() {
 
   // Excluir Lançamentos
   const handleDeleteItem = async (collection: string, id: string, desc: string) => {
-    if (confirm(`Deseja excluir "${desc}"?`)) {
+    if (confirm(`Deseja mover "${desc}" para a Lixeira Inteligente?`)) {
       try {
-        await deleteDoc(collection, id);
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+        const moduleLabel = collection === "financial_transactions" ? "Fluxo de Caixa"
+          : collection === "accounts_payable" ? "Contas a Pagar"
+          : collection === "accounts_receivable" ? "Contas a Receber"
+          : collection === "purchases" ? "Compras de Estoque"
+          : "Financeiro";
+
+        await softDeleteDoc(collection, id, moduleLabel, desc);
+        invalidateCache(collection);
         await loadFinancialData();
       } catch (err: any) {
         alert(err.message || "Erro ao deletar.");

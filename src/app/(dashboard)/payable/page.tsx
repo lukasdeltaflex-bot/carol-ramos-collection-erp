@@ -31,7 +31,7 @@ import { AccountsPayableSchema } from "@/features/finance/schemas";
 
 export default function AccountsPayablePage() {
   const { user, role, tenantId } = useAuth();
-  const { getDocs, createDoc, updateDoc, deleteDoc } = useDb();
+  const { getDocs, createDoc, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
   const { success, error: toastError, info } = useToast();
 
   const isMock = !process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes("your-api-key");
@@ -208,11 +208,14 @@ export default function AccountsPayablePage() {
 
   // Delete Item
   const handleDelete = async (id: string, description: string) => {
-    if (confirm(`Deseja realmente excluir "${description}"?`)) {
+    if (confirm(`Deseja mover "${description}" para a Lixeira Inteligente?`)) {
       setLoading(true);
       try {
-        await deleteDoc("accounts_payable", id);
-        success("Excluído", "Conta a pagar excluída com sucesso.");
+        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
+        await softDeleteDoc("accounts_payable", id, "Contas a Pagar", description);
+        invalidateCache("accounts_payable");
+        setPayables(prev => prev.filter(p => p.id !== id));
+        success("Excluído", "Conta a pagar movida para a Lixeira.");
         await loadData();
       } catch (err: any) {
         toastError("Erro ao excluir", err.message || "Erro ao tentar remover a conta.");
