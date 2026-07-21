@@ -55,14 +55,29 @@ const isFirebasePlaceholder =
   process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes("your-api-key") ||
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "your-project-id";
 
-const MOCK_PROFILE: UserProfile = {
-  uid: "mock-uid-carol-ramos",
-  email: "admin@carolramos.com.br",
-  displayName: "Carol Ramos",
-  activeTenantId: "carol-ramos-collection",
-  tenants: {
-    "carol-ramos-collection": { role: "owner", joinedAt: new Date().toISOString() },
-    "beleza-saas-demo": { role: "admin", joinedAt: new Date().toISOString() }
+const PERSISTED_USER_PROFILE_KEY = "mock_user_profile_persistent";
+
+const getPersistedUserProfile = (): UserProfile => {
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem(PERSISTED_USER_PROFILE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar perfil mock persistido:", e);
+    }
+  }
+  return MOCK_PROFILE;
+};
+
+const savePersistedUserProfile = (newProfile: UserProfile) => {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(PERSISTED_USER_PROFILE_KEY, JSON.stringify(newProfile));
+    } catch (e) {
+      console.error("Erro ao salvar perfil mock persistido:", e);
+    }
   }
 };
 
@@ -122,7 +137,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const safetyTimeout = setTimeout(() => {
       console.warn("Tempo limite de carregamento do perfil atingido. Ativando modo de simulação (Mock)...");
       setIsMock(true);
-      setProfile(MOCK_PROFILE);
+      const fallbackProf = getPersistedUserProfile();
+      setProfile(fallbackProf);
       setLoading(false);
     }, 6000);
 
@@ -169,7 +185,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (err) {
             console.error("Erro ao inicializar perfil de usuário no Firestore. Ativando modo de simulação (Mock)...", err);
             setIsMock(true);
-            setProfile(MOCK_PROFILE);
+            const fallbackProf = getPersistedUserProfile();
+            setProfile(fallbackProf);
             setLoading(false);
           }
         }
@@ -178,7 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(safetyTimeout);
         console.error("Erro ao sincronizar dados do usuário no Firestore. Ativando modo de simulação (Mock)...", error);
         setIsMock(true);
-        setProfile(MOCK_PROFILE);
+        const fallbackProf = getPersistedUserProfile();
+        setProfile(fallbackProf);
         setLoading(false);
       }
     );
@@ -245,18 +263,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isMock || isFirebasePlaceholder || email === "admin@carolramos.com.br") {
       // Simulação de login
       if (email === "admin@carolramos.com.br" && password === "123456") {
+        const currentProfile = getPersistedUserProfile();
         const mockUser = {
-          uid: MOCK_PROFILE.uid,
-          email: MOCK_PROFILE.email,
-          displayName: MOCK_PROFILE.displayName,
+          uid: currentProfile.uid,
+          email: currentProfile.email,
+          displayName: currentProfile.displayName,
         };
         const session = {
           ...mockUser,
-          profile: MOCK_PROFILE
+          profile: currentProfile
         };
         localStorage.setItem("mock_auth_session", JSON.stringify(session));
         setUser(mockUser);
-        setProfile(MOCK_PROFILE);
+        setProfile(currentProfile);
         setIsMock(true);
         setLoading(false);
         return;
@@ -271,18 +290,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithGoogle = useCallback(async () => {
     if (isMock || isFirebasePlaceholder) {
+      const currentProfile = getPersistedUserProfile();
       const mockUser = {
-        uid: MOCK_PROFILE.uid,
-        email: MOCK_PROFILE.email,
-        displayName: MOCK_PROFILE.displayName,
+        uid: currentProfile.uid,
+        email: currentProfile.email,
+        displayName: currentProfile.displayName,
       };
       const session = {
         ...mockUser,
-        profile: MOCK_PROFILE
+        profile: currentProfile
       };
       localStorage.setItem("mock_auth_session", JSON.stringify(session));
       setUser(mockUser);
-      setProfile(MOCK_PROFILE);
+      setProfile(currentProfile);
       setIsMock(true);
       setLoading(false);
       return;
@@ -318,6 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (isMock) {
       setProfile(updatedProfile);
+      savePersistedUserProfile(updatedProfile);
       const savedMockSession = localStorage.getItem("mock_auth_session");
       if (savedMockSession) {
         const parsed = JSON.parse(savedMockSession);
@@ -375,6 +396,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isMock) {
       localStorage.setItem(`company_profile_${uniqueTenantId}`, JSON.stringify(newCompanyObj));
       setProfile(updatedProfile);
+      savePersistedUserProfile(updatedProfile);
       const savedMockSession = localStorage.getItem("mock_auth_session");
       if (savedMockSession) {
         const parsed = JSON.parse(savedMockSession);
@@ -402,6 +424,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfileMock = useCallback((newProfile: UserProfile) => {
     setProfile(newProfile);
+    savePersistedUserProfile(newProfile);
     const savedMockSession = localStorage.getItem("mock_auth_session");
     if (savedMockSession) {
       const parsed = JSON.parse(savedMockSession);

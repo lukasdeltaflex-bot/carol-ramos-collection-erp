@@ -331,8 +331,11 @@ export default function SettingsPage() {
           if (user) {
             await updateDoc("users", user.uid, { tenants: updatedTenants });
             await deleteDoc("companies", id);
+            localStorage.removeItem(`company_profile_${id}`);
           }
         }
+        
+        invalidateCache("companies");
         success("Empresa excluída", "A empresa foi removida da sua conta com sucesso!");
       }
       await loadCompanies();
