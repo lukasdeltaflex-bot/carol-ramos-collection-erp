@@ -473,7 +473,7 @@ export default function RecycleBinPage() {
       {/* 4. Modal de Configurações da Lixeira */}
       {settingsOpen && (
         <Modal
-          isOpen={settingsOpen}
+          open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           title="Configurações da Lixeira Inteligente"
         >
@@ -533,7 +533,7 @@ export default function RecycleBinPage() {
       {/* 5. Modal de Confirmação de Operação */}
       {confirmModalOpen && (
         <Modal
-          isOpen={confirmModalOpen}
+          open={confirmModalOpen}
           onClose={() => setConfirmModalOpen(false)}
           title={
             confirmActionType.startsWith("restore") ? "Confirmar Restauração" : "⚠️ Confirmar Exclusão Permanente"
