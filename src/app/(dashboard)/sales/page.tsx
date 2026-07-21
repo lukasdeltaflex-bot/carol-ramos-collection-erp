@@ -534,8 +534,8 @@ export default function SalesPOSPage() {
                   <input
                     type="number"
                     step="0.01"
-                    required
-                    value={openingBalance || ""}
+                    min="0"
+                    value={openingBalance}
                     onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
                     placeholder="0,00"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-card"
