@@ -44,6 +44,7 @@ const INITIAL_CUSTOMERS = [
 ];
 
 export default function ContactsPage() {
+  const { tenantId } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
 
   const [searchQuery, setSearchQuery] = useState("");
