@@ -1,4 +1,5 @@
 import { BaseDocument } from "@/types/shared";
+import { ProductPricingData } from "@/features/pricing/types";
 
 export interface Category extends BaseDocument {
   tenantId: string;
@@ -58,6 +59,7 @@ export interface Product extends BaseDocument {
     mercadolivre?: { id: string; lastSync: any; synced: boolean };
     ecommerce?: { id: string; active: boolean };
   };
+  pricingData?: ProductPricingData;
   status: 'active' | 'inactive';
   lastSaleDate?: any;
   lastPurchaseDate?: any;
