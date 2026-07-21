@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
 import { useToast } from "@/context/ToastContext";
 import { Supplier } from "@/features/suppliers/types";
@@ -333,6 +334,7 @@ function LogoUploader({ value, onChange, name }: { value: string; onChange: (b64
 }
 
 export default function SuppliersPage() {
+  const { tenantId } = useAuth();
   const { getDocs, createDoc, updateDoc, deleteDoc } = useDb();
   const { success, error: toastError } = useToast();
 
