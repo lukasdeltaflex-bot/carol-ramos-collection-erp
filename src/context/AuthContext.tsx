@@ -55,6 +55,17 @@ const isFirebasePlaceholder =
   process.env.NEXT_PUBLIC_FIREBASE_API_KEY.includes("your-api-key") ||
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "your-project-id";
 
+const MOCK_PROFILE: UserProfile = {
+  uid: "mock-uid-carol-ramos",
+  email: "admin@carolramos.com.br",
+  displayName: "Carol Ramos",
+  activeTenantId: "carol-ramos-collection",
+  tenants: {
+    "carol-ramos-collection": { role: "owner", joinedAt: new Date().toISOString() },
+    "beleza-saas-demo": { role: "admin", joinedAt: new Date().toISOString() }
+  }
+};
+
 const PERSISTED_USER_PROFILE_KEY = "mock_user_profile_persistent";
 
 const getPersistedUserProfile = (): UserProfile => {
