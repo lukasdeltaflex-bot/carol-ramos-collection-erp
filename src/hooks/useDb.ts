@@ -6,6 +6,7 @@ import {
   collection, 
   doc, 
   addDoc, 
+  setDoc,
   updateDoc as firestoreUpdateDoc, 
   deleteDoc as firestoreDeleteDoc, 
   getDocs as firestoreGetDocs, 
@@ -163,41 +164,55 @@ export function useDb() {
     if (isMock) {
       const storageKey = `mock_db_${collectionName}`;
       const existing = localStorage.getItem(storageKey);
-      if (!existing) throw new Error("Documento não encontrado.");
-      
-      const list = JSON.parse(existing);
+      const list = existing ? JSON.parse(existing) : [];
       const idx = list.findIndex((item: any) => item.id === docId);
-      if (idx === -1) throw new Error("Documento não encontrado.");
 
-      previousData = list[idx];
-      const finalData = injectBaseFields(data, "update", previousData);
-      
-      list[idx] = { id: docId, ...finalData };
+      if (idx !== -1) {
+        previousData = list[idx];
+        const finalData = injectBaseFields(data, "update", previousData);
+        list[idx] = { id: docId, ...finalData };
+      } else {
+        const finalData = injectBaseFields(data, "create");
+        list.push({ id: docId, ...finalData });
+      }
       localStorage.setItem(storageKey, JSON.stringify(list));
 
-      await logAudit("update", collectionName, docId, previousData, finalData);
-      return list[idx];
+      if (collectionName === "companies") {
+        const companyKey = `company_profile_${docId}`;
+        const savedComp = localStorage.getItem(companyKey);
+        const prevComp = savedComp ? JSON.parse(savedComp) : {};
+        localStorage.setItem(companyKey, JSON.stringify({ ...prevComp, ...data, id: docId }));
+      }
+
+      await logAudit("update", collectionName, docId, previousData, data);
+      return { id: docId, ...data };
     }
 
     const docRef = doc(db, collectionName, docId);
-    const snap = await withTimeout(
-      firestoreGetDoc(docRef),
-      4000,
-      `Erro ao carregar registro em ${collectionName} para atualização`
-    );
-    if (!snap.exists()) throw new Error("Documento não encontrado.");
-    
-    previousData = snap.data();
-    const finalData = injectBaseFields(data, "update", previousData);
-    
-    await withTimeout(
-      firestoreUpdateDoc(docRef, finalData),
-      5000,
-      `Erro ao atualizar registro em ${collectionName} (Sem resposta do servidor)`
-    );
+    try {
+      const snap = await firestoreGetDoc(docRef);
+      if (snap.exists()) {
+        previousData = snap.data();
+        const finalData = injectBaseFields(data, "update", previousData);
+        await firestoreUpdateDoc(docRef, finalData);
+      } else {
+        const finalData = injectBaseFields(data, "create");
+        await setDoc(docRef, finalData, { merge: true });
+      }
+    } catch (e) {
+      const finalData = injectBaseFields(data, "create");
+      await setDoc(docRef, finalData, { merge: true });
+    }
 
-    await logAudit("update", collectionName, docId, previousData, finalData);
-    return { id: docId, ...finalData };
+    if (collectionName === "companies" && typeof window !== "undefined") {
+      const companyKey = `company_profile_${docId}`;
+      const savedComp = localStorage.getItem(companyKey);
+      const prevComp = savedComp ? JSON.parse(savedComp) : {};
+      localStorage.setItem(companyKey, JSON.stringify({ ...prevComp, ...data, id: docId }));
+    }
+
+    await logAudit("update", collectionName, docId, previousData, data);
+    return { id: docId, ...data };
   }, [user, tenantId, isMock, invalidateCache]);
 
   // 3. Exclusão Lógica (Mover para a Lixeira Inteligente)
@@ -483,6 +498,10 @@ export function useDb() {
   const getDocById = useCallback(async (collectionName: string, docId: string) => {
     try {
       if (isMock) {
+        if (collectionName === "companies" && typeof window !== "undefined") {
+          const compProfile = localStorage.getItem(`company_profile_${docId}`);
+          if (compProfile) return JSON.parse(compProfile);
+        }
         const storageKey = `mock_db_${collectionName}`;
         const existing = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
         if (!existing) return null;
@@ -496,10 +515,20 @@ export function useDb() {
         5000,
         `Erro ao buscar registro por ID em ${collectionName}`
       );
-      if (!snap.exists()) return null;
+      if (!snap.exists()) {
+        if (collectionName === "companies" && typeof window !== "undefined") {
+          const compProfile = localStorage.getItem(`company_profile_${docId}`);
+          if (compProfile) return JSON.parse(compProfile);
+        }
+        return null;
+      }
       return { id: snap.id, ...snap.data() };
     } catch (err) {
       console.warn(`[useDb] Falha ao carregar documento ${collectionName}/${docId}:`, err);
+      if (collectionName === "companies" && typeof window !== "undefined") {
+        const compProfile = localStorage.getItem(`company_profile_${docId}`);
+        if (compProfile) return JSON.parse(compProfile);
+      }
       return null;
     }
   }, [isMock]);

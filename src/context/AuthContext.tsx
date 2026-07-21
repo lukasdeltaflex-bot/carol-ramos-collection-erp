@@ -235,6 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: tenantId,
             name: tenantId === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
             tradeName: tenantId === "carol-ramos-collection" ? "Carol Ramos Collection" : "Beleza SaaS Demo",
+            logo: "/logo.png",
             cnpj: "12.345.678/0001-99",
             email: "contato@carolramos.com.br",
             phone: "(11) 99999-9999",

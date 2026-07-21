@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
@@ -181,12 +182,24 @@ export default function Sidebar({
       {/* Cabeçalho do Sidebar */}
       <div className="h-16 flex items-center justify-between px-3.5 border-b border-border overflow-hidden shrink-0 relative">
         <div className="flex items-center overflow-hidden">
-          <div className="h-9 w-9 shrink-0 rounded-xl bg-gradient-to-tr from-rosegold-600 to-rosegold-400 flex items-center justify-center shadow-md shadow-rosegold-500/20">
-            <Sparkles className="h-4.5 w-4.5 text-white animate-pulse" />
+          {/* Collapsed: small logo icon */}
+          <div className={cn(
+            "shrink-0 rounded-xl overflow-hidden transition-all duration-300",
+            isOpen || isMobileOpen ? "h-9 w-9" : "h-9 w-9"
+          )}>
+            <Image
+              src="/logo.png"
+              alt="Carol Ramos Collection"
+              width={36}
+              height={36}
+              className="h-9 w-9 object-cover rounded-xl"
+              priority
+            />
           </div>
+          {/* Expanded: full logo */}
           <div
             className={cn(
-              "flex flex-col transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap",
+              "transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap",
               isOpen || isMobileOpen
                 ? "opacity-100 max-w-[160px] ml-2.5"
                 : "opacity-0 max-w-0 ml-0 pointer-events-none"
@@ -195,7 +208,7 @@ export default function Sidebar({
             <span className="font-display font-medium text-sm tracking-wide bg-gradient-to-r from-rosegold-600 to-foreground bg-clip-text text-transparent dark:from-rosegold-400">
               Carol Ramos
             </span>
-            <span className="text-[10px] text-muted-foreground -mt-0.5 tracking-wider uppercase font-semibold">
+            <span className="block text-[10px] text-muted-foreground -mt-0.5 tracking-wider uppercase font-semibold">
               Collection ERP
             </span>
           </div>
