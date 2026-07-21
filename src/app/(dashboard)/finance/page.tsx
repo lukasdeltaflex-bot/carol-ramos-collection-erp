@@ -5,6 +5,7 @@ import { useDb } from "@/hooks/useDb";
 import { useAuth } from "@/context/AuthContext";
 import {
   BankAccount,
+  CompanyCreditCard,
   FinancialTransaction,
   AccountsReceivable,
   AccountsPayable,
@@ -12,6 +13,7 @@ import {
 } from "@/features/finance/types";
 import {
   BankAccountSchema,
+  CompanyCreditCardSchema,
   FinancialTransactionSchema,
   AccountsReceivableSchema,
   AccountsPayableSchema,
@@ -43,15 +45,20 @@ import {
   Receipt,
   Activity,
   UserCheck,
-  ShieldAlert
+  ShieldAlert,
+  CreditCard as CardIcon,
+  Check,
+  Lock,
+  PieChart,
+  RefreshCw
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
-// Lista de Bancos Brasileiros para o seletor visual (Req 7)
+// Lista de Bancos Brasileiros para o seletor visual
 export const BRAZILIAN_BANKS = [
   { code: "001", name: "Banco do Brasil", color: "bg-yellow-500 text-blue-900 border-yellow-600", brand: "BB" },
   { code: "033", name: "Santander", color: "bg-red-600 text-white border-red-700", brand: "San" },
-  { code: "104", name: "Caixa", color: "bg-blue-600 text-orange-400 border-blue-700", brand: "Caixa" },
+  { code: "104", name: "Caixa Econômica", color: "bg-blue-600 text-orange-400 border-blue-700", brand: "Caixa" },
   { code: "237", name: "Bradesco", color: "bg-red-700 text-white border-red-800", brand: "Brad" },
   { code: "341", name: "Itaú Unibanco", color: "bg-orange-500 text-blue-950 border-orange-600", brand: "Itaú" },
   { code: "077", name: "Banco Inter", color: "bg-orange-500 text-white border-orange-600", brand: "Inter" },
@@ -71,9 +78,27 @@ export const BRAZILIAN_BANKS = [
 
 // Mock Inicial de Contas Bancárias
 const INITIAL_BANK_ACCOUNTS = [
-  { name: "Caixa Físico / Gaveta", type: "cash_register" as const, balance: 350.00, currency: "BRL", status: "active" as const },
-  { name: "Banco Itaú PJ", type: "checking" as const, balance: 8450.00, currency: "BRL", status: "active" as const },
-  { name: "Carteira Digital Shopee", type: "wallet" as const, balance: 1290.00, currency: "BRL", status: "active" as const }
+  { name: "Caixa Físico / Gaveta", bankName: "Caixa Interno", type: "cash_register" as const, balance: 350.00, currency: "BRL", status: "active" as const },
+  { name: "Banco Itaú PJ", bankName: "Itaú Unibanco", bankCode: "341", agency: "1234", accountNumber: "56789", accountDigit: "0", type: "checking" as const, balance: 8450.00, currency: "BRL", status: "active" as const },
+  { name: "Carteira Digital Shopee", bankName: "Shopee Pay", type: "wallet" as const, balance: 1290.00, currency: "BRL", status: "active" as const }
+];
+
+// Mock Inicial de Cartões Corporativos
+const INITIAL_COMPANY_CARDS = [
+  {
+    name: "Cartão Corporativo Itaú Black",
+    issuerBank: "Itaú Unibanco",
+    flag: "visa" as const,
+    lastFourDigits: "4589",
+    nameOnCard: "CAROL RAMOS",
+    totalLimit: 25000.00,
+    availableLimit: 19850.00,
+    closingDay: 25,
+    dueDay: 5,
+    responsiblePerson: "Carol Ramos",
+    status: "active" as const,
+    notes: "Cartão principal para compras de estoque importado"
+  }
 ];
 
 // Mock Inicial de Lançamentos Financeiros (Fluxo de Caixa)
@@ -100,7 +125,7 @@ export default function FinancePage() {
   const { tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc } = useDb();
 
-  const [activeTab, setActiveTab] = useState<"cashflow" | "accounts" | "payable" | "receivable" | "purchases" | "dre">("cashflow");
+  const [activeTab, setActiveTab] = useState<"cashflow" | "accounts" | "cards" | "payable" | "receivable" | "purchases" | "dre">("cashflow");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
@@ -113,6 +138,7 @@ export default function FinancePage() {
   // DB Lists
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [companyCards, setCompanyCards] = useState<CompanyCreditCard[]>([]);
   const [payables, setPayables] = useState<AccountsPayable[]>([]);
   const [receivables, setReceivables] = useState<AccountsReceivable[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -121,27 +147,54 @@ export default function FinancePage() {
 
   // Drawer Form State
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerType, setDrawerType] = useState<"transaction" | "bank_account" | "payable" | "receivable" | "purchase">("transaction");
+  const [drawerType, setDrawerType] = useState<"transaction" | "bank_account" | "company_card" | "payable" | "receivable" | "purchase">("transaction");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Form Fields
   // 1. Transaction
   const [tType, setTType] = useState<'revenue' | 'expense'>("expense");
-  const [tCategory, setTCategory] = useState<'sale' | 'rent' | 'marketing' | 'salary' | 'stock_purchase' | 'cash_register_adjustment' | 'other'>("other");
+  const [tCategory, setTCategory] = useState<'sale' | 'rent' | 'marketing' | 'salary' | 'stock_purchase' | 'cash_register_adjustment' | 'card_invoice_payment' | 'other'>("other");
   const [tAmount, setTAmount] = useState(0);
   const [tDesc, setTDesc] = useState("");
   const [tDate, setTDate] = useState("");
   const [tBankAccountId, setTBankAccountId] = useState("");
 
-  // 2. Bank Account
+  // 2. Custom Bank Account
   const [bName, setBName] = useState("");
-  const [bType, setBType] = useState<'checking' | 'savings' | 'wallet' | 'cash_register'>("checking");
+  const [bBankName, setBBankName] = useState("");
+  const [bBankCode, setBBankCode] = useState("");
+  const [bAgency, setBAgency] = useState("");
+  const [bAccountNumber, setBAccountNumber] = useState("");
+  const [bAccountDigit, setBAccountDigit] = useState("");
+  const [bType, setBType] = useState<'checking' | 'savings' | 'wallet' | 'cash_register' | 'payment' | 'investment' | 'other'>("checking");
+  const [bHolderName, setBHolderName] = useState("");
+  const [bHolderCpfCnpj, setBHolderCpfCnpj] = useState("");
+  const [bPixKey, setBPixKey] = useState("");
   const [bBalance, setBBalance] = useState(0);
+  const [bInitialBalance, setBInitialBalance] = useState(0);
+  const [bNotes, setBNotes] = useState("");
+  const [bStatus, setBStatus] = useState<'active' | 'inactive'>("active");
 
-  // 3. Purchase Form Fields
+  // 3. Corporate Credit Card
+  const [cName, setCName] = useState("");
+  const [cIssuerBank, setCIssuerBank] = useState("");
+  const [cFlag, setCFlag] = useState<'visa' | 'mastercard' | 'elo' | 'amex' | 'hipercard' | 'other'>("visa");
+  const [cLast4, setCLast4] = useState("");
+  const [cNameOnCard, setCNameOnCard] = useState("");
+  const [cTotalLimit, setCTotalLimit] = useState(0);
+  const [cAvailableLimit, setCAvailableLimit] = useState(0);
+  const [cClosingDay, setCClosingDay] = useState(25);
+  const [cDueDay, setCDueDay] = useState(5);
+  const [cLinkedBankAccountId, setCLinkedBankAccountId] = useState("");
+  const [cResponsiblePerson, setCResponsiblePerson] = useState("");
+  const [cStatus, setCStatus] = useState<'active' | 'inactive' | 'blocked'>("active");
+  const [cNotes, setCNotes] = useState("");
+
+  // 4. Purchase Form Fields
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [purchaseItems, setPurchaseItems] = useState<Array<{ productId: string; quantity: number; unitCost: number }>>([]);
-  const [purchasePaymentMethod, setPurchasePaymentMethod] = useState<'credit_card' | 'bank_slip' | 'pix' | 'cash'>("pix");
+  const [purchasePaymentMethod, setPurchasePaymentMethod] = useState<'credit_card' | 'company_credit_card' | 'bank_slip' | 'pix' | 'cash' | 'transfer' | 'bank_account'>("pix");
+  const [selectedCardId, setSelectedCardId] = useState("");
   const [purchaseDueDate, setPurchaseDueDate] = useState("");
   const [purchaseInstallmentsCount, setPurchaseInstallmentsCount] = useState(1);
   const [generatedPurchaseInstallments, setGeneratedPurchaseInstallments] = useState<Array<{ number: number; amount: number; dueDate: string }>>([]);
@@ -155,13 +208,19 @@ export default function FinancePage() {
   const [selectedReceiveId, setSelectedReceiveId] = useState<string | null>(null);
   const [paymentBankAccountId, setPaymentBankAccountId] = useState("");
 
-  // Bank Selector State (Req 7)
+  // Invoice Payment Modal State
+  const [cardInvoiceModalOpen, setCardInvoiceModalOpen] = useState(false);
+  const [selectedCardForInvoice, setSelectedCardForInvoice] = useState<CompanyCreditCard | null>(null);
+  const [invoicePayAmount, setInvoicePayAmount] = useState(0);
+  const [invoiceBankAccountId, setInvoiceBankAccountId] = useState("");
+
+  // Bank Selector State
   const [bankSearch, setBankSearch] = useState("");
   const [selectedBankObj, setSelectedBankObj] = useState<any>(null);
 
   const purchaseTotalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
 
-  const generateDefaultPurchaseInstallments = (count: number, totalVal: number) => {
+  const generateDefaultPurchaseInstallments = (count: number, totalVal: number, dueDayNum?: number) => {
     if (count <= 0) return;
     const list = [];
     const baseAmount = parseFloat((totalVal / count).toFixed(2));
@@ -174,7 +233,10 @@ export default function FinancePage() {
         accumulated = parseFloat((accumulated + baseAmount).toFixed(2));
       }
       const d = new Date();
-      d.setDate(d.getDate() + 30 * i);
+      d.setMonth(d.getMonth() + i);
+      if (dueDayNum && dueDayNum >= 1 && dueDayNum <= 28) {
+        d.setDate(dueDayNum);
+      }
       list.push({
         number: i,
         amount,
@@ -202,19 +264,21 @@ export default function FinancePage() {
 
   // Regenerar parcelas da compra se o total ou método mudar
   useEffect(() => {
-    if (purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card") {
-      generateDefaultPurchaseInstallments(purchaseInstallmentsCount, purchaseTotalCost);
+    if (purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card" || purchasePaymentMethod === "company_credit_card") {
+      const cardObj = companyCards.find(c => c.id === selectedCardId);
+      generateDefaultPurchaseInstallments(purchaseInstallmentsCount, purchaseTotalCost, cardObj?.dueDay);
     } else {
       setGeneratedPurchaseInstallments([]);
     }
-  }, [purchaseTotalCost, purchasePaymentMethod, purchaseInstallmentsCount]);
+  }, [purchaseTotalCost, purchasePaymentMethod, purchaseInstallmentsCount, selectedCardId]);
 
-  // Load All Financial Data (Paralelizado e Reativo)
+  // Load All Financial Data
   const loadFinancialData = async () => {
     setLoading(true);
     try {
-      let [bAccounts, trans, pays, recs, purcs, prods, supps] = await Promise.all([
+      let [bAccounts, cCards, trans, pays, recs, purcs, prods, supps] = await Promise.all([
         getDocs("bank_accounts"),
+        getDocs("company_credit_cards"),
         getDocs("financial_transactions"),
         getDocs("accounts_payable"),
         getDocs("accounts_receivable"),
@@ -224,6 +288,7 @@ export default function FinancePage() {
       ]);
 
       bAccounts = (bAccounts as BankAccount[]) || [];
+      cCards = (cCards as CompanyCreditCard[]) || [];
       trans = (trans as FinancialTransaction[]) || [];
       pays = (pays as AccountsPayable[]) || [];
       recs = (recs as AccountsReceivable[]) || [];
@@ -231,15 +296,24 @@ export default function FinancePage() {
       prods = (prods as Product[]) || [];
       supps = (supps as Supplier[]) || [];
 
-      // Pre-seed bank accounts (Paralelizado)
-      let needsRefetch = false;
+      // Pre-seed bank accounts
+      let needsRefetchBank = false;
       if (bAccounts.length === 0) {
         await Promise.all(INITIAL_BANK_ACCOUNTS.map(ba => createDoc("bank_accounts", ba)));
-        needsRefetch = true;
+        needsRefetchBank = true;
+      }
+      if (needsRefetchBank) {
+        bAccounts = (await getDocs("bank_accounts") as BankAccount[]) || [];
       }
 
-      if (needsRefetch) {
-        bAccounts = (await getDocs("bank_accounts") as BankAccount[]) || [];
+      // Pre-seed credit cards
+      let needsRefetchCards = false;
+      if (cCards.length === 0) {
+        await Promise.all(INITIAL_COMPANY_CARDS.map(cc => createDoc("company_credit_cards", cc)));
+        needsRefetchCards = true;
+      }
+      if (needsRefetchCards) {
+        cCards = (await getDocs("company_credit_cards") as CompanyCreditCard[]) || [];
       }
 
       const bankIds = (bAccounts as any[]).map((b: any) => b.id);
@@ -278,6 +352,7 @@ export default function FinancePage() {
       }
 
       setBankAccounts(bAccounts);
+      setCompanyCards(cCards);
       setTransactions(trans);
       setPayables(pays);
       setReceivables(recs);
@@ -288,10 +363,15 @@ export default function FinancePage() {
       if (bAccounts.length > 0 && bAccounts[0]) {
         setTBankAccountId(bAccounts[0].id);
         setPaymentBankAccountId(bAccounts[0].id);
+        setInvoiceBankAccountId(bAccounts[0].id);
+      }
+      if (cCards.length > 0 && cCards[0]) {
+        setSelectedCardId(cCards[0].id);
       }
     } catch (e) {
       console.error("Erro ao sincronizar finanças:", e);
       setBankAccounts([]);
+      setCompanyCards([]);
       setTransactions([]);
       setPayables([]);
       setReceivables([]);
@@ -307,7 +387,7 @@ export default function FinancePage() {
     if (tenantId) {
       loadFinancialData();
     }
-  }, [tenantId, isMock]);
+  }, [tenantId]);
 
   // 1. Abrir Drawer de Cadastro
   const handleOpenDrawer = (type: typeof drawerType) => {
@@ -324,12 +404,39 @@ export default function FinancePage() {
     if (bankAccounts.length > 0) setTBankAccountId(bankAccounts[0].id);
 
     setBName("");
+    setBBankName("");
+    setBBankCode("");
+    setBAgency("");
+    setBAccountNumber("");
+    setBAccountDigit("");
     setBType("checking");
+    setBHolderName("");
+    setBHolderCpfCnpj("");
+    setBPixKey("");
     setBBalance(0);
+    setBInitialBalance(0);
+    setBNotes("");
+    setBStatus("active");
+    setSelectedBankObj(null);
+
+    setCName("");
+    setCIssuerBank("");
+    setCFlag("visa");
+    setCLast4("");
+    setCNameOnCard("");
+    setCTotalLimit(0);
+    setCAvailableLimit(0);
+    setCClosingDay(25);
+    setCDueDay(5);
+    setCLinkedBankAccountId(bankAccounts[0]?.id || "");
+    setCResponsiblePerson("");
+    setCStatus("active");
+    setCNotes("");
 
     setSelectedSupplierId(suppliers[0]?.id || "");
     setPurchaseItems([]);
     setPurchasePaymentMethod("pix");
+    if (companyCards.length > 0) setSelectedCardId(companyCards[0].id);
     setPurchaseDueDate(new Date().toISOString().split("T")[0]);
     setPurchaseInstallmentsCount(1);
     setGeneratedPurchaseInstallments([]);
@@ -343,8 +450,19 @@ export default function FinancePage() {
     setEditingId(account.id);
     setErrors({});
     setBName(account.name);
+    setBBankName(account.bankName || "");
+    setBBankCode(account.bankCode || "");
+    setBAgency(account.agency || "");
+    setBAccountNumber(account.accountNumber || "");
+    setBAccountDigit(account.accountDigit || "");
     setBType(account.type as any);
+    setBHolderName(account.holderName || "");
+    setBHolderCpfCnpj(account.holderCpfCnpj || "");
+    setBPixKey(account.pixKey || "");
     setBBalance(account.balance);
+    setBInitialBalance(account.initialBalance || account.balance);
+    setBNotes(account.notes || "");
+    setBStatus(account.status || "active");
     setDrawerOpen(true);
   };
 
@@ -357,6 +475,39 @@ export default function FinancePage() {
     } catch (err: any) {
       console.error("Erro ao excluir conta bancária:", err);
       alert("Erro ao excluir conta: " + (err.message || "tente novamente."));
+    }
+  };
+
+  // 1d. Abrir Drawer de Edição de Cartão Corporativo
+  const handleEditCompanyCard = (card: CompanyCreditCard) => {
+    setDrawerType("company_card");
+    setEditingId(card.id);
+    setErrors({});
+    setCName(card.name);
+    setCIssuerBank(card.issuerBank);
+    setCFlag(card.flag);
+    setCLast4(card.lastFourDigits);
+    setCNameOnCard(card.nameOnCard);
+    setCTotalLimit(card.totalLimit);
+    setCAvailableLimit(card.availableLimit);
+    setCClosingDay(card.closingDay);
+    setCDueDay(card.dueDay);
+    setCLinkedBankAccountId(card.linkedBankAccountId || "");
+    setCResponsiblePerson(card.responsiblePerson || "");
+    setCStatus(card.status);
+    setCNotes(card.notes || "");
+    setDrawerOpen(true);
+  };
+
+  // 1e. Excluir Cartão Corporativo
+  const handleDeleteCompanyCard = async (id: string, name: string) => {
+    if (!confirm(`Deseja realmente excluir o cartão "${name}"?\n\nEsta ação não pode ser desfeita.`)) return;
+    try {
+      await deleteDoc("company_credit_cards", id);
+      await loadFinancialData();
+    } catch (err: any) {
+      console.error("Erro ao excluir cartão:", err);
+      alert("Erro ao excluir cartão: " + (err.message || "tente novamente."));
     }
   };
 
@@ -375,7 +526,6 @@ export default function FinancePage() {
     }
   };
 
-  // 3. Remover/Ajustar Item de Compra
   const updatePurchaseItemQty = (productId: string, qty: number) => {
     const idx = purchaseItems.findIndex(item => item.productId === productId);
     if (idx === -1) return;
@@ -403,7 +553,23 @@ export default function FinancePage() {
 
     try {
       if (drawerType === "bank_account") {
-        const payload = { name: bName, type: bType, balance: bBalance };
+        const payload = {
+          name: bName,
+          bankName: bBankName || bName,
+          bankCode: bBankCode || undefined,
+          agency: bAgency || undefined,
+          accountNumber: bAccountNumber || undefined,
+          accountDigit: bAccountDigit || undefined,
+          type: bType,
+          holderName: bHolderName || undefined,
+          holderCpfCnpj: bHolderCpfCnpj || undefined,
+          pixKey: bPixKey || undefined,
+          balance: bBalance,
+          initialBalance: bInitialBalance || bBalance,
+          notes: bNotes || undefined,
+          status: bStatus,
+          currency: "BRL"
+        };
         const result = BankAccountSchema.safeParse(payload);
         if (!result.success) {
           const errs: Record<string, string> = {};
@@ -415,10 +581,42 @@ export default function FinancePage() {
         if (editingId) {
           await updateDoc("bank_accounts", editingId, { ...payload, updatedAt: new Date().toISOString() });
         } else {
-          await createDoc("bank_accounts", { ...payload, currency: "BRL", status: "active" as const });
+          await createDoc("bank_accounts", payload);
         }
       } 
       
+      else if (drawerType === "company_card") {
+        const payload = {
+          name: cName,
+          issuerBank: cIssuerBank,
+          flag: cFlag,
+          lastFourDigits: cLast4,
+          nameOnCard: cNameOnCard,
+          totalLimit: cTotalLimit,
+          availableLimit: cAvailableLimit > cTotalLimit ? cTotalLimit : cAvailableLimit,
+          closingDay: cClosingDay,
+          dueDay: cDueDay,
+          linkedBankAccountId: cLinkedBankAccountId || undefined,
+          responsiblePerson: cResponsiblePerson || undefined,
+          status: cStatus,
+          notes: cNotes || undefined,
+        };
+
+        const result = CompanyCreditCardSchema.safeParse(payload);
+        if (!result.success) {
+          const errs: Record<string, string> = {};
+          result.error.issues.forEach(i => errs[i.path.join(".")] = i.message);
+          setErrors(errs);
+          return;
+        }
+
+        if (editingId) {
+          await updateDoc("company_credit_cards", editingId, { ...payload, updatedAt: new Date().toISOString() });
+        } else {
+          await createDoc("company_credit_cards", payload);
+        }
+      }
+
       else if (drawerType === "transaction") {
         const payload = {
           type: tType,
@@ -466,6 +664,7 @@ export default function FinancePage() {
           supplierId: selectedSupplierId,
           items: itemsPayload,
           paymentMethod: purchasePaymentMethod,
+          cardId: (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") ? selectedCardId : undefined,
           dueDate: purchaseDueDate || undefined
         };
 
@@ -490,12 +689,10 @@ export default function FinancePage() {
             const newStock = prod.currentStock + item.quantity;
             const newAvailable = prod.availableStock + item.quantity;
             
-            // Recalcular Preço de Custo Médio Ponderado
             const currentAssetVal = prod.currentStock * prod.averageCost;
             const newPurchaseVal = item.quantity * item.unitCost;
             const finalAvgCost = parseFloat(((currentAssetVal + newPurchaseVal) / newStock).toFixed(2));
             
-            // Calcular margem: ((sellPrice - unitCost) / sellPrice) * 100
             const calculatedMargin = prod.sellPrice > 0 
               ? parseFloat((((prod.sellPrice - item.unitCost) / prod.sellPrice) * 100).toFixed(1)) 
               : 0;
@@ -503,17 +700,16 @@ export default function FinancePage() {
             await updateDoc("products", prod.id, {
               currentStock: newStock,
               availableStock: newAvailable,
-              costPrice: item.unitCost, // Atualiza último preço de custo
+              costPrice: item.unitCost,
               averageCost: finalAvgCost,
               lastPurchasePrice: item.unitCost,
               lastPurchaseDate: new Date().toISOString(),
               profitMargin: calculatedMargin
             });
 
-            // Registrar InventoryTransaction
             await createDoc("inventory_transactions", {
               productId: prod.id,
-              locationId: "deposito-central", // ID do Depósito de Entrada
+              locationId: "deposito-central",
               type: "in" as const,
               quantity: item.quantity,
               costPriceAtTime: item.unitCost,
@@ -523,8 +719,29 @@ export default function FinancePage() {
         }
 
         // 3. Fluxo Financeiro da Compra:
-        if (purchasePaymentMethod === "pix" || purchasePaymentMethod === "cash") {
-          // Pago na hora: debita do Caixa Loja ou Itaú
+        if (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") {
+          // Debitar Limite do Cartão Corporativo e gerar parcelas em Contas a Pagar
+          const targetCard = companyCards.find(c => c.id === selectedCardId);
+          if (targetCard) {
+            const newLimit = Math.max(0, targetCard.availableLimit - totalCost);
+            await updateDoc("company_credit_cards", targetCard.id, {
+              availableLimit: newLimit
+            });
+          }
+
+          for (const inst of generatedPurchaseInstallments) {
+            await createDoc("accounts_payable", {
+              supplierId: selectedSupplierId || undefined,
+              purchaseId: newPurchase.id,
+              cardId: selectedCardId || undefined,
+              description: `Fatura Cartão: Parcela ${inst.number}/${generatedPurchaseInstallments.length} - Ref #${newPurchase.id}`,
+              amount: inst.amount,
+              dueDate: inst.dueDate,
+              status: "pending" as const,
+              paymentMethod: "company_credit_card" as const
+            });
+          }
+        } else if (purchasePaymentMethod === "pix" || purchasePaymentMethod === "cash") {
           const targetBankId = purchasePaymentMethod === "pix" ? bankAccounts[1]?.id : bankAccounts[0]?.id;
           if (targetBankId) {
             const acc = bankAccounts.find(a => a.id === targetBankId);
@@ -543,7 +760,6 @@ export default function FinancePage() {
             });
           }
         } else {
-          // A prazo: gera contas a pagar (AccountsPayable)
           for (const inst of generatedPurchaseInstallments) {
             await createDoc("accounts_payable", {
               supplierId: selectedSupplierId || undefined,
@@ -565,7 +781,7 @@ export default function FinancePage() {
     }
   };
 
-  // 5. Baixar Conta a Pagar (Marcar como Pago)
+  // 5. Baixar Conta a Pagar
   const handleOpenPayModal = (id: string) => {
     setSelectedPayId(id);
     setSelectedReceiveId(null);
@@ -584,12 +800,10 @@ export default function FinancePage() {
         const payDoc = payables.find(p => p.id === selectedPayId);
         if (!payDoc) throw new Error("Documento não encontrado.");
 
-        // Atualizar saldo do banco (Debitar)
         await updateDoc("bank_accounts", paymentBankAccountId, {
           balance: bankAcc.balance - payDoc.amount
         });
 
-        // Registrar transação financeira
         await createDoc("financial_transactions", {
           type: "expense" as const,
           category: payDoc.description.toLowerCase().includes("estoque") ? "stock_purchase" as const : "other" as const,
@@ -601,7 +815,6 @@ export default function FinancePage() {
           referenceId: payDoc.id
         });
 
-        // Atualizar documento do Contas a Pagar
         await updateDoc("accounts_payable", selectedPayId, {
           status: "paid" as const,
           paidAmount: payDoc.amount,
@@ -613,12 +826,10 @@ export default function FinancePage() {
         const recDoc = receivables.find(r => r.id === selectedReceiveId);
         if (!recDoc) throw new Error("Documento não encontrado.");
 
-        // Atualizar saldo do banco (Creditar)
         await updateDoc("bank_accounts", paymentBankAccountId, {
           balance: bankAcc.balance + recDoc.amount
         });
 
-        // Registrar transação financeira
         await createDoc("financial_transactions", {
           type: "revenue" as const,
           category: "sale" as const,
@@ -630,7 +841,6 @@ export default function FinancePage() {
           referenceId: recDoc.id
         });
 
-        // Atualizar documento do Contas a Receber
         await updateDoc("accounts_receivable", selectedReceiveId, {
           status: "paid" as const,
           receivedAmount: recDoc.amount,
@@ -642,6 +852,54 @@ export default function FinancePage() {
       await loadFinancialData();
     } catch (e: any) {
       alert(e.message || "Erro no processamento.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 6. Pagamento de Fatura do Cartão Corporativo
+  const handleOpenCardInvoiceModal = (card: CompanyCreditCard) => {
+    setSelectedCardForInvoice(card);
+    const usedAmount = card.totalLimit - card.availableLimit;
+    setInvoicePayAmount(usedAmount > 0 ? usedAmount : 0);
+    setCardInvoiceModalOpen(true);
+  };
+
+  const handleConfirmInvoicePayment = async () => {
+    if (!selectedCardForInvoice || !invoiceBankAccountId || invoicePayAmount <= 0) return;
+    setLoading(true);
+
+    try {
+      const bankAcc = bankAccounts.find(a => a.id === invoiceBankAccountId);
+      if (!bankAcc) throw new Error("Conta bancária não encontrada.");
+
+      // Debitar valor da conta bancária
+      await updateDoc("bank_accounts", invoiceBankAccountId, {
+        balance: bankAcc.balance - invoicePayAmount
+      });
+
+      // Restaurar limite do cartão
+      const newAvailableLimit = Math.min(selectedCardForInvoice.totalLimit, selectedCardForInvoice.availableLimit + invoicePayAmount);
+      await updateDoc("company_credit_cards", selectedCardForInvoice.id, {
+        availableLimit: newAvailableLimit
+      });
+
+      // Registrar transação financeira de pagamento de fatura
+      await createDoc("financial_transactions", {
+        type: "expense" as const,
+        category: "card_invoice_payment" as const,
+        amount: invoicePayAmount,
+        description: `Pagamento Fatura: ${selectedCardForInvoice.name} (${selectedCardForInvoice.lastFourDigits})`,
+        paymentDate: new Date().toISOString().split("T")[0],
+        status: "paid" as const,
+        bankAccountId: invoiceBankAccountId,
+        cardId: selectedCardForInvoice.id
+      });
+
+      setCardInvoiceModalOpen(false);
+      await loadFinancialData();
+    } catch (e: any) {
+      alert(e.message || "Erro ao processar pagamento da fatura.");
     } finally {
       setLoading(false);
     }
@@ -674,7 +932,6 @@ export default function FinancePage() {
     const totalExpenses = expenseTx.reduce((sum, t) => sum + t.amount, 0);
     const netIncome = totalRevenues - totalExpenses;
     
-    // Quebrar despesas por categoria
     const categoriesSum = expenseTx.reduce((acc, t) => {
       acc[t.category] = (acc[t.category] || 0) + t.amount;
       return acc;
@@ -690,7 +947,7 @@ export default function FinancePage() {
 
   const dre = React.useMemo(() => getDREData(), [transactions]);
 
-  // Filtragem local por busca (Memoizado)
+  // Filtragem local por busca
   const filteredTransactions = React.useMemo(() => {
     return transactions.filter(t =>
       t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -745,6 +1002,7 @@ export default function FinancePage() {
       case "salary": return "Pró-Labore / Salários";
       case "stock_purchase": return "Reposição Estoque";
       case "cash_register_adjustment": return "Ajuste Caixa";
+      case "card_invoice_payment": return "Fatura de Cartão";
       default: return "Outras Despesas";
     }
   };
@@ -756,10 +1014,10 @@ export default function FinancePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl border border-border bg-card/40 backdrop-blur-md">
         <div className="space-y-1">
           <h1 className="text-2xl font-display font-light">Controle <span className="font-semibold text-rosegold-500">Financeiro & Compras</span></h1>
-          <p className="text-xs text-muted-foreground">Tesouraria SaaS, fluxo de caixa, DRE gerencial, contas a pagar/receber e compras de fornecedores.</p>
+          <p className="text-xs text-muted-foreground">Tesouraria SaaS, fluxo de caixa, cartões corporativos, contas a pagar/receber e compras de fornecedores.</p>
         </div>
 
-        {activeTab !== "dre" && activeTab !== "accounts" && (
+        {activeTab !== "dre" && activeTab !== "accounts" && activeTab !== "cards" && (
           <button
             onClick={() => {
               if (activeTab === "payable") {
@@ -789,7 +1047,17 @@ export default function FinancePage() {
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
           >
             <Plus className="h-4 w-4" />
-            <span>Nova Conta Bancária</span>
+            <span>+ Nova Conta Bancária</span>
+          </button>
+        )}
+
+        {activeTab === "cards" && (
+          <button
+            onClick={() => handleOpenDrawer("company_card")}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>+ Novo Cartão</span>
           </button>
         )}
       </div>
@@ -802,6 +1070,7 @@ export default function FinancePage() {
           {[
             { id: "cashflow", label: "Fluxo de Caixa", icon: Activity },
             { id: "accounts", label: "Contas & Saldos", icon: Wallet },
+            { id: "cards", label: "Cartões da Empresa", icon: CardIcon },
             { id: "payable", label: "Contas a Pagar", icon: TrendingDown },
             { id: "receivable", label: "Contas a Receber", icon: TrendingUp },
             { id: "purchases", label: "Compras Estoque", icon: Receipt },
@@ -826,8 +1095,8 @@ export default function FinancePage() {
           })}
         </div>
 
-        {/* Barra de Pesquisa (Não DRE) */}
-        {activeTab !== "dre" && activeTab !== "accounts" && (
+        {/* Barra de Pesquisa */}
+        {activeTab !== "dre" && activeTab !== "accounts" && activeTab !== "cards" && (
           <div className="relative flex-1 max-w-md">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
               <Search className="h-4.5 w-4.5" />
@@ -914,62 +1183,209 @@ export default function FinancePage() {
 
             {/* Tela 2: Contas Bancárias & Saldos */}
             {activeTab === "accounts" && (
-              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                {bankAccounts.map((a) => {
-                  // Find bank design helper
-                  const bankMatch = BRAZILIAN_BANKS.find(b => 
-                    a.name.toLowerCase().includes(b.name.toLowerCase()) || 
-                    a.name.toLowerCase().includes(b.brand.toLowerCase())
-                  );
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Contas Bancárias Cadastradas</h3>
+                  <button
+                    onClick={() => handleOpenDrawer("bank_account")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>+ Nova Conta Bancária</span>
+                  </button>
+                </div>
 
-                  return (
-                    <div key={a.id} className="p-5 rounded-xl border border-border bg-card/50 flex flex-col justify-between h-36 hover:border-primary/20 transition-all select-none group">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <span className="text-xs font-semibold text-foreground truncate block">{a.name}</span>
-                          <span className="px-1.5 py-0.5 rounded bg-muted text-[8px] font-bold text-muted-foreground tracking-wider uppercase inline-block mt-1">
-                            {a.type === "checking" ? "Corrente" : a.type === "wallet" ? "Digital" : "Caixa"}
-                          </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {bankAccounts.map((a) => {
+                    const bankMatch = BRAZILIAN_BANKS.find(b => 
+                      a.name.toLowerCase().includes(b.name.toLowerCase()) || 
+                      a.name.toLowerCase().includes(b.brand.toLowerCase()) ||
+                      (a.bankName && a.bankName.toLowerCase().includes(b.name.toLowerCase()))
+                    );
+
+                    return (
+                      <div key={a.id} className="p-5 rounded-xl border border-border bg-card/50 flex flex-col justify-between hover:border-primary/30 transition-all select-none group relative">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-xs font-semibold text-foreground truncate block">{a.name}</span>
+                            {a.bankName && <span className="text-[10px] text-muted-foreground block">{a.bankName}</span>}
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="px-1.5 py-0.5 rounded bg-muted text-[8px] font-bold text-muted-foreground tracking-wider uppercase inline-block">
+                                {a.type === "checking" ? "Corrente" : a.type === "savings" ? "Poupança" : a.type === "wallet" ? "Digital" : a.type === "cash_register" ? "Caixa" : a.type === "payment" ? "Pagamento" : a.type === "investment" ? "Investimento" : "Outro"}
+                              </span>
+                              {a.status === "inactive" && (
+                                <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300 text-[8px] font-bold uppercase">
+                                  Inativa
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => handleEditBankAccount(a)}
+                              title="Editar conta"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBankAccount(a.id, a.name)}
+                              title="Excluir conta"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+
+                            {bankMatch ? (
+                              <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shadow-sm border", bankMatch.color)}>
+                                {bankMatch.brand}
+                              </div>
+                            ) : (
+                              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                                <Building2 className="h-4 w-4" />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => handleEditBankAccount(a)}
-                            title="Editar conta"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteBankAccount(a.id, a.name)}
-                            title="Excluir conta"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                          {bankMatch ? (
-                            <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shadow-sm border", bankMatch.color)}>
-                              {bankMatch.brand}
-                            </div>
-                          ) : (
-                            <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
-                              <Building2 className="h-4 w-4" />
-                            </div>
-                          )}
+
+                        {(a.agency || a.accountNumber) && (
+                          <div className="text-[10px] text-muted-foreground font-mono mt-2">
+                            Ag: {a.agency || "-"} | C/C: {a.accountNumber}{a.accountDigit ? `-${a.accountDigit}` : ""}
+                          </div>
+                        )}
+
+                        <div className="mt-3 pt-2 border-t border-border/40">
+                          <span className="text-[10px] text-muted-foreground uppercase">Saldo Atual</span>
+                          <h4 className="text-xl font-bold font-mono tracking-tight text-foreground">
+                            {formatCurrency(a.balance)}
+                          </h4>
                         </div>
                       </div>
-                      <div className="mt-2">
-                        <span className="text-[10px] text-muted-foreground uppercase">Saldo Disponível</span>
-                        <h4 className="text-xl font-bold font-mono tracking-tight text-foreground">
-                          {formatCurrency(a.balance)}
-                        </h4>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            {/* Tabela 3: Contas a Pagar */}
+            {/* Tela 3: Cartões da Empresa & Faturas */}
+            {activeTab === "cards" && (
+              <div className="p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">Cartões Corporativos da Empresa</h3>
+                    <p className="text-xs text-muted-foreground">Gestão de cartões corporativos, parcelamentos de compras e controle de limites da fatura.</p>
+                  </div>
+                  <button
+                    onClick={() => handleOpenDrawer("company_card")}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>+ Novo Cartão</span>
+                  </button>
+                </div>
+
+                {/* Cards List */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {companyCards.map((card) => {
+                    const usedAmount = card.totalLimit - card.availableLimit;
+                    const usedPercentage = Math.min(100, Math.max(0, (usedAmount / card.totalLimit) * 100));
+
+                    return (
+                      <div key={card.id} className="p-5 rounded-2xl border border-border bg-gradient-to-br from-card/80 via-card/40 to-muted/20 flex flex-col justify-between space-y-4 hover:border-primary/40 transition-all shadow-lg group relative overflow-hidden">
+                        {/* Status bar */}
+                        <div className="flex items-center justify-between">
+                          <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-[9px] font-bold uppercase tracking-wider">
+                            {card.flag.toUpperCase()} • CORPORATIVO
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleEditCompanyCard(card)}
+                              title="Editar cartão"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-400"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCompanyCard(card.id, card.name)}
+                              title="Excluir cartão"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Card Name and Visual details */}
+                        <div className="space-y-1">
+                          <h4 className="text-lg font-bold text-foreground leading-snug">{card.name}</h4>
+                          <p className="text-xs text-muted-foreground">{card.issuerBank} • Final {card.lastFourDigits}</p>
+                          <p className="text-[11px] font-mono font-medium text-foreground uppercase tracking-widest mt-1">{card.nameOnCard}</p>
+                        </div>
+
+                        {/* Limit Progress Bar */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-muted-foreground">Utilizado: <strong className="text-foreground">{formatCurrency(usedAmount)}</strong></span>
+                            <span className="text-muted-foreground">Limite: <strong className="text-foreground">{formatCurrency(card.totalLimit)}</strong></span>
+                          </div>
+
+                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={cn(
+                                "h-full transition-all duration-500 rounded-full",
+                                usedPercentage > 85 ? "bg-red-500" : usedPercentage > 60 ? "bg-amber-500" : "bg-emerald-500"
+                              )}
+                              style={{ width: `${usedPercentage}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Details grid */}
+                        <div className="grid grid-cols-2 gap-2 text-[11px] border-t border-border/40 pt-3">
+                          <div>
+                            <span className="text-muted-foreground block text-[9px] uppercase font-semibold">Limite Disponível</span>
+                            <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-sm">{formatCurrency(card.availableLimit)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[9px] uppercase font-semibold">Vencimento Fatura</span>
+                            <span className="font-semibold text-foreground">Dia {card.dueDay} (Melhor: {card.closingDay + 1})</span>
+                          </div>
+                        </div>
+
+                        {/* Footer Action */}
+                        <div className="pt-2">
+                          <button
+                            onClick={() => handleOpenCardInvoiceModal(card)}
+                            disabled={usedAmount <= 0}
+                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <DollarSign className="h-4 w-4" />
+                            <span>Pagar Fatura ({formatCurrency(usedAmount)})</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {companyCards.length === 0 && (
+                    <div className="col-span-full py-16 text-center text-muted-foreground space-y-3">
+                      <CardIcon className="h-10 w-10 mx-auto text-muted-foreground/50" />
+                      <p className="text-sm font-medium">Nenhum cartão corporativo cadastrado.</p>
+                      <button
+                        onClick={() => handleOpenDrawer("company_card")}
+                        className="px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>Cadastrar Primeiro Cartão</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tabela 4: Contas a Pagar */}
             {activeTab === "payable" && (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
@@ -1005,7 +1421,7 @@ export default function FinancePage() {
                               </span>
                             </td>
                             <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(p.amount)}</td>
-                            <td className="p-4 uppercase text-[10px] text-muted-foreground">{p.paymentMethod || "Boleto"}</td>
+                            <td className="p-4 uppercase text-[10px] text-muted-foreground">{p.paymentMethod === "company_credit_card" ? "Cartão Corporativo" : p.paymentMethod || "Boleto"}</td>
                             <td className="p-4">
                               <span className={cn(
                                 "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
@@ -1054,13 +1470,13 @@ export default function FinancePage() {
               </div>
             )}
 
-            {/* Tabela 4: Contas a Receber */}
+            {/* Tabela 5: Contas a Receber */}
             {activeTab === "receivable" && (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                      <th className="p-4">Descrição</th>
+                      <th className="p-4">Cliente / Descrição</th>
                       <th className="p-4">Vencimento</th>
                       <th className="p-4">Valor</th>
                       <th className="p-4">Forma</th>
@@ -1074,99 +1490,41 @@ export default function FinancePage() {
                         <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma conta a receber cadastrada.</td>
                       </tr>
                     ) : (
-                      paginatedReceivables.map((r) => {
-                        const isOverdue = new Date(r.dueDate) < new Date() && r.status === "pending";
-                        return (
-                          <tr key={r.id} className="hover:bg-muted/10 transition-colors">
-                            <td className="p-4">
-                              <div className="font-semibold text-foreground">{r.description}</div>
-                            </td>
-                            <td className="p-4 font-mono text-muted-foreground">{formatDate(r.dueDate)}</td>
-                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(r.amount)}</td>
-                            <td className="p-4 uppercase text-[10px] text-muted-foreground">{r.paymentMethod || "Crédito"}</td>
-                            <td className="p-4">
-                              <span className={cn(
-                                "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-                                r.status === "paid" 
-                                  ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30" 
-                                  : isOverdue 
-                                    ? "bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-200/30 animate-pulse"
-                                    : "bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border-orange-200/30"
-                              )}>
-                                {r.status === "paid" ? "Recebido" : isOverdue ? "Atrasado" : "Pendente"}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {r.status === "pending" && (
-                                  <button
-                                    onClick={() => handleOpenReceiveModal(r.id)}
-                                    className="px-2 py-1 rounded bg-rosegold-100 dark:bg-rosegold-900/50 hover:bg-primary hover:text-white text-rosegold-700 dark:text-rosegold-300 font-semibold text-[10px] transition-colors"
-                                  >
-                                    Receber
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => window.location.href = `/receivable?id=${r.id}`}
-                                  disabled={r.status === "paid"}
-                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                                  title="Editar"
-                                >
-                                  <Edit2 className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteItem("accounts_receivable", r.id, r.description)}
-                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Tabela 5: Compras de Fornecedores */}
-            {activeTab === "purchases" && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                      <th className="p-4">Fornecedor</th>
-                      <th className="p-4">Data Compra</th>
-                      <th className="p-4">Itens Comprados</th>
-                      <th className="p-4">Total Faturado</th>
-                      <th className="p-4">Método</th>
-                      <th className="p-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {paginatedPurchases.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma ordem de compra registrada.</td>
-                      </tr>
-                    ) : (
-                      paginatedPurchases.map((p) => (
-                        <tr key={p.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-4 font-semibold text-foreground">
-                            {suppliers.find(s => s.id === p.supplierId)?.name || "Fornecedor"}
-                          </td>
-                          <td className="p-4 font-mono text-muted-foreground">{formatDate(p.createdAt)}</td>
-                          <td className="p-4 truncate max-w-[200px] text-muted-foreground">
-                            {p.items.map(i => `${i.quantity}x ${i.name}`).join(", ")}
-                          </td>
-                          <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(p.total)}</td>
-                          <td className="p-4 uppercase text-[10px] text-muted-foreground">{p.paymentMethod}</td>
+                      paginatedReceivables.map((r) => (
+                        <tr key={r.id} className="hover:bg-muted/10 transition-colors">
                           <td className="p-4">
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border border-green-200/30">
-                              Recebido
+                            <div className="font-semibold text-foreground">{r.description}</div>
+                          </td>
+                          <td className="p-4 font-mono">{formatDate(r.dueDate)}</td>
+                          <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(r.amount)}</td>
+                          <td className="p-4 uppercase text-[10px] text-muted-foreground">{r.paymentMethod || "Cartão"}</td>
+                          <td className="p-4">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
+                              r.status === "paid"
+                                ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
+                                : "bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border-orange-200/30"
+                            )}>
+                              {r.status === "paid" ? "Recebido" : "Pendente"}
                             </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {r.status === "pending" && (
+                                <button
+                                  onClick={() => handleOpenReceiveModal(r.id)}
+                                  className="px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-950/50 hover:bg-green-600 hover:text-white font-semibold text-[10px] transition-colors"
+                                >
+                                  Receber
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteItem("accounts_receivable", r.id, r.description)}
+                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1176,78 +1534,78 @@ export default function FinancePage() {
               </div>
             )}
 
-            {/* Aba 6: DRE Gerencial */}
-            {activeTab === "dre" && (
-              <div className="p-6 max-w-xl mx-auto space-y-6 text-xs">
-                <div className="text-center pb-2 border-b border-border">
-                  <h3 className="text-sm font-semibold text-foreground">Demonstrativo do Resultado do Exercício (DRE)</h3>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Visão gerencial consolidada por regime de caixa.</p>
-                </div>
-
-                <div className="space-y-3.5">
-                  <div className="flex justify-between font-bold text-foreground text-xs pb-1 border-b border-border">
-                    <span>RECEITA OPERACIONAL BRUTA</span>
-                    <span className="font-mono text-green-500">+ {formatCurrency(dre.totalRevenues)}</span>
-                  </div>
-
-                  <div className="space-y-1.5 pl-4 text-muted-foreground">
-                    <div className="flex justify-between">
-                      <span>Vendas PDV e Canais</span>
-                      <span className="font-mono">{formatCurrency(dre.totalRevenues)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between font-bold text-foreground text-xs pb-1 border-b border-border pt-2">
-                    <span>(-) DESPESAS OPERACIONAIS</span>
-                    <span className="font-mono text-red-500">- {formatCurrency(dre.totalExpenses)}</span>
-                  </div>
-
-                  <div className="space-y-1.5 pl-4 text-muted-foreground">
-                    {Object.keys(dre.categoriesSum).map((cat) => (
-                      <div key={cat} className="flex justify-between">
-                        <span>{getCategoryLabel(cat)}</span>
-                        <span className="font-mono">{formatCurrency(dre.categoriesSum[cat])}</span>
-                      </div>
-                    ))}
-                    {Object.keys(dre.categoriesSum).length === 0 && (
-                      <div className="text-center py-2 text-[10px]">Nenhuma despesa registrada.</div>
+            {/* Tabela 6: Compras de Estoque */}
+            {activeTab === "purchases" && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                      <th className="p-4">Fornecedor</th>
+                      <th className="p-4">Itens</th>
+                      <th className="p-4">Total</th>
+                      <th className="p-4">Método</th>
+                      <th className="p-4">Data Entrada</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {paginatedPurchases.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-muted-foreground">Nenhuma compra de estoque registrada.</td>
+                      </tr>
+                    ) : (
+                      paginatedPurchases.map((pc) => {
+                        const suppName = suppliers.find(s => s.id === pc.supplierId)?.name || "Fornecedor Geral";
+                        return (
+                          <tr key={pc.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="p-4 font-semibold text-foreground">{suppName}</td>
+                            <td className="p-4">
+                              <span className="font-mono">{pc.items?.length || 0} produto(s)</span>
+                            </td>
+                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(pc.total)}</td>
+                            <td className="p-4 uppercase text-[10px] text-muted-foreground">{pc.paymentMethod === "company_credit_card" ? "Cartão Corporativo" : pc.paymentMethod}</td>
+                            <td className="p-4 font-mono text-muted-foreground">{pc.receivedAt ? formatDate(pc.receivedAt) : "-"}</td>
+                          </tr>
+                        );
+                      })
                     )}
-                  </div>
-
-                  <div className={cn(
-                    "flex justify-between font-bold text-sm p-3.5 rounded-xl border mt-6",
-                    dre.netIncome >= 0 
-                      ? "bg-green-100/50 border-green-200/50 text-green-800 dark:bg-green-950/20 dark:text-green-400" 
-                      : "bg-red-100/50 border-red-200/50 text-red-800 dark:bg-red-950/20 dark:text-red-400"
-                  )}>
-                    <span>LUCRO LÍQUIDO DO PERÍODO</span>
-                    <span className="font-mono">{formatCurrency(dre.netIncome)}</span>
-                  </div>
-                </div>
+                  </tbody>
+                </table>
               </div>
             )}
 
-            {/* Pagination Controls */}
-            {activeTab !== "accounts" && activeTab !== "dre" && totalPages > 1 && (
-              <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
-                <span className="text-xs text-muted-foreground">
-                  Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({currentItemsCount} itens)
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                  >
-                    Próximo
-                  </button>
+            {/* Tela 7: DRE Gerencial */}
+            {activeTab === "dre" && (
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl border border-border bg-green-500/5 space-y-1">
+                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider">Receita Bruta Total</span>
+                    <h3 className="text-2xl font-bold font-mono text-green-600 dark:text-green-400">{formatCurrency(dre.totalRevenues)}</h3>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-border bg-red-500/5 space-y-1">
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Despesas Operacionais Total</span>
+                    <h3 className="text-2xl font-bold font-mono text-red-600 dark:text-red-400">{formatCurrency(dre.totalExpenses)}</h3>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-border bg-primary/5 space-y-1">
+                    <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Resultado Líquido do Exercício</span>
+                    <h3 className={cn("text-2xl font-bold font-mono", dre.netIncome >= 0 ? "text-primary" : "text-red-500")}>
+                      {formatCurrency(dre.netIncome)}
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Detalhamento DRE */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground">Detalhamento de Custos & Despesas por Categoria</h4>
+                  <div className="divide-y divide-border border border-border rounded-xl bg-card/50 overflow-hidden">
+                    {Object.entries(dre.categoriesSum).map(([cat, val]) => (
+                      <div key={cat} className="p-3.5 flex justify-between items-center text-xs">
+                        <span className="font-semibold text-foreground">{getCategoryLabel(cat)}</span>
+                        <span className="font-mono font-bold text-red-500">{formatCurrency(val)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1256,475 +1614,618 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* 4. Slide-over Form Drawer */}
+      {/* Drawer Lateral Unificado */}
       {drawerOpen && (
-        <>
-          <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" />
-          <div className="fixed top-0 bottom-0 right-0 w-full max-w-md bg-card border-l border-border shadow-2xl p-6 overflow-y-auto z-50 animate-in slide-in-from-right duration-300">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-background border-l border-border h-full flex flex-col justify-between shadow-2xl p-6 overflow-y-auto">
             
-            {/* Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-border mb-6">
-              <h3 className="text-sm font-semibold flex items-center gap-1.5">
-                <Receipt className="h-4.5 w-4.5 text-rosegold-500" />
-                <span>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-border pb-4">
+                <h3 className="text-lg font-bold text-foreground">
                   {drawerType === "bank_account" ? (editingId ? "Editar Conta Bancária" : "Nova Conta Bancária") :
-                   drawerType === "transaction" ? "Novo Lançamento Rápido" : "Registrar Compra de Fornecedor"}
-                </span>
-              </h3>
-              <button onClick={() => setDrawerOpen(false)} className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+                   drawerType === "company_card" ? (editingId ? "Editar Cartão Corporativo" : "Novo Cartão Corporativo") :
+                   drawerType === "transaction" ? "Novo Lançamento no Fluxo" : "Registrar Compra de Estoque"}
+                </h3>
+                <button onClick={() => setDrawerOpen(false)} className="p-1 rounded-lg hover:bg-muted text-muted-foreground">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
-            {/* Forms */}
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
-              
-              {/* Form 1: Bank Account */}
-              {drawerType === "bank_account" && (
-                <>
-                  {/* Select Bank (Req 7) */}
-                  <div className="space-y-2 border-b border-border/50 pb-3">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Banco Brasileiro (Visual Picker)</label>
-                    <input
-                      type="text"
-                      placeholder="Pesquisar banco (Ex: Itaú, Nubank, Caixa...)"
-                      value={bankSearch}
-                      onChange={(e) => setBankSearch(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-lg border border-border bg-card"
-                    />
-                    <div className="grid grid-cols-2 gap-2 mt-2 max-h-36 overflow-y-auto pr-1 scrollbar-thin">
-                      {BRAZILIAN_BANKS.filter(b => 
-                        b.name.toLowerCase().includes(bankSearch.toLowerCase()) ||
-                        b.brand.toLowerCase().includes(bankSearch.toLowerCase()) ||
-                        b.code.includes(bankSearch)
-                      ).map(b => {
-                        const isSelected = selectedBankObj?.code === b.code;
-                        return (
+              <form id="drawerForm" onSubmit={handleSave} className="space-y-4 text-xs">
+                
+                {/* Form 1: Custom Bank Account */}
+                {drawerType === "bank_account" && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Sugestão de Banco</label>
+                      <div className="grid grid-cols-3 gap-1.5 max-h-32 overflow-y-auto p-1 border border-border rounded-xl bg-muted/10">
+                        {BRAZILIAN_BANKS.map(b => (
                           <button
                             key={b.code}
                             type="button"
                             onClick={() => {
                               setSelectedBankObj(b);
-                              setBName(`${b.name} PJ`);
+                              setBBankName(b.name);
+                              setBBankCode(b.code);
+                              if (!bName) setBName(`${b.name} PJ`);
                             }}
                             className={cn(
-                              "flex items-center gap-2 p-2 rounded-xl border text-left transition-all",
-                              isSelected 
-                                ? "border-primary bg-primary/10" 
-                                : "border-border hover:border-primary/30 bg-card/50"
+                              "flex items-center gap-1.5 p-1.5 rounded-lg border text-left transition-all",
+                              selectedBankObj?.code === b.code ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 bg-card"
                             )}
                           >
-                            <div className={cn("h-6 w-6 rounded-md flex items-center justify-center font-bold text-[8px] shrink-0 border", b.color)}>
+                            <div className={cn("h-5 w-5 rounded flex items-center justify-center font-bold text-[7px] shrink-0 border", b.color)}>
                               {b.brand}
                             </div>
-                            <span className="text-[10px] font-semibold text-foreground truncate">{b.name}</span>
+                            <span className="text-[9px] font-semibold text-foreground truncate">{b.name}</span>
                           </button>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-1">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Identificador da Conta</label>
-                    <input
-                      type="text"
-                      required
-                      value={bName}
-                      onChange={(e) => setBName(e.target.value)}
-                      placeholder="Ex: Banco Itaú Carol PJ"
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card"
-                    />
-                    {errors.name && <p className="text-[10px] text-destructive mt-0.5">{errors.name}</p>}
-                  </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome da Conta / Identificador *</label>
+                        <input
+                          type="text"
+                          required
+                          value={bName}
+                          onChange={(e) => setBName(e.target.value)}
+                          placeholder="Ex: Itaú PJ Principal"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card"
+                        />
+                        {errors.name && <p className="text-[10px] text-destructive">{errors.name}</p>}
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Instituição / Banco</label>
+                        <input
+                          type="text"
+                          value={bBankName}
+                          onChange={(e) => setBBankName(e.target.value)}
+                          placeholder="Ex: Banco Itaú, Nubank"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Cód. Banco</label>
+                        <input type="text" value={bBankCode} onChange={(e) => setBBankCode(e.target.value)} placeholder="001" className="w-full px-2.5 py-2 rounded-lg border border-border bg-card font-mono text-center" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Agência</label>
+                        <input type="text" value={bAgency} onChange={(e) => setBAgency(e.target.value)} placeholder="0001" className="w-full px-2.5 py-2 rounded-lg border border-border bg-card font-mono text-center" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta</label>
+                        <input type="text" value={bAccountNumber} onChange={(e) => setBAccountNumber(e.target.value)} placeholder="12345" className="w-full px-2.5 py-2 rounded-lg border border-border bg-card font-mono text-center" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Dígito</label>
+                        <input type="text" value={bAccountDigit} onChange={(e) => setBAccountDigit(e.target.value)} placeholder="0" className="w-full px-2.5 py-2 rounded-lg border border-border bg-card font-mono text-center" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tipo de Conta</label>
+                        <select
+                          value={bType}
+                          onChange={(e) => setBType(e.target.value as any)}
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground"
+                        >
+                          <option value="checking">Conta Corrente</option>
+                          <option value="savings">Poupança</option>
+                          <option value="wallet">Carteira Digital</option>
+                          <option value="cash_register">Caixa Interno / Físico</option>
+                          <option value="payment">Conta de Pagamento</option>
+                          <option value="investment">Investimento</option>
+                          <option value="other">Outro</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Saldo Inicial (BRL)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={bBalance || ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setBBalance(val);
+                            if (!editingId) setBInitialBalance(val);
+                          }}
+                          placeholder="0,00"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Titular da Conta</label>
+                        <input type="text" value={bHolderName} onChange={(e) => setBHolderName(e.target.value)} placeholder="Carol Ramos LTDA" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">CPF / CNPJ Titular</label>
+                        <input type="text" value={bHolderCpfCnpj} onChange={(e) => setBHolderCpfCnpj(e.target.value)} placeholder="00.000.000/0001-00" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono" />
+                      </div>
+                    </div>
+
                     <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tipo de Conta</label>
-                      <select
-                        value={bType}
-                        onChange={(e) => setBType(e.target.value as any)}
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground"
-                      >
-                        <option value="checking">Conta Corrente</option>
-                        <option value="savings">Poupança</option>
-                        <option value="wallet">Carteira Digital</option>
-                        <option value="cash_register">Caixa Interno / Físico</option>
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Chave PIX (Opcional)</label>
+                      <input type="text" value={bPixKey} onChange={(e) => setBPixKey(e.target.value)} placeholder="contato@carolramos.com.br" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Status da Conta</label>
+                        <select value={bStatus} onChange={(e) => setBStatus(e.target.value as any)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                          <option value="active">Ativa</option>
+                          <option value="inactive">Inativa</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações</label>
+                        <input type="text" value={bNotes} onChange={(e) => setBNotes(e.target.value)} placeholder="Observações adicionais..." className="w-full px-3.5 py-2 rounded-lg border border-border bg-card" />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Form 2: Corporate Credit Card */}
+                {drawerType === "company_card" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Identificador do Cartão *</label>
+                        <input
+                          type="text"
+                          required
+                          value={cName}
+                          onChange={(e) => setCName(e.target.value)}
+                          placeholder="Ex: Cartão Itaú Black Corp"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card"
+                        />
+                        {errors.name && <p className="text-[10px] text-destructive">{errors.name}</p>}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Banco Emissor *</label>
+                        <input
+                          type="text"
+                          required
+                          value={cIssuerBank}
+                          onChange={(e) => setCIssuerBank(e.target.value)}
+                          placeholder="Ex: Itaú, Nubank, C6"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card"
+                        />
+                        {errors.issuerBank && <p className="text-[10px] text-destructive">{errors.issuerBank}</p>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Bandeira</label>
+                        <select value={cFlag} onChange={(e) => setCFlag(e.target.value as any)} className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground">
+                          <option value="visa">Visa</option>
+                          <option value="mastercard">Mastercard</option>
+                          <option value="elo">Elo</option>
+                          <option value="amex">American Express</option>
+                          <option value="hipercard">Hipercard</option>
+                          <option value="other">Outras</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Final (4 dígitos) *</label>
+                        <input
+                          type="text"
+                          maxLength={4}
+                          required
+                          value={cLast4}
+                          onChange={(e) => setCLast4(e.target.value.replace(/\D/g, ""))}
+                          placeholder="4589"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono text-center"
+                        />
+                        {errors.lastFourDigits && <p className="text-[10px] text-destructive">{errors.lastFourDigits}</p>}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Impresso *</label>
+                        <input
+                          type="text"
+                          required
+                          value={cNameOnCard}
+                          onChange={(e) => setCNameOnCard(e.target.value.toUpperCase())}
+                          placeholder="CAROL RAMOS"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono uppercase text-xs"
+                        />
+                        {errors.nameOnCard && <p className="text-[10px] text-destructive">{errors.nameOnCard}</p>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Limite Total (R$) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={cTotalLimit || ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setCTotalLimit(val);
+                            if (!editingId) setCAvailableLimit(val);
+                          }}
+                          placeholder="10000,00"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono font-bold"
+                        />
+                        {errors.totalLimit && <p className="text-[10px] text-destructive">{errors.totalLimit}</p>}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Limite Disponível (R$) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={cAvailableLimit || ""}
+                          onChange={(e) => setCAvailableLimit(parseFloat(e.target.value) || 0)}
+                          placeholder="10000,00"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono font-bold text-emerald-600 dark:text-emerald-400"
+                        />
+                        {errors.availableLimit && <p className="text-[10px] text-destructive">{errors.availableLimit}</p>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Fechamento Fatura (Dia) *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          required
+                          value={cClosingDay}
+                          onChange={(e) => setCClosingDay(parseInt(e.target.value) || 1)}
+                          placeholder="25"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono text-center"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Vencimento Fatura (Dia) *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          required
+                          value={cDueDay}
+                          onChange={(e) => setCDueDay(parseInt(e.target.value) || 1)}
+                          placeholder="5"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono text-center"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta Bancária Vinculada</label>
+                        <select value={cLinkedBankAccountId} onChange={(e) => setCLinkedBankAccountId(e.target.value)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                          <option value="">Nenhuma conta específica</option>
+                          {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Responsável pelo Cartão</label>
+                        <input type="text" value={cResponsiblePerson} onChange={(e) => setCResponsiblePerson(e.target.value)} placeholder="Carol Ramos" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Status do Cartão</label>
+                        <select value={cStatus} onChange={(e) => setCStatus(e.target.value as any)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                          <option value="active">Ativo</option>
+                          <option value="inactive">Inativo</option>
+                          <option value="blocked">Bloqueado</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações</label>
+                        <input type="text" value={cNotes} onChange={(e) => setCNotes(e.target.value)} placeholder="Obs adicionais..." className="w-full px-3.5 py-2 rounded-lg border border-border bg-card" />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Form 3: Transaction */}
+                {drawerType === "transaction" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tipo</label>
+                        <select value={tType} onChange={(e) => setTType(e.target.value as any)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                          <option value="expense">Despesa (Saída)</option>
+                          <option value="revenue">Receita (Entrada)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Categoria</label>
+                        <select value={tCategory} onChange={(e) => setTCategory(e.target.value as any)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                          <option value="other">Outros Lançamentos</option>
+                          <option value="rent">Aluguel / Condomínio</option>
+                          <option value="marketing">Marketing & Tráfego</option>
+                          <option value="salary">Salários & Pró-Labore</option>
+                          <option value="stock_purchase">Compra de Mercadorias</option>
+                          <option value="card_invoice_payment">Pagamento Fatura Cartão</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Descrição / Detalhe</label>
+                      <input type="text" required value={tDesc} onChange={(e) => setTDesc(e.target.value)} placeholder="Ex: Compra embalagens correios" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Valor (R$)</label>
+                        <input type="number" step="0.01" required value={tAmount || ""} onChange={(e) => setTAmount(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono" />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Data Pagamento</label>
+                        <input type="text" required value={tDate} onChange={(e) => setTDate(e.target.value)} placeholder="AAAA-MM-DD" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta Bancária Origem/Destino</label>
+                      <select value={tBankAccountId} onChange={(e) => setTBankAccountId(e.target.value)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                        {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>)}
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Saldo Inicial (BRL)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={bBalance || ""}
-                        onChange={(e) => setBBalance(parseFloat(e.target.value) || 0)}
-                        placeholder="0,00"
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card font-mono"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
 
-              {/* Form 2: Transaction */}
-              {drawerType === "transaction" && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
+                {/* Form 4: Purchase Order */}
+                {drawerType === "purchase" && (
+                  <>
                     <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tipo</label>
-                      <select
-                        value={tType}
-                        onChange={(e) => setTType(e.target.value as any)}
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground"
-                      >
-                        <option value="expense">Despesa (Saída)</option>
-                        <option value="revenue">Receita (Entrada)</option>
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Fornecedor</label>
+                      <select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {suppliers.length === 0 && <option value="">Sem fornecedores cadastrados</option>}
                       </select>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Categoria</label>
-                      <select
-                        value={tCategory}
-                        onChange={(e) => setTCategory(e.target.value as any)}
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground"
-                      >
-                        <option value="other">Outros Lançamentos</option>
-                        <option value="rent">Aluguel / Condomínio</option>
-                        <option value="marketing">Marketing & Tráfego</option>
-                        <option value="salary">Salários & Pró-Labore</option>
-                        <option value="stock_purchase">Compra de Mercadorias</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Descrição / Detalhe</label>
-                    <input
-                      type="text"
-                      required
-                      value={tDesc}
-                      onChange={(e) => setTDesc(e.target.value)}
-                      placeholder="Ex: Compra embalagens correios"
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card"
-                    />
-                    {errors.description && <p className="text-[10px] text-destructive mt-0.5">{errors.description}</p>}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Valor (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={tAmount || ""}
-                        onChange={(e) => setTAmount(parseFloat(e.target.value) || 0)}
-                        placeholder="0,00"
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card font-mono"
-                      />
-                      {errors.amount && <p className="text-[10px] text-destructive mt-0.5">{errors.amount}</p>}
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Selecionar Produtos para Entrada</label>
+                      <div className="border border-border rounded-xl p-2 max-h-36 overflow-y-auto space-y-1.5 bg-muted/20">
+                        {products.map(p => (
+                          <div key={p.id} className="flex justify-between items-center text-[10px] p-1 hover:bg-card rounded transition-colors">
+                            <span className="font-medium text-foreground truncate max-w-[200px]">{p.name} (SKU: {p.sku})</span>
+                            <button type="button" onClick={() => addPurchaseItem(p.id)} className="px-2 py-0.5 bg-rosegold-100 text-rosegold-700 dark:bg-rosegold-900/50 dark:text-rosegold-300 rounded font-bold uppercase hover:bg-primary hover:text-white">
+                              Add
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Data Pagamento</label>
-                      <input
-                        type="text"
-                        required
-                        value={tDate}
-                        onChange={(e) => setTDate(e.target.value)}
-                        placeholder="AAAA-MM-DD"
-                        className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card font-mono"
-                      />
-                      {errors.paymentDate && <p className="text-[10px] text-destructive mt-0.5">{errors.paymentDate}</p>}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta Bancária Origem/Destino</label>
-                    <select
-                      value={tBankAccountId}
-                      onChange={(e) => setTBankAccountId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground"
-                    >
-                      {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>)}
-                    </select>
-                    {errors.bankAccountId && <p className="text-[10px] text-destructive mt-0.5">{errors.bankAccountId}</p>}
-                  </div>
-                </>
-              )}
-
-              {/* Form 3: Purchase Order */}
-              {drawerType === "purchase" && (
-                <>
-                  {/* Fornecedor */}
-                  <div className="space-y-1">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Fornecedor</label>
-                    <select
-                      value={selectedSupplierId}
-                      onChange={(e) => setSelectedSupplierId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-card text-foreground"
-                    >
-                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      {suppliers.length === 0 && <option value="">Sem fornecedores cadastrados</option>}
-                    </select>
-                  </div>
-
-                  {/* Catálogo rápido de produtos para compra */}
-                  <div className="space-y-1">
-                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Selecionar Produtos para Entrada</label>
-                    <div className="border border-border rounded-xl p-2 max-h-36 overflow-y-auto space-y-1.5 bg-muted/20">
-                      {products.map(p => (
-                        <div key={p.id} className="flex justify-between items-center text-[10px] p-1 hover:bg-card rounded transition-colors">
-                          <span className="font-medium text-foreground truncate max-w-[200px]">{p.name} (SKU: {p.sku})</span>
-                          <button
-                            type="button"
-                            onClick={() => addPurchaseItem(p.id)}
-                            className="px-2 py-0.5 bg-rosegold-100 text-rosegold-700 dark:bg-rosegold-900/50 dark:text-rosegold-300 rounded font-bold uppercase hover:bg-primary hover:text-white"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Itens da Compra */}
-                  <div className="space-y-2">
-                    <span className="font-bold uppercase tracking-wider text-[8px] text-muted-foreground">Itens da Ordem de Entrada</span>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {purchaseItems.map(item => {
-                        const prod = products.find(p => p.id === item.productId);
-                        return (
-                          <div key={item.productId} className="p-2.5 rounded-lg border border-border bg-card flex items-center justify-between gap-3 text-[10px]">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-foreground truncate">{prod?.name}</p>
-                              <div className="flex items-center gap-1.5 mt-1">
-                                <span>Custo R$</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.unitCost || ""}
-                                  onChange={(e) => updatePurchaseItemCost(item.productId, parseFloat(e.target.value) || 0)}
-                                  className="w-14 p-0.5 border border-border rounded text-center font-mono"
-                                />
+                    <div className="space-y-2">
+                      <span className="font-bold uppercase tracking-wider text-[8px] text-muted-foreground">Itens da Ordem de Entrada</span>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {purchaseItems.map(item => {
+                          const prod = products.find(p => p.id === item.productId);
+                          return (
+                            <div key={item.productId} className="p-2.5 rounded-lg border border-border bg-card flex items-center justify-between gap-3 text-[10px]">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-foreground truncate">{prod?.name}</p>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span>Custo R$</span>
+                                  <input type="number" step="0.01" value={item.unitCost || ""} onChange={(e) => updatePurchaseItemCost(item.productId, parseFloat(e.target.value) || 0)} className="w-14 p-0.5 border border-border rounded text-center font-mono" />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity - 1)} className="p-1 rounded bg-muted">
+                                  <Minus className="h-3 w-3" />
+                                </button>
+                                <span className="font-bold font-mono w-4 text-center">{item.quantity}</span>
+                                <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity + 1)} className="p-1 rounded bg-muted">
+                                  <Plus className="h-3 w-3" />
+                                </button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity - 1)} className="p-1 rounded bg-muted">
-                                <Minus className="h-3 w-3" />
-                              </button>
-                              <span className="font-bold font-mono w-4 text-center">{item.quantity}</span>
-                              <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity + 1)} className="p-1 rounded bg-muted">
-                                <Plus className="h-3 w-3" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {purchaseItems.length === 0 && (
-                        <p className="text-center py-6 text-muted-foreground italic text-[10px]">Nenhum item selecionado para compra.</p>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                      <div className="col-span-2 space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Método de Pagamento</label>
+                        <select
+                          value={purchasePaymentMethod}
+                          onChange={(e) => {
+                            const val = e.target.value as any;
+                            setPurchasePaymentMethod(val);
+                            if (val === "bank_slip" || val === "credit_card" || val === "company_credit_card") {
+                              setPurchaseInstallmentsCount(1);
+                              const cardObj = companyCards.find(c => c.id === selectedCardId);
+                              generateDefaultPurchaseInstallments(1, purchaseTotalCost, cardObj?.dueDay);
+                            }
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
+                        >
+                          <option value="pix">PIX (À Vista)</option>
+                          <option value="cash">Dinheiro (À Vista)</option>
+                          <option value="bank_account">Transferência / Conta Bancária</option>
+                          <option value="bank_slip">Boleto Bancário (A Prazo)</option>
+                          <option value="company_credit_card">Cartão de Crédito da Empresa</option>
+                        </select>
+                      </div>
+
+                      {(purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") && (
+                        <div className="col-span-2 space-y-1">
+                          <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Selecione o Cartão Corporativo</label>
+                          <select
+                            value={selectedCardId}
+                            onChange={(e) => setSelectedCardId(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
+                          >
+                            {companyCards.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} (Disp: {formatCurrency(c.availableLimit)})
+                              </option>
+                            ))}
+                            {companyCards.length === 0 && <option value="">Nenhum cartão cadastrado</option>}
+                          </select>
+                        </div>
                       )}
-                    </div>
-                  </div>
 
-                  {/* Forma e Vencimento */}
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-                    <div className="col-span-2 space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Método Pagamento</label>
-                      <select
-                        value={purchasePaymentMethod}
-                        onChange={(e) => {
-                          setPurchasePaymentMethod(e.target.value as any);
-                          if (e.target.value === "bank_slip" || e.target.value === "credit_card") {
-                            setPurchaseInstallmentsCount(1);
-                            generateDefaultPurchaseInstallments(1, purchaseTotalCost);
-                          }
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
-                      >
-                        <option value="pix">PIX (À Vista)</option>
-                        <option value="cash">Dinheiro (À Vista)</option>
-                        <option value="bank_slip">Boleto (A Prazo)</option>
-                        <option value="credit_card">Cartão Crédito (A Prazo)</option>
-                      </select>
-                    </div>
-
-                    {(purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card") && (
-                      <div className="col-span-2 space-y-3 pt-2 border-t border-border/40 animate-in fade-in duration-200">
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-2 space-y-1">
-                            <label className="text-[9px] font-bold text-muted-foreground uppercase">Nº de Parcelas</label>
+                      {(purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card" || purchasePaymentMethod === "company_credit_card") && (
+                        <div className="col-span-2 space-y-3 pt-2 border-t border-border/40 animate-in fade-in duration-200">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-muted-foreground uppercase">Condição de Pagamento / Parcelas</label>
                             <select
                               value={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(purchaseInstallmentsCount) ? purchaseInstallmentsCount : "custom"}
                               onChange={(e) => {
                                 const val = e.target.value;
+                                const cardObj = companyCards.find(c => c.id === selectedCardId);
                                 if (val === "custom") {
                                   setPurchaseInstallmentsCount(2);
-                                  generateDefaultPurchaseInstallments(2, purchaseTotalCost);
+                                  generateDefaultPurchaseInstallments(2, purchaseTotalCost, cardObj?.dueDay);
                                 } else {
                                   const count = parseInt(val) || 1;
                                   setPurchaseInstallmentsCount(count);
-                                  generateDefaultPurchaseInstallments(count, purchaseTotalCost);
+                                  generateDefaultPurchaseInstallments(count, purchaseTotalCost, cardObj?.dueDay);
                                 }
                               }}
                               className="w-full p-2 rounded-lg border border-border bg-card text-xs font-semibold"
                             >
-                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].map(n => (
+                              <option value={1}>1x À Vista ({formatCurrency(purchaseTotalCost)})</option>
+                              {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].map(n => (
                                 <option key={n} value={n}>{n}x de {formatCurrency(purchaseTotalCost / n)}</option>
                               ))}
-                              <option value="custom">Outra quantidade...</option>
                             </select>
                           </div>
-
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].includes(purchaseInstallmentsCount) ? null : (
-                            <div className="space-y-1">
-                              <label className="text-[9px] font-bold text-muted-foreground uppercase">Qtd (Máx 36)</label>
-                              <input
-                                type="number"
-                                min={1}
-                                max={36}
-                                value={purchaseInstallmentsCount}
-                                onChange={(e) => {
-                                  const val = Math.min(36, Math.max(1, parseInt(e.target.value) || 1));
-                                  setPurchaseInstallmentsCount(val);
-                                  generateDefaultPurchaseInstallments(val, purchaseTotalCost);
-                                }}
-                                className="w-full p-2 rounded-lg border border-border bg-card font-mono text-center font-bold text-xs"
-                              />
-                            </div>
-                          )}
                         </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
-                        {/* Listagem e edição individual de parcelas da compra */}
-                        {generatedPurchaseInstallments.length > 0 && (
-                          <div className="space-y-2">
-                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Vencimentos & Valores da Compra</span>
-                            <div className="max-h-36 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-                              {generatedPurchaseInstallments.map((inst, idx) => (
-                                <div key={inst.number} className="grid grid-cols-12 gap-2 items-center bg-muted/20 p-2 rounded-lg border border-border/40">
-                                  <span className="col-span-3 font-semibold text-[10px] text-muted-foreground text-center">#{inst.number}</span>
-                                  
-                                  <div className="col-span-5 relative">
-                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0.01"
-                                      value={inst.amount}
-                                      onChange={(e) => handleUpdatePurchaseInstallmentAmount(idx, parseFloat(e.target.value) || 0)}
-                                      className="w-full pl-7 pr-1 py-1 rounded border border-border bg-card font-mono text-xs"
-                                    />
-                                  </div>
-
-                                  <input
-                                    type="date"
-                                    value={inst.dueDate}
-                                    onChange={(e) => handleUpdatePurchaseInstallmentDate(idx, e.target.value)}
-                                    className="col-span-4 p-1 rounded border border-border bg-card font-mono text-[10px]"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* Validação de soma */}
-                            {Math.abs(purchaseTotalCost - generatedPurchaseInstallments.reduce((sum, item) => sum + item.amount, 0)) > 0.01 && (
-                              <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-2 rounded-lg text-[10px] flex items-center gap-1.5">
-                                <ShieldAlert className="h-4 w-4 shrink-0" />
-                                <span>Diferença: <strong>{formatCurrency(purchaseTotalCost - generatedPurchaseInstallments.reduce((sum, item) => sum + item.amount, 0))}</strong>.</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Resumo Valor Total Compra */}
-                  <div className="p-3.5 rounded-xl border border-border bg-muted/20 text-xs font-bold flex justify-between">
-                    <span>TOTAL FATURADO COMPRA</span>
-                    <span className="font-mono">{formatCurrency(purchaseItems.reduce((sum, i) => sum + (i.quantity * i.unitCost), 0))}</span>
-                  </div>
-                </>
-              )}
-
-              {/* Botões de Ação */}
-              <div className="flex gap-3.5 pt-4 border-t border-border mt-6">
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  className="flex-1 py-2.5 border border-border rounded-xl text-xs font-semibold hover:bg-muted transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    (drawerType === "purchase" && purchaseItems.length === 0) ||
-                    (drawerType === "purchase" && (purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card") && 
-                     Math.abs(generatedPurchaseInstallments.reduce((sum, item) => sum + item.amount, 0) - purchaseTotalCost) > 0.02)
-                  }
-                  className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 disabled:opacity-50"
-                >
-                  Salvar Registro
-                </button>
-              </div>
-
-            </form>
+                <div className="pt-4 border-t border-border flex justify-end gap-2">
+                  <button type="button" onClick={() => setDrawerOpen(false)} className="px-4 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted">
+                    Cancelar
+                  </button>
+                  <button type="submit" className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 shadow">
+                    {editingId ? "Atualizar" : "Salvar"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* 5. MODAL: CONFIRMAR PAGAMENTO / RECEBIMENTO */}
+      {/* Modal 1: Baixar / Dar Baixa em Contas a Pagar / Receber */}
       {paymentModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="w-full max-w-sm p-6 rounded-2xl border border-border bg-card shadow-2xl space-y-5 relative animate-in zoom-in-95 duration-300">
-            
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h3 className="text-sm font-semibold flex items-center gap-1.5">
-                <CheckCircle2 className="h-4.5 w-4.5 text-rosegold-500" />
-                <span>Confirmar Liquidação</span>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-background border border-border rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-bold text-sm text-foreground">
+                {selectedPayId ? "Confirmar Pagamento de Conta" : "Confirmar Recebimento de Valor"}
               </h3>
-              <button
-                onClick={() => setPaymentModalOpen(false)}
-                className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-              >
+              <button onClick={() => setPaymentModalOpen(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="text-xs text-muted-foreground leading-relaxed">
-              Deseja confirmar a conciliação financeira deste lançamento? O saldo da conta bancária selecionada será atualizado e o status será marcado como pago/recebido.
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta Bancária para Transação</label>
+            <div className="space-y-3 text-xs">
+              <p className="text-muted-foreground">Selecione a conta bancária onde será processado este movimento financeiro:</p>
               <select
                 value={paymentBankAccountId}
                 onChange={(e) => setPaymentBankAccountId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-card text-foreground"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-card text-foreground font-medium"
               >
-                {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>)}
+                {bankAccounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
+                ))}
               </select>
             </div>
 
-            <div className="flex gap-3.5 pt-3 border-t border-border">
-              <button
-                type="button"
-                onClick={() => setPaymentModalOpen(false)}
-                className="flex-1 py-2 border border-border rounded-xl text-xs font-semibold hover:bg-muted transition-colors"
-              >
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setPaymentModalOpen(false)} className="px-3.5 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted">
                 Cancelar
               </button>
-              <button
-                onClick={handleConfirmPayment}
-                className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10"
-              >
-                Confirmar Liquidação
+              <button onClick={handleConfirmPayment} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95">
+                Confirmar e Baixar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Pagamento de Fatura do Cartão Corporativo */}
+      {cardInvoiceModalOpen && selectedCardForInvoice && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-background border border-border rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-bold text-sm text-foreground">Pagar Fatura do Cartão Corporativo</h3>
+              <button onClick={() => setCardInvoiceModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
               </button>
             </div>
 
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl border border-border bg-muted/20 space-y-1">
+                <p className="font-semibold text-foreground">{selectedCardForInvoice.name}</p>
+                <p className="text-muted-foreground">{selectedCardForInvoice.issuerBank} • Final {selectedCardForInvoice.lastFourDigits}</p>
+                <p className="text-xs text-muted-foreground">Fatura Atual Utilizada: <strong className="text-foreground font-mono">{formatCurrency(selectedCardForInvoice.totalLimit - selectedCardForInvoice.availableLimit)}</strong></p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Valor a Pagar (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={invoicePayAmount || ""}
+                  onChange={(e) => setInvoicePayAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-card font-mono font-bold text-sm"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta Bancária para Débito</label>
+                <select
+                  value={invoiceBankAccountId}
+                  onChange={(e) => setInvoiceBankAccountId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-card text-foreground font-medium"
+                >
+                  {bankAccounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.name} ({formatCurrency(a.balance)})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setCardInvoiceModalOpen(false)} className="px-3.5 py-2 rounded-xl border border-border text-xs font-semibold hover:bg-muted">
+                Cancelar
+              </button>
+              <button onClick={handleConfirmInvoicePayment} className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95">
+                Confirmar Pagamento
+              </button>
+            </div>
           </div>
         </div>
       )}

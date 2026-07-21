@@ -631,7 +631,9 @@ export default function AccountsPayablePage() {
             >
               <option value="pix">PIX</option>
               <option value="bank_slip">Boleto Bancário</option>
+              <option value="company_credit_card">Cartão de Crédito da Empresa</option>
               <option value="credit_card">Cartão de Crédito</option>
+              <option value="transfer">Transferência / TED</option>
               <option value="cash">Dinheiro</option>
             </select>
             {formErrors.paymentMethod && <p className="text-[10px] text-destructive mt-0.5">{formErrors.paymentMethod}</p>}
