@@ -1,0 +1,13 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Regras de Segurança do Firebase Storage - ERP Carol Ramos Collection
+    // Permite leitura pública das imagens e restringe uploads/exclusões a usuários autenticados
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
