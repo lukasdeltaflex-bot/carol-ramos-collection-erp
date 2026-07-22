@@ -165,10 +165,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (docSnap) => {
         clearTimeout(safetyTimeout);
 
-        // PASSO 1: Procurar users/{UID}. Se existir, utilizar esse perfil e não fazer mais nenhuma busca.
+        // PASSO 1: Procurar users/{UID}. Se existir, utilizar esse perfil e garantir vínculo com a empresa principal.
         if (docSnap.exists()) {
-          const data = docSnap.data() as UserProfile;
-          if (isDev) console.log("[Auth PASSO 1] Perfil retornado por UID para:", data.email);
+          let data = docSnap.data() as UserProfile;
+          if (data.activeTenantId && data.activeTenantId.startsWith("tenant-")) {
+            data = {
+              ...data,
+              activeTenantId: "carol-ramos-collection",
+              tenants: {
+                ...(data.tenants || {}),
+                "carol-ramos-collection": {
+                  role: "owner" as const,
+                  joinedAt: new Date().toISOString()
+                }
+              }
+            };
+            try {
+              await setDoc(userDocRef, data, { merge: true });
+            } catch (e) {
+              console.error("[Auth] Erro ao atualizar vinculo do tenant principal:", e);
+            }
+          }
+          if (isDev) console.log("[Auth PASSO 1] Perfil retornado por UID para:", data.email, "Tenant:", data.activeTenantId);
           setProfile(data);
           setLoading(false);
           return;
