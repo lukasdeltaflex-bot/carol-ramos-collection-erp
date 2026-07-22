@@ -116,6 +116,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       if (firebaseUser) {
         setIsMock(false);
+        const defaultTenantId = `tenant-${firebaseUser.uid.substring(0, 8)}`;
+        const initialProfileObj: UserProfile = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || "",
+          displayName: firebaseUser.displayName || "Usuário",
+          activeTenantId: defaultTenantId,
+          tenants: {
+            [defaultTenantId]: {
+              role: "owner" as const,
+              joinedAt: new Date().toISOString()
+            }
+          },
+          createdAt: new Date().toISOString()
+        };
+        setProfile(initialProfileObj);
+        setLoading(false);
       } else {
         setProfile(null);
         setLoading(false);
@@ -141,26 +157,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribeAuth();
   }, []);
 
-  // Escuta em tempo real do Firestore (Apenas banco remoto Cloud Firestore)
+  // Escuta em tempo real do Firestore em segundo plano (Sincroniza perfil e empresa no banco)
   useEffect(() => {
     if (!user) return;
 
     const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
-    const fallbackProfileObj: UserProfile = {
-      uid: user.uid,
-      email: user.email || "",
-      displayName: user.displayName || "Usuário",
-      activeTenantId: defaultTenantId,
-      tenants: {
-        [defaultTenantId]: {
-          role: "owner" as const,
-          joinedAt: new Date().toISOString()
-        }
-      },
-      createdAt: new Date().toISOString()
-    };
-
     const userDocRef = doc(db, "users", user.uid);
+    
     const unsubscribeProfile = onSnapshot(
       userDocRef,
       async (docSnap) => {
@@ -168,8 +171,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const data = docSnap.data() as UserProfile;
           setProfile(data);
         } else {
-          setProfile(fallbackProfileObj);
           try {
+            const fallbackProfileObj: UserProfile = {
+              uid: user.uid,
+              email: user.email || "",
+              displayName: user.displayName || "Usuário",
+              activeTenantId: defaultTenantId,
+              tenants: {
+                [defaultTenantId]: {
+                  role: "owner" as const,
+                  joinedAt: new Date().toISOString()
+                }
+              },
+              createdAt: new Date().toISOString()
+            };
             const compDocRef = doc(db, "companies", defaultTenantId);
             await setDoc(compDocRef, {
               id: defaultTenantId,
@@ -181,15 +196,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
             await setDoc(userDocRef, fallbackProfileObj);
           } catch (err) {
-            console.error("Erro ao inicializar perfil inicial no Cloud Firestore:", err);
+            console.error("Erro ao inicializar perfil no Cloud Firestore:", err);
           }
         }
-        setLoading(false);
       },
       (error) => {
         console.error("Erro ao escutar dados do usuário no Cloud Firestore:", error);
-        setProfile(fallbackProfileObj);
-        setLoading(false);
       }
     );
 
