@@ -27,13 +27,15 @@ import {
   ChevronUp,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  GripVertical,
+  RotateCcw
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import PricingSimulator from "@/features/pricing/components/PricingSimulator";
 import { ProductPricingData } from "@/features/pricing/types";
-import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
+import { processImageUpload, MAX_IMAGE_SIZE_MB, safeLocalStorageSetItem } from "@/lib/imageUpload";
 
 // Mock Inicial de Categorias
 const INITIAL_CATEGORIES = [
@@ -140,10 +142,15 @@ export default function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
 
-  // Ordenação e Ordem Personalizada
+  // Ordenação e Ordem Personalizada para Produtos
   const [sortField, setSortField] = useState<"none" | "name" | "sku" | "costPrice" | "sellPrice" | "currentStock" | "potentialProfit">("none");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [customProductOrder, setCustomProductOrder] = useState<string[]>([]);
+
+  // Ordenação e Ordem Personalizada para Kits
+  const [kitSortOption, setKitSortOption] = useState<"manual" | "name_asc" | "name_desc" | "created_at" | "updated_at">("manual");
+  const [customKitOrder, setCustomKitOrder] = useState<string[]>([]);
+  const [draggedKitId, setDraggedKitId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -156,8 +163,17 @@ export default function ProductsPage() {
           console.error("Erro ao carregar ordem de produtos:", e);
         }
       }
+      const savedKitOrder = localStorage.getItem(`kits_custom_order_${tenantId}`);
+      if (savedKitOrder) {
+        try {
+          const parsedKitOrder = JSON.parse(savedKitOrder);
+          if (Array.isArray(parsedKitOrder)) setCustomKitOrder(parsedKitOrder);
+        } catch (e) {
+          console.error("Erro ao carregar ordem dos kits:", e);
+        }
+      }
     }
-  }, []);
+  }, [tenantId]);
 
   // Batch Selection State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -847,6 +863,103 @@ export default function ProductsPage() {
     }
   };
 
+  // Salvar Ordem dos Kits no Storage Local
+  const handleSaveKitOrder = (newOrderIds: string[]) => {
+    setCustomKitOrder(newOrderIds);
+    if (typeof window !== "undefined") {
+      safeLocalStorageSetItem(`kits_custom_order_${tenantId}`, JSON.stringify(newOrderIds));
+    }
+  };
+
+  const handleMoveKit = (index: number, direction: "up" | "down") => {
+    const list = [...sortedAndFilteredKits];
+    const targetIdx = direction === "up" ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= list.length) return;
+    
+    const temp = list[index];
+    list[index] = list[targetIdx];
+    list[targetIdx] = temp;
+
+    const newOrderIds = list.map(k => k.id);
+    handleSaveKitOrder(newOrderIds);
+  };
+
+  const handleResetKitOrder = () => {
+    setCustomKitOrder([]);
+    setKitSortOption("manual");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(`kits_custom_order_${tenantId}`);
+    }
+  };
+
+  // Funções de Arrastar e Soltar (Drag & Drop) para Kits
+  const handleKitDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedKitId(id);
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleKitDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleKitDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedKitId || draggedKitId === targetId) return;
+
+    const list = [...sortedAndFilteredKits];
+    const sourceIndex = list.findIndex(k => k.id === draggedKitId);
+    const targetIndex = list.findIndex(k => k.id === targetId);
+
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    const [movedKit] = list.splice(sourceIndex, 1);
+    list.splice(targetIndex, 0, movedKit);
+
+    const newOrderIds = list.map(k => k.id);
+    handleSaveKitOrder(newOrderIds);
+    setDraggedKitId(null);
+  };
+
+  // Filtragem e Ordenação dos Kits
+  const sortedAndFilteredKits = React.useMemo(() => {
+    let list = (kits || []).filter(k => {
+      if (!k) return false;
+      const searchStr = (searchQuery || "").toLowerCase();
+      const matchName = (k.name || "").toLowerCase().includes(searchStr);
+      const matchSku = (k.sku || "").toLowerCase().includes(searchStr);
+      return matchName || matchSku;
+    });
+
+    if (kitSortOption === "name_asc") {
+      return list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    }
+    if (kitSortOption === "name_desc") {
+      return list.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
+    }
+    if (kitSortOption === "created_at") {
+      return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    }
+    if (kitSortOption === "updated_at") {
+      return list.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+    }
+
+    // Ordenação Manual por Drag and Drop
+    if (customKitOrder.length > 0) {
+      return list.sort((a, b) => {
+        const idxA = customKitOrder.indexOf(a.id);
+        const idxB = customKitOrder.indexOf(b.id);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+    }
+
+    return list;
+  }, [kits, searchQuery, kitSortOption, customKitOrder]);
+
   // Filtragem e Ordenação de Produtos
   const sortedAndFilteredProducts = React.useMemo(() => {
     const list = (products || []).filter(p => {
@@ -1297,11 +1410,53 @@ export default function ProductsPage() {
 
             {/* Listagem de Kits de Produtos */}
             {activeTab === "kits" && (
-              <div className="p-6">
-                {kits.length === 0 ? (
+              <div className="p-6 space-y-4">
+                {/* Header de Controle de Ordenação dos Kits */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-border bg-card/40 backdrop-blur-sm">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+                      Gerenciar Ordem dos Kits ({sortedAndFilteredKits.length})
+                    </span>
+                    {customKitOrder.length > 0 && kitSortOption === "manual" && (
+                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">
+                        Ordem Personalizada Ativa
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <label className="text-[11px] text-muted-foreground font-semibold">Ordenar Por:</label>
+                    <select
+                      value={kitSortOption}
+                      onChange={(e) => setKitSortOption(e.target.value as any)}
+                      className="px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="manual">✨ Ordenação Manual (Drag & Drop)</option>
+                      <option value="name_asc">Nome (A-Z)</option>
+                      <option value="name_desc">Nome (Z-A)</option>
+                      <option value="created_at">Data de Cadastro (Mais Recentes)</option>
+                      <option value="updated_at">Última Atualização</option>
+                    </select>
+
+                    {customKitOrder.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleResetKitOrder}
+                        className="px-2.5 py-1.5 rounded-lg border border-border bg-muted hover:bg-muted/80 text-[11px] font-semibold flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                        title="Restaurar Ordem Padrão"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Restaurar Ordem</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {sortedAndFilteredKits.length === 0 ? (
                   <div className="text-center py-12 space-y-3">
                     <Layers className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-                    <div className="text-sm font-semibold text-foreground">Nenhum Kit de produtos cadastrado</div>
+                    <div className="text-sm font-semibold text-foreground">Nenhum Kit de produtos cadastrado ou encontrado</div>
                     <p className="text-xs text-muted-foreground">Crie kits combinando produtos (ex: Kit Victoria Secret com Body Splash + Hidratante).</p>
                     <button
                       onClick={() => handleOpenKitModal()}
@@ -1312,66 +1467,115 @@ export default function ProductsPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {kits.map((kit) => (
-                      <div key={kit.id} className="p-5 rounded-2xl border border-border bg-card/60 space-y-4 hover:border-primary/40 transition-all shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center overflow-hidden shrink-0">
-                              {kit.image ? (
-                                <img src={kit.image} alt={kit.name} className="h-full w-full object-cover" />
-                              ) : (
-                                <Layers className="h-6 w-6 text-primary" />
-                              )}
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-bold text-foreground">{kit.name}</h3>
-                              <span className="text-[10px] font-mono text-muted-foreground">SKU: {kit.sku}</span>
-                            </div>
-                          </div>
+                    {sortedAndFilteredKits.map((kit, index) => {
+                      const isDragging = draggedKitId === kit.id;
 
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleOpenKitModal(kit)}
-                              className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground"
-                              title="Editar Kit"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteKit(kit.id, kit.name)}
-                              className="p-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                              title="Excluir Kit"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {kit.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2">{kit.description}</p>
-                        )}
-
-                        <div className="border-t border-border/40 pt-3 space-y-2">
-                          <div className="text-[11px] font-semibold text-foreground">Composição do Kit:</div>
-                          <div className="space-y-1">
-                            {kit.items.map((item, idx) => {
-                              const prod = products.find(p => p.id === item.productId);
-                              return (
-                                <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg">
-                                  <span>{prod?.name || "Produto Removido"}</span>
-                                  <span className="font-bold text-foreground">{item.quantity}x</span>
+                      return (
+                        <div
+                          key={kit.id}
+                          draggable={kitSortOption === "manual"}
+                          onDragStart={(e) => handleKitDragStart(e, kit.id)}
+                          onDragOver={handleKitDragOver}
+                          onDrop={(e) => handleKitDrop(e, kit.id)}
+                          className={cn(
+                            "p-5 rounded-2xl border bg-card/60 space-y-4 transition-all shadow-xs relative group",
+                            kitSortOption === "manual" ? "cursor-grab active:cursor-grabbing" : "",
+                            isDragging ? "opacity-40 border-dashed border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              {kitSortOption === "manual" && (
+                                <div className="p-1 rounded text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab" title="Arrastar para reordenar">
+                                  <GripVertical className="h-4 w-4" />
                                 </div>
-                              );
-                            })}
+                              )}
+
+                              <div className="h-12 w-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center overflow-hidden shrink-0">
+                                {kit.image ? (
+                                  <img src={kit.image} alt={kit.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  <Layers className="h-6 w-6 text-primary" />
+                                )}
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                                  <span>{kit.name}</span>
+                                  {kitSortOption === "manual" && (
+                                    <span className="text-[10px] font-mono text-muted-foreground font-normal">#{index + 1}</span>
+                                  )}
+                                </h3>
+                                <span className="text-[10px] font-mono text-muted-foreground">SKU: {kit.sku}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              {kitSortOption === "manual" && (
+                                <div className="flex items-center gap-0.5 border-r border-border/60 pr-1 mr-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveKit(index, "up")}
+                                    disabled={index === 0}
+                                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
+                                    title="Mover para cima"
+                                  >
+                                    <ArrowUp className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveKit(index, "down")}
+                                    disabled={index === sortedAndFilteredKits.length - 1}
+                                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed"
+                                    title="Mover para baixo"
+                                  >
+                                    <ArrowDown className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+
+                              <button
+                                onClick={() => handleOpenKitModal(kit)}
+                                className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground"
+                                title="Editar Kit"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteKit(kit.id, kit.name)}
+                                className="p-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                                title="Excluir Kit"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {kit.description && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">{kit.description}</p>
+                          )}
+
+                          <div className="border-t border-border/40 pt-3 space-y-2">
+                            <div className="text-[11px] font-semibold text-foreground">Composição do Kit:</div>
+                            <div className="space-y-1">
+                              {kit.items.map((item, idx) => {
+                                const prod = products.find(p => p.id === item.productId);
+                                return (
+                                  <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg">
+                                    <span>{prod?.name || "Produto Removido"}</span>
+                                    <span className="font-bold text-foreground">{item.quantity}x</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                            <span className="text-xs font-semibold text-muted-foreground">Preço do Kit</span>
+                            <span className="text-base font-bold text-primary font-mono">{formatCurrency(kit.price)}</span>
                           </div>
                         </div>
-
-                        <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                          <span className="text-xs font-semibold text-muted-foreground">Preço do Kit</span>
-                          <span className="text-base font-bold text-primary font-mono">{formatCurrency(kit.price)}</span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

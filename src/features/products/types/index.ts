@@ -89,5 +89,6 @@ export interface ProductKit extends BaseDocument {
   image?: string;
   items: ProductKitItem[];
   price: number;
+  displayOrder?: number;
   status: 'active' | 'inactive';
 }
