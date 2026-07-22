@@ -5,6 +5,9 @@ import {
   User as FirebaseUser, 
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   signOut,
   GoogleAuthProvider,
   signInWithPopup
@@ -40,6 +43,8 @@ interface AuthContextType {
   role: 'owner' | 'admin' | 'operator' | 'viewer' | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  registerWithEmail: (email: string, password: string, displayName?: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
@@ -106,21 +111,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : null;
 
   useEffect(() => {
-    // 1. Verificar se há sessão mock salva no localStorage
-    const savedMockSession = localStorage.getItem("mock_auth_session");
-    if (savedMockSession) {
-      try {
-        const parsed = JSON.parse(savedMockSession);
-        setUser({ uid: parsed.uid, email: parsed.email, displayName: parsed.displayName });
-        setProfile(parsed.profile);
-        setIsMock(true);
-        setLoading(false);
-        return;
-      } catch (e) {
-        console.error("Erro ao carregar sessão mock:", e);
-      }
-    }
-
     if (isFirebasePlaceholder) {
       setUser(null);
       setProfile(null);
@@ -129,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 2. Fluxo Real do Firebase Auth
+    // Fluxo Real do Firebase Auth
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       if (!firebaseUser) {
@@ -298,6 +288,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, [tenantId, isMock]);
+
+  const registerWithEmail = useCallback(async (email: string, password: string, displayName?: string) => {
+    if (isFirebasePlaceholder) {
+      throw new Error("Configuração do Firebase pendente. Adicione as chaves de API para cadastrar contas.");
+    }
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    if (displayName && cred.user) {
+      await updateProfile(cred.user, { displayName });
+    }
+  }, [isFirebasePlaceholder]);
+
+  const resetPassword = useCallback(async (email: string) => {
+    if (isFirebasePlaceholder) {
+      throw new Error("Configuração do Firebase pendente. Adicione as chaves de API para envio de e-mail de recuperação.");
+    }
+    await sendPasswordResetEmail(auth, email);
+  }, [isFirebasePlaceholder]);
 
   const login = useCallback(async (email: string, password: string) => {
     if (isMock || isFirebasePlaceholder || email === "admin@carolramos.com.br") {
@@ -491,7 +498,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, registerWithEmail, resetPassword, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
       {children}
     </AuthContext.Provider>
   );
