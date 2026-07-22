@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -29,7 +29,13 @@ import {
   Bell,
   Trash2,
   BarChart2,
-  LineChart
+  LineChart,
+  SlidersHorizontal,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw,
+  X,
+  Check
 } from "lucide-react";
 
 interface SidebarProps {
@@ -47,8 +53,10 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { role, logout, profile } = useAuth();
+  const [reorderModalOpen, setReorderModalOpen] = useState(false);
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
 
-  const menuItems = [
+  const defaultMenuItems = [
     {
       name: "Dashboard",
       href: "/dashboard",
@@ -89,7 +97,7 @@ export default function Sidebar({
       name: "Financeiro",
       href: "/finance",
       icon: DollarSign,
-      roles: ["owner", "admin", "viewer"], // Operator doesn't see financial reports
+      roles: ["owner", "admin", "viewer"],
     },
     {
       name: "Contas a Receber",
@@ -166,10 +174,81 @@ export default function Sidebar({
     },
   ];
 
+  // Carrega ordem salva no localStorage ao iniciar
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedOrder = localStorage.getItem("sidebar_custom_order");
+      if (savedOrder) {
+        try {
+          const parsed = JSON.parse(savedOrder);
+          if (Array.isArray(parsed)) {
+            setCustomOrder(parsed);
+          }
+        } catch (e) {
+          console.error("Erro ao carregar ordem do menu:", e);
+        }
+      }
+    }
+  }, []);
+
   // Filtra itens de acordo com a role do usuário
-  const filteredMenuItems = menuItems.filter(
+  const filteredMenuItems = defaultMenuItems.filter(
     (item) => !role || item.roles.includes(role)
   );
+
+  // Ordena os itens de acordo com a preferência do usuário (se configurada)
+  const orderedMenuItems = [...filteredMenuItems].sort((a, b) => {
+    if (customOrder.length === 0) return 0;
+    const indexA = customOrder.indexOf(a.href);
+    const indexB = customOrder.indexOf(b.href);
+    if (indexA === -1 && indexB === -1) return 0;
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
+
+  // Reordenação local para o modal de personalização
+  const [editingOrderList, setEditingOrderList] = useState<typeof defaultMenuItems>([]);
+
+  useEffect(() => {
+    setEditingOrderList(orderedMenuItems);
+  }, [reorderModalOpen]);
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    const updated = [...editingOrderList];
+    const temp = updated[index - 1];
+    updated[index - 1] = updated[index];
+    updated[index] = temp;
+    setEditingOrderList(updated);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === editingOrderList.length - 1) return;
+    const updated = [...editingOrderList];
+    const temp = updated[index + 1];
+    updated[index + 1] = updated[index];
+    updated[index] = temp;
+    setEditingOrderList(updated);
+  };
+
+  const handleSaveCustomOrder = () => {
+    const newOrderHrefs = editingOrderList.map(item => item.href);
+    setCustomOrder(newOrderHrefs);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar_custom_order", JSON.stringify(newOrderHrefs));
+    }
+    setReorderModalOpen(false);
+  };
+
+  const handleResetDefaultOrder = () => {
+    setCustomOrder([]);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sidebar_custom_order");
+    }
+    setEditingOrderList(filteredMenuItems);
+    setReorderModalOpen(false);
+  };
 
   const handleLogout = async () => {
     if (confirm("Deseja realmente sair do sistema?")) {
@@ -233,7 +312,7 @@ export default function Sidebar({
 
       {/* Menu Principal */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 space-y-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        {filteredMenuItems.map((item) => {
+        {orderedMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -294,15 +373,38 @@ export default function Sidebar({
         })}
       </div>
 
-      {/* Info do Usuário e Logout */}
-      <div className="p-2 border-t border-border bg-muted/20 overflow-hidden shrink-0">
+      {/* Botão de Personalizar Menu & Logout */}
+      <div className="p-2 border-t border-border bg-muted/20 overflow-hidden shrink-0 space-y-1.5">
+        
+        {/* Botão Personalizar Menu */}
+        <button
+          onClick={() => setReorderModalOpen(true)}
+          className={cn(
+            "w-full flex items-center h-8 px-3 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all duration-200 overflow-hidden",
+            !isOpen && !isMobileOpen && "justify-center px-0"
+          )}
+          title="Personalizar Ordem do Menu"
+        >
+          <SlidersHorizontal className="h-4 w-4 shrink-0 text-primary" />
+          <span
+            className={cn(
+              "truncate ml-2.5 transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
+              isOpen || isMobileOpen
+                ? "opacity-100 max-w-[160px]"
+                : "opacity-0 max-w-0 pointer-events-none"
+            )}
+          >
+            Personalizar Menu
+          </span>
+        </button>
+
         {/* Widget de Perfil Curto */}
         {profile && (
           <div
             className={cn(
               "flex items-center p-2 rounded-xl border border-border bg-card/40 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap",
               isOpen || isMobileOpen
-                ? "opacity-100 max-h-16 mb-2"
+                ? "opacity-100 max-h-16"
                 : "opacity-0 max-h-0 border-none p-0 mb-0 pointer-events-none"
             )}
           >
@@ -323,9 +425,9 @@ export default function Sidebar({
 
         <button
           onClick={handleLogout}
-          className="group w-full flex items-center h-10 px-3.5 rounded-xl text-sm font-medium text-destructive hover:bg-destructive/10 hover:text-destructive transition-all duration-200 relative overflow-hidden"
+          className="group w-full flex items-center h-9 px-3.5 rounded-xl text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive transition-all duration-200 relative overflow-hidden"
         >
-          <LogOut className="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5" />
+          <LogOut className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5" />
           <span
             className={cn(
               "truncate ml-3 transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden font-medium",
@@ -376,6 +478,99 @@ export default function Sidebar({
       >
         <SidebarContent />
       </aside>
+
+      {/* MODAL: Personalizar Ordem do Menu */}
+      {reorderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl relative space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+            
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="h-5 w-5 text-primary" />
+                <h3 className="text-sm font-bold text-foreground">Personalizar Ordem do Menu</h3>
+              </div>
+              <button
+                onClick={() => setReorderModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Utilize as setas para reorganizar a ordem de exibição das abas do sistema no seu menu lateral.
+            </p>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-80">
+              {editingOrderList.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.href}
+                    className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card/60 hover:bg-card text-xs font-semibold"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Icon className="h-4 w-4 text-primary shrink-0" />
+                      <span>{item.name}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveUp(index)}
+                        disabled={index === 0}
+                        className="p-1 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Mover para cima"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveDown(index)}
+                        disabled={index === editingOrderList.length - 1}
+                        className="p-1 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Mover para baixo"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-border gap-2">
+              <button
+                type="button"
+                onClick={handleResetDefaultOrder}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Restaurar Padrão</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReorderModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-border text-xs font-medium hover:bg-muted"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCustomOrder}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/95 shadow"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  <span>Salvar Ordem</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </>
   );
 }
