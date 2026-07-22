@@ -256,10 +256,14 @@ export default function ReportsPage() {
         csvContent += `"${s.id}";"${formatDate(s.createdAt)}";"${custName}";"${s.channel || "PDV"}";"${s.paymentMethod}";"${s.total}"\n`;
       });
     } else if (selectedReportId.startsWith("stock") || selectedReportId.startsWith("product")) {
-      csvContent += `SKU;Nome;Categoria;Estoque Atual;Estoque Minimo;Preco Custo (R$);Preco Venda (R$);Margem (%)\n`;
+      csvContent += `SKU;Nome;Categoria;Estoque Atual;Estoque Minimo;Custo Fornecedor (R$);Frete (R$);Outras Despesas (R$);Custo Total Aquisicao (R$);Preco Venda (R$);Lucro Unitario (R$);Margem (%)\n`;
       filteredProducts.forEach(p => {
         const catName = categories.find(c => c.id === p.categoryId)?.name || "Geral";
-        csvContent += `"${p.sku}";"${p.name}";"${catName}";"${p.currentStock}";"${p.minStock}";"${p.costPrice}";"${p.sellPrice}";"${p.profitMargin || 0}"\n`;
+        const realCost = p.totalAcquisitionCost && p.totalAcquisitionCost > 0 ? p.totalAcquisitionCost : p.costPrice;
+        const frete = p.freightCost || 0;
+        const outras = (p.insuranceCost || 0) + (p.taxCost || 0) + (p.otherExpenses || 0);
+        const unitProfit = p.sellPrice - realCost;
+        csvContent += `"${p.sku}";"${p.name}";"${catName}";"${p.currentStock}";"${p.minStock}";"${p.costPrice}";"${frete}";"${outras}";"${realCost}";"${p.sellPrice}";"${unitProfit.toFixed(2)}";"${p.profitMargin || 0}"\n`;
       });
     } else if (selectedReportId.startsWith("fin")) {
       csvContent += `Tipo;Descricao;Valor (R$);Vencimento/Data;Status\n`;
@@ -680,7 +684,10 @@ export default function ReportsPage() {
                 {filteredProducts.reduce((sum, p) => sum + (p.currentStock || 0), 0)} un.
               </h3>
               <span className="text-[10px] text-muted-foreground font-semibold mt-1 block">
-                Valor Total de Estoque: {formatCurrency(filteredProducts.reduce((sum, p) => sum + ((p.currentStock || 0) * p.costPrice), 0))}
+                Valor Total de Estoque (Custo Real): {formatCurrency(filteredProducts.reduce((sum, p) => {
+                  const realCost = p.totalAcquisitionCost && p.totalAcquisitionCost > 0 ? p.totalAcquisitionCost : p.costPrice;
+                  return sum + ((p.currentStock || 0) * realCost);
+                }, 0))}
               </span>
             </div>
           </div>
@@ -753,33 +760,45 @@ export default function ReportsPage() {
                     <tr>
                       <th className="p-3.5">SKU</th>
                       <th className="p-3.5">Nome do Produto</th>
-                      <th className="p-3.5 text-center">Estoque Atual</th>
-                      <th className="p-3.5 text-right">Custo Un.</th>
+                      <th className="p-3.5 text-center">Estoque</th>
+                      <th className="p-3.5 text-right">Custo Forn.</th>
+                      <th className="p-3.5 text-right">Frete/Despesas</th>
+                      <th className="p-3.5 text-right">Custo Total</th>
                       <th className="p-3.5 text-right">Preço Venda</th>
-                      <th className="p-3.5 text-center">Status</th>
+                      <th className="p-3.5 text-right">Lucro Un.</th>
+                      <th className="p-3.5 text-center">Margem</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60 font-mono">
-                    {filteredProducts.map(p => (
-                      <tr key={p.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="p-3.5 font-bold text-foreground">{p.sku}</td>
-                        <td className="p-3.5 font-sans font-semibold text-foreground">{p.name}</td>
-                        <td className="p-3.5 text-center font-bold">{p.currentStock || 0} un.</td>
-                        <td className="p-3.5 text-right text-muted-foreground">{formatCurrency(p.costPrice)}</td>
-                        <td className="p-3.5 text-right font-bold text-foreground">{formatCurrency(p.sellPrice)}</td>
-                        <td className="p-3.5 text-center">
-                          <span className={cn(
-                            "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase",
-                            p.status === "active" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"
-                          )}>
-                            {p.status === "active" ? "Ativo" : "Inativo"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredProducts.map(p => {
+                      const realCost = p.totalAcquisitionCost && p.totalAcquisitionCost > 0 ? p.totalAcquisitionCost : p.costPrice;
+                      const freteOuOutros = Math.max(0, realCost - p.costPrice);
+                      const unitProfit = p.sellPrice - realCost;
+
+                      return (
+                        <tr key={p.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="p-3.5 font-bold text-foreground">{p.sku}</td>
+                          <td className="p-3.5 font-sans font-semibold text-foreground">{p.name}</td>
+                          <td className="p-3.5 text-center font-bold">{p.currentStock || 0} un.</td>
+                          <td className="p-3.5 text-right text-muted-foreground">{formatCurrency(p.costPrice)}</td>
+                          <td className="p-3.5 text-right text-muted-foreground">{formatCurrency(freteOuOutros)}</td>
+                          <td className="p-3.5 text-right font-bold text-foreground">{formatCurrency(realCost)}</td>
+                          <td className="p-3.5 text-right font-bold text-foreground">{formatCurrency(p.sellPrice)}</td>
+                          <td className="p-3.5 text-right font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(unitProfit)}</td>
+                          <td className="p-3.5 text-center">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase",
+                              p.profitMargin >= 50 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"
+                            )}>
+                              {p.profitMargin || 0}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {filteredProducts.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground italic">Nenhum produto encontrado.</td>
+                        <td colSpan={9} className="py-8 text-center text-muted-foreground italic">Nenhum produto encontrado.</td>
                       </tr>
                     )}
                   </tbody>

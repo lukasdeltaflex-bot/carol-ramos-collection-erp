@@ -34,6 +34,15 @@ export interface Product extends BaseDocument {
   brandId: string;
   supplierId?: string;
   costPrice: number;
+  // Custos de Aquisição Compostos
+  freightCost?: number;
+  insuranceCost?: number;
+  taxCost?: number;
+  otherExpenses?: number;
+  freightMode?: 'unit' | 'apportionment';
+  totalFreightCost?: number;
+  totalFreightUnits?: number;
+  totalAcquisitionCost?: number;
   sellPrice: number;
   promoPrice?: number;
   averageCost: number;

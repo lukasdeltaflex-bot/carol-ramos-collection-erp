@@ -190,6 +190,23 @@ export default function ProductsPage() {
   const [brandId, setBrandId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [costPrice, setCostPrice] = useState(0);
+  // Custos de Aquisição Compostos
+  const [freightCost, setFreightCost] = useState(0);
+  const [insuranceCost, setInsuranceCost] = useState(0);
+  const [taxCost, setTaxCost] = useState(0);
+  const [otherExpenses, setOtherExpenses] = useState(0);
+  const [freightMode, setFreightMode] = useState<"unit" | "apportionment">("unit");
+  const [totalFreightCost, setTotalFreightCost] = useState(0);
+  const [totalFreightUnits, setTotalFreightUnits] = useState(1);
+
+  // Frete Efetivo Unitário
+  const effectiveFreight = freightMode === "apportionment"
+    ? (totalFreightUnits > 0 ? totalFreightCost / totalFreightUnits : 0)
+    : freightCost;
+
+  // Custo Total de Aquisição (Fornecedor + Frete Efetivo + Seguro + Impostos + Outras Despesas)
+  const computedTotalAcquisition = (costPrice || 0) + (effectiveFreight || 0) + (insuranceCost || 0) + (taxCost || 0) + (otherExpenses || 0);
+
   const [sellPrice, setSellPrice] = useState(0);
   const [promoPrice, setPromoPrice] = useState(0);
   const [minStock, setMinStock] = useState(0);
@@ -377,6 +394,13 @@ export default function ProductsPage() {
     setBrandId(brands[0]?.id || "");
     setSupplierId(suppliers[0]?.id || "");
     setCostPrice(0);
+    setFreightCost(0);
+    setInsuranceCost(0);
+    setTaxCost(0);
+    setOtherExpenses(0);
+    setFreightMode("unit");
+    setTotalFreightCost(0);
+    setTotalFreightUnits(1);
     setSellPrice(0);
     setPromoPrice(0);
     setMinStock(0);
@@ -407,6 +431,13 @@ export default function ProductsPage() {
     setBrandId(item.brandId || "");
     setSupplierId(item.supplierId || "");
     setCostPrice(item.costPrice || 0);
+    setFreightCost(item.freightCost || 0);
+    setInsuranceCost(item.insuranceCost || 0);
+    setTaxCost(item.taxCost || 0);
+    setOtherExpenses(item.otherExpenses || 0);
+    setFreightMode(item.freightMode || "unit");
+    setTotalFreightCost(item.totalFreightCost || 0);
+    setTotalFreightUnits(item.totalFreightUnits || 1);
     setSellPrice(item.sellPrice || 0);
     setPromoPrice(item.promoPrice || 0);
     setMinStock(item.minStock || 0);
@@ -514,10 +545,8 @@ export default function ProductsPage() {
   // Salvar Produto
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrors({});
-
-    // Calcular margem: ((sellPrice - costPrice) / sellPrice) * 100
-    const calculatedMargin = sellPrice > 0 ? parseFloat((((sellPrice - costPrice) / sellPrice) * 100).toFixed(1)) : 0;
+    // Calcular margem baseada no Custo Total de Aquisição: ((sellPrice - computedTotalAcquisition) / sellPrice) * 100
+    const calculatedMargin = sellPrice > 0 ? parseFloat((((sellPrice - computedTotalAcquisition) / sellPrice) * 100).toFixed(1)) : 0;
     
     // Calcular estoque disponível: currentStock - reservedStock
     const calculatedAvailable = currentStock - reservedStock;
@@ -545,10 +574,16 @@ export default function ProductsPage() {
       brandId,
       supplierId: supplierId || undefined,
       costPrice,
+      freightCost: effectiveFreight,
+      insuranceCost,
+      taxCost,
+      otherExpenses,
+      freightMode,
+      totalFreightCost,
+      totalFreightUnits,
+      totalAcquisitionCost: computedTotalAcquisition,
       sellPrice,
       promoPrice: promoPrice || undefined,
-      averageCost: costPrice, // Padrão
-      lastPurchasePrice: costPrice,
       profitMargin: calculatedMargin,
       currentStock,
       reservedStock,
@@ -557,9 +592,8 @@ export default function ProductsPage() {
       weightGrams: weightGrams || undefined,
       dimensions: dimensionsPayload,
       images: imagesPayload,
-      channels: {},
-      pricingData: pricingData || undefined,
-      status: "active"
+      pricingData,
+      status: "active" as const
     };
 
     // Validação Zod
@@ -843,8 +877,10 @@ export default function ProductsPage() {
         let valB: any = 0;
 
         if (sortField === "potentialProfit") {
-          valA = Math.max(0, (a.sellPrice - a.costPrice) * a.currentStock);
-          valB = Math.max(0, (b.sellPrice - b.costPrice) * b.currentStock);
+          const costA = a.totalAcquisitionCost && a.totalAcquisitionCost > 0 ? a.totalAcquisitionCost : a.costPrice;
+          const costB = b.totalAcquisitionCost && b.totalAcquisitionCost > 0 ? b.totalAcquisitionCost : b.costPrice;
+          valA = Math.max(0, (a.sellPrice - costA) * a.currentStock);
+          valB = Math.max(0, (b.sellPrice - costB) * b.currentStock);
         } else {
           valA = a[sortField] ?? 0;
           valB = b[sortField] ?? 0;
@@ -1054,7 +1090,9 @@ export default function ProductsPage() {
                       const globalIdx = (currentPage - 1) * itemsPerPage + index;
                       const isLowStock = p.availableStock <= p.minStock;
                       const isSelected = selectedIds.includes(p.id);
-                      const potentialProfit = Math.max(0, (p.sellPrice - p.costPrice) * p.currentStock);
+                      const realAcqCost = p.totalAcquisitionCost && p.totalAcquisitionCost > 0 ? p.totalAcquisitionCost : p.costPrice;
+                      const unitProfit = p.sellPrice - realAcqCost;
+                      const potentialProfit = Math.max(0, unitProfit * p.currentStock);
 
                       return (
                         <tr key={p.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
@@ -1110,7 +1148,9 @@ export default function ProductsPage() {
                           <td className="p-4">
                             <div className="flex flex-col">
                               <span className="font-semibold text-foreground">{formatCurrency(p.sellPrice)}</span>
-                              <span className="text-[10px] text-muted-foreground">Custo: {formatCurrency(p.costPrice)}</span>
+                              <span className="text-[10px] text-muted-foreground" title={`Custo Fornecedor: ${formatCurrency(p.costPrice)} | Frete/Outros: ${formatCurrency(realAcqCost - p.costPrice)}`}>
+                                Custo Real: {formatCurrency(realAcqCost)}
+                              </span>
                             </div>
                           </td>
                           <td className="p-4">
@@ -1146,7 +1186,7 @@ export default function ProductsPage() {
                                 {formatCurrency(potentialProfit)}
                               </span>
                               <span className="text-[9px] text-muted-foreground">
-                                (R$ {(p.sellPrice - p.costPrice).toFixed(2)} × {p.currentStock} un.)
+                                (R$ {unitProfit.toFixed(2)} × {p.currentStock} un.)
                               </span>
                             </div>
                           </td>
@@ -1661,26 +1701,140 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              {/* Seção 3: Precificação & Margem (Card Destacado com Grid Responsivo) */}
-              <div className="p-5 rounded-2xl border border-primary/20 bg-primary/5 space-y-4">
-                <h4 className="font-bold uppercase tracking-wider text-[10px] text-primary flex items-center gap-1.5">
-                  <Coins className="h-4 w-4" />
-                  <span>Precificação & Análise de Margem</span>
-                </h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Seção 3: Custos de Aquisição (Composição do Custo Real) */}
+              <div className="p-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h4 className="font-bold uppercase tracking-wider text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <Coins className="h-4 w-4" />
+                    <span>Custos de Aquisição (Composição do Custo Real)</span>
+                  </h4>
+                  <span className="text-[11px] font-bold font-mono text-amber-700 dark:text-amber-300">
+                    Custo Total de Aquisição: {formatCurrency(computedTotalAcquisition)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                  {/* 1. Custo Fornecedor */}
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Preço de Custo (R$) *</label>
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Custo Fornecedor (R$) *</label>
                     <input
                       type="number"
                       step="0.01"
                       required
                       value={costPrice}
                       onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
-                      className="w-full p-2.5 rounded-xl border border-border bg-card font-mono font-bold text-xs focus:ring-2 focus:ring-primary/40 focus:outline-none"
+                      placeholder="0.00"
+                      className="w-full p-2.5 rounded-xl border border-border bg-card font-mono font-bold text-xs"
                     />
                   </div>
 
+                  {/* 2. Frete de Compra */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase">Frete Compra (R$)</label>
+                      <button
+                        type="button"
+                        onClick={() => setFreightMode(prev => prev === "unit" ? "apportionment" : "unit")}
+                        className="text-[9px] text-primary font-bold hover:underline"
+                      >
+                        {freightMode === "unit" ? "Modo: Unidade" : "Modo: Rateio"}
+                      </button>
+                    </div>
+                    {freightMode === "unit" ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={freightCost}
+                        onChange={(e) => setFreightCost(parseFloat(e.target.value) || 0)}
+                        placeholder="0.00 / un"
+                        className="w-full p-2.5 rounded-xl border border-border bg-card font-mono text-xs"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={totalFreightCost}
+                          onChange={(e) => setTotalFreightCost(parseFloat(e.target.value) || 0)}
+                          placeholder="Total R$"
+                          className="w-1/2 p-2.5 rounded-xl border border-border bg-card font-mono text-xs"
+                          title="Valor Total do Frete da Compra"
+                        />
+                        <span className="text-[10px] text-muted-foreground">÷</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={totalFreightUnits}
+                          onChange={(e) => setTotalFreightUnits(parseInt(e.target.value) || 1)}
+                          placeholder="Qtd un"
+                          className="w-1/2 p-2.5 rounded-xl border border-border bg-card font-mono text-xs"
+                          title="Quantidade Total de Unidades no Lote"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Seguro */}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Seguro (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={insuranceCost}
+                      onChange={(e) => setInsuranceCost(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      className="w-full p-2.5 rounded-xl border border-border bg-card font-mono text-xs"
+                    />
+                  </div>
+
+                  {/* 4. Impostos de Compra */}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Impostos Compra (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={taxCost}
+                      onChange={(e) => setTaxCost(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      className="w-full p-2.5 rounded-xl border border-border bg-card font-mono text-xs"
+                    />
+                  </div>
+
+                  {/* 5. Outras Despesas */}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Outras Despesas (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={otherExpenses}
+                      onChange={(e) => setOtherExpenses(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      className="w-full p-2.5 rounded-xl border border-border bg-card font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Resumo visual da composição */}
+                <div className="bg-card/80 p-3 rounded-xl border border-border/60 text-[11px] font-mono flex flex-wrap items-center justify-between gap-2">
+                  <span>Fornecedor: {formatCurrency(costPrice)}</span>
+                  <span>+ Frete: {formatCurrency(effectiveFreight)}</span>
+                  <span>+ Seguro: {formatCurrency(insuranceCost)}</span>
+                  <span>+ Impostos: {formatCurrency(taxCost)}</span>
+                  <span>+ Outros: {formatCurrency(otherExpenses)}</span>
+                  <span className="font-extrabold text-amber-600 dark:text-amber-400 border-l border-border pl-2">
+                    = Custo Total: {formatCurrency(computedTotalAcquisition)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Seção 4: Precificação & Margem (Card Destacado) */}
+              <div className="p-5 rounded-2xl border border-primary/20 bg-primary/5 space-y-4">
+                <h4 className="font-bold uppercase tracking-wider text-[10px] text-primary flex items-center gap-1.5">
+                  <Coins className="h-4 w-4" />
+                  <span>Precificação & Margem sobre Custo Real</span>
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-bold text-muted-foreground uppercase">Preço de Venda (R$) *</label>
                     <input
@@ -1708,7 +1862,7 @@ export default function ProductsPage() {
                   <div className="space-y-1">
                     <label className="text-[9px] font-bold text-muted-foreground uppercase">Margem Bruta Calculada</label>
                     <div className="p-2.5 border border-border rounded-xl bg-card font-bold font-mono text-center text-xs text-rosegold-500 shadow-xs flex items-center justify-center h-[38px]">
-                      {sellPrice > 0 ? (((sellPrice - costPrice) / sellPrice) * 100).toFixed(1) : 0}%
+                      {sellPrice > 0 ? (((sellPrice - computedTotalAcquisition) / sellPrice) * 100).toFixed(1) : 0}%
                     </div>
                   </div>
                 </div>
