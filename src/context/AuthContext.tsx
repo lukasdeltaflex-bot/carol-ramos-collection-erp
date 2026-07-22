@@ -168,7 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // PASSO 1: Procurar users/{UID}. Se existir, utilizar esse perfil e garantir vínculo com a empresa principal.
         if (docSnap.exists()) {
           let data = docSnap.data() as UserProfile;
-          if (data.activeTenantId && data.activeTenantId.startsWith("tenant-")) {
+          if (!data.activeTenantId || data.activeTenantId !== "carol-ramos-collection") {
             data = {
               ...data,
               activeTenantId: "carol-ramos-collection",
@@ -183,7 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               await setDoc(userDocRef, data, { merge: true });
             } catch (e) {
-              console.error("[Auth] Erro ao atualizar vinculo do tenant principal:", e);
+              console.error("[Auth] Erro ao atualizar vínculo da empresa no perfil:", e);
             }
           }
           if (isDev) console.log("[Auth PASSO 1] Perfil retornado por UID para:", data.email, "Tenant:", data.activeTenantId);
