@@ -101,4 +101,15 @@ export interface Purchase extends BaseDocument {
   installments?: number;
   dueDate?: any; // If accounts payable generated
   receivedAt?: any; // Date when stock was checked in
+  // Custos Adicionais de Aquisição
+  freightCost?: number;         // Frete de Compra
+  insuranceCost?: number;       // Seguro
+  taxCost?: number;             // Impostos da Compra
+  feesCost?: number;            // Taxas
+  customsCost?: number;         // Despesas Aduaneiras
+  packagingCost?: number;       // Embalagens
+  otherCosts?: number;          // Outras Despesas
+  additionalCostsTotal?: number;// Soma de todos os custos adicionais
+  grandTotal?: number;          // total (produtos) + additionalCostsTotal
+  allocationMethod?: 'by_quantity' | 'by_value' | 'manual'; // Método de rateio
 }
