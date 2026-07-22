@@ -737,7 +737,7 @@ export default function ProductsPage() {
       if (savedProdId) {
         const affectedKits = kits.filter(k => k.items?.some(item => item.productId === savedProdId));
         for (const kit of affectedKits) {
-          const newKitCost = kit.items.reduce((sum, item) => {
+          const newKitCost = (kit.items || []).reduce((sum, item) => {
             const p = item.productId === savedProdId 
               ? { ...payload, id: savedProdId } 
               : products.find(prod => prod.id === item.productId);
@@ -1089,21 +1089,21 @@ export default function ProductsPage() {
     });
 
     if (kitSortOption === "name_asc") {
-      return list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     }
     if (kitSortOption === "name_desc") {
-      return list.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
+      return [...list].sort((a, b) => (b.name || "").localeCompare(a.name || ""));
     }
     if (kitSortOption === "created_at") {
-      return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     }
     if (kitSortOption === "updated_at") {
-      return list.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+      return [...list].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
     }
 
     // Ordenação Manual por Drag and Drop
     if (customKitOrder.length > 0) {
-      return list.sort((a, b) => {
+      return [...list].sort((a, b) => {
         const idxA = customKitOrder.indexOf(a.id);
         const idxB = customKitOrder.indexOf(b.id);
         if (idxA === -1 && idxB === -1) return 0;
@@ -1770,7 +1770,7 @@ export default function ProductsPage() {
                           <div className="border-t border-border/40 pt-3 space-y-2">
                             <div className="text-[11px] font-semibold text-foreground">Composição do Kit:</div>
                             <div className="space-y-1">
-                              {kit.items.map((item, idx) => {
+                              {(kit.items || []).map((item, idx) => {
                                 const prod = products.find(p => p.id === item.productId);
                                 return (
                                   <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg">

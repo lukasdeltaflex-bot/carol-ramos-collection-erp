@@ -322,6 +322,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: "select_account"
+    });
     await signInWithPopup(auth, provider);
   }, [isMock, isFirebasePlaceholder]);
 
