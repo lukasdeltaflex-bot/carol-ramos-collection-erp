@@ -12,7 +12,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { safeLocalStorageSetItem } from "@/lib/imageUpload";
 
@@ -164,13 +164,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userDocRef,
       async (docSnap) => {
         clearTimeout(safetyTimeout);
+
+        // PASSO 1: Procurar users/{UID}. Se existir, utilizar esse perfil e não fazer mais nenhuma busca.
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
-          if (isDev) console.log("[Auth Step 6] Perfil retornado do Firestore para:", data.email);
+          if (isDev) console.log("[Auth PASSO 1] Perfil retornado por UID para:", data.email);
           setProfile(data);
           setLoading(false);
-        } else {
-          // Novo usuário - Cria perfil e empresa default no Firestore com os dados reais da conta Google
+          return;
+        }
+
+        // PASSO 2: Se não existir users/{UID}, pesquisar no Firestore por e-mail.
+        try {
+          if (user.email) {
+            const usersQuery = query(collection(db, "users"), where("email", "==", user.email));
+            const querySnap = await getDocs(usersQuery);
+
+            if (querySnap.size === 1) {
+              // PASSO 2: Encontrado exatamente UM perfil.
+              const existingData = querySnap.docs[0].data() as UserProfile;
+              const reusedTenantId = existingData.activeTenantId || Object.keys(existingData.tenants || {})[0] || "carol-ramos-collection";
+
+              const linkedProfileObj: UserProfile = {
+                ...existingData,
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName || existingData.displayName || "Usuário",
+                activeTenantId: reusedTenantId,
+                tenants: existingData.tenants || {
+                  [reusedTenantId]: {
+                    role: "owner" as const,
+                    joinedAt: new Date().toISOString()
+                  }
+                }
+              };
+
+              // Reutiliza activeTenantId e salva apenas o vinculo no documento users/{user.uid}
+              // NÃO cria nova empresa. NÃO cria novo tenant.
+              setProfile(linkedProfileObj);
+              setLoading(false);
+              await setDoc(userDocRef, linkedProfileObj);
+              if (isDev) console.log("[Auth PASSO 2] Vínculo reutilizado com sucesso para o tenant:", reusedTenantId);
+              return;
+            } else if (querySnap.size > 1) {
+              // PASSO 3: Encontrado MAIS DE UM perfil com o mesmo e-mail.
+              console.error(`[Auth PASSO 3] ERRO CRÍTICO: Encontrados ${querySnap.size} perfis para o mesmo e-mail (${user.email}). Interrompendo vínculo automático.`);
+              const firstProfile = querySnap.docs[0].data() as UserProfile;
+              setProfile(firstProfile);
+              setLoading(false);
+              return;
+            }
+          }
+
+          // PASSO 4: Somente se não existir nenhum perfil por UID e nenhum por e-mail.
           const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
           const defaultProfileObj: UserProfile = {
             uid: user.uid,
@@ -186,46 +232,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             createdAt: new Date().toISOString()
           };
 
-          // Define o perfil imediatamente com a conta do Google para liberar a UI
           setProfile(defaultProfileObj);
           setLoading(false);
 
-          try {
-            if (isDev) console.log("[Auth Step 6] Novo usuário Google. Criando documento no Firestore...");
-            const compDocRef = doc(db, "companies", defaultTenantId);
-            await setDoc(compDocRef, {
-              id: defaultTenantId,
-              name: `${user.displayName || "Minha"} Empresa`,
-              tradeName: `${user.displayName || "Minha"} Empresa`,
-              cnpj: "00.000.000/0000-00",
-              status: "active",
-              createdAt: new Date().toISOString()
-            });
+          if (isDev) console.log("[Auth PASSO 4] Conta inédita. Criando novo tenant e empresa no Firestore...");
+          const compDocRef = doc(db, "companies", defaultTenantId);
+          await setDoc(compDocRef, {
+            id: defaultTenantId,
+            name: `${user.displayName || "Minha"} Empresa`,
+            tradeName: `${user.displayName || "Minha"} Empresa`,
+            cnpj: "00.000.000/0000-00",
+            status: "active",
+            createdAt: new Date().toISOString()
+          });
 
-            await setDoc(userDocRef, defaultProfileObj);
-            if (isDev) console.log("[Auth Step 7] Novo perfil salvo com sucesso no Firestore.");
-          } catch (err) {
-            console.error("[Auth] Erro ao salvar novo perfil no Firestore (mantendo sessão do Google ativa):", err);
-          }
+          await setDoc(userDocRef, defaultProfileObj);
+        } catch (err) {
+          console.error("[Auth] Erro na resolução de perfil/tenant:", err);
+          setLoading(false);
         }
       },
       (error) => {
         clearTimeout(safetyTimeout);
-        console.error("[Auth] Erro no listener do Firestore. Utilizando dados reais da conta Google autenticada:", error);
-        const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
-        const fallbackProfile: UserProfile = {
-          uid: user.uid,
-          email: user.email || "",
-          displayName: user.displayName || "Usuário",
-          activeTenantId: defaultTenantId,
-          tenants: {
-            [defaultTenantId]: {
-              role: "owner" as const,
-              joinedAt: new Date().toISOString()
-            }
-          }
-        };
-        setProfile((prev) => prev || fallbackProfile);
+        console.error("[Auth] Erro no listener do Firestore:", error);
         setLoading(false);
       }
     );
