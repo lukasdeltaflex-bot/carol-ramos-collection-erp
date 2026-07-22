@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendPasswordResetEmail,
   signOut,
   GoogleAuthProvider,
   signInWithPopup
@@ -43,6 +44,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string, companyName?: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
@@ -324,8 +326,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setActiveCompany(companyObj);
   }, []);
 
+  const resetPassword = useCallback(async (targetEmail: string) => {
+    if (!targetEmail || !targetEmail.trim()) {
+      throw new Error("Por favor, digite seu e-mail no campo acima para redefinir a senha.");
+    }
+    try {
+      await sendPasswordResetEmail(auth, targetEmail.trim());
+    } catch (err: any) {
+      if (err.code === "auth/user-not-found") {
+        throw new Error("Nenhum usuário encontrado com este e-mail.");
+      }
+      if (err.code === "auth/invalid-email") {
+        throw new Error("O e-mail informado é inválido.");
+      }
+      if (err.code === "auth/network-request-failed") {
+        throw new Error("Falha na conexão de rede. Verifique sua internet.");
+      }
+      throw new Error(err.message || "Erro ao enviar e-mail de redefinição de senha.");
+    }
+  }, []);
+
   const loginWithGoogle = useCallback(async () => {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: "select_account"
+    });
     await signInWithPopup(auth, provider);
   }, []);
 
@@ -451,7 +476,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, signUp, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, signUp, resetPassword, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
       {children}
     </AuthContext.Provider>
   );

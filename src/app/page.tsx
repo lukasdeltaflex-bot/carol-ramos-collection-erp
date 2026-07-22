@@ -13,11 +13,12 @@ import {
   Moon, 
   AlertCircle,
   Building2,
-  UserCheck
+  UserCheck,
+  CheckCircle2
 } from "lucide-react";
 
 export default function Home() {
-  const { user, login, signUp, loginWithGoogle, loading } = useAuth();
+  const { user, login, signUp, resetPassword, loginWithGoogle, loading } = useAuth();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   
@@ -27,6 +28,7 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export default function Home() {
     e.preventDefault();
     setAuthLoading(true);
     setError("");
+    setResetSuccess(false);
 
     try {
       await login(email, password);
@@ -54,12 +57,34 @@ export default function Home() {
     e.preventDefault();
     setAuthLoading(true);
     setError("");
+    setResetSuccess(false);
 
     try {
       await signUp(email, password, displayName, companyName);
       router.push("/dashboard");
     } catch (err: any) {
       setError(err?.message || "Erro ao criar nova conta.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setError("");
+    setResetSuccess(false);
+
+    if (!email || !email.trim()) {
+      setError("Por favor, digite seu e-mail no campo abaixo para solicitar a redefinição de senha.");
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      await resetPassword(email);
+      setResetSuccess(true);
+    } catch (err: any) {
+      setError(err?.message || "Erro ao enviar e-mail de redefinição de senha.");
     } finally {
       setAuthLoading(false);
     }
@@ -186,6 +211,13 @@ export default function Home() {
               </div>
             )}
 
+            {resetSuccess && (
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2.5">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>E-mail de redefinição de senha enviado com sucesso! Verifique sua caixa de entrada.</span>
+              </div>
+            )}
+
             {/* Se for formulário de Cadastro (Criar Nova Conta) */}
             {authMode === "signup" && (
               <>
@@ -258,9 +290,13 @@ export default function Home() {
                   Senha *
                 </label>
                 {authMode === "login" && (
-                  <a href="#" className="text-[11px] text-rosegold-500 hover:text-rosegold-600 dark:text-rosegold-400 hover:underline">
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    className="text-[11px] font-semibold text-rosegold-500 hover:text-rosegold-600 dark:text-rosegold-400 hover:underline cursor-pointer"
+                  >
                     Esqueceu?
-                  </a>
+                  </button>
                 )}
               </div>
               <div className="relative">
