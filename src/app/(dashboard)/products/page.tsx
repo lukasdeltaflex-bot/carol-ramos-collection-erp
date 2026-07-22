@@ -29,7 +29,8 @@ import {
   ArrowUp,
   ArrowDown,
   GripVertical,
-  RotateCcw
+  RotateCcw,
+  CheckSquare
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -151,6 +152,26 @@ export default function ProductsPage() {
   const [kitSortOption, setKitSortOption] = useState<"manual" | "name_asc" | "name_desc" | "created_at" | "updated_at">("manual");
   const [customKitOrder, setCustomKitOrder] = useState<string[]>([]);
   const [draggedKitId, setDraggedKitId] = useState<string | null>(null);
+
+  // Modo de Exibição das Colunas Extras ("normal" | "select" | "organize")
+  const [catalogViewMode, setCatalogViewMode] = useState<"normal" | "select" | "organize">("normal");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && tenantId) {
+      const savedMode = localStorage.getItem(`catalog_view_mode_${tenantId}`);
+      if (savedMode === "select" || savedMode === "organize" || savedMode === "normal") {
+        setCatalogViewMode(savedMode);
+      }
+    }
+  }, [tenantId]);
+
+  const handleToggleCatalogViewMode = (mode: "select" | "organize") => {
+    const nextMode = catalogViewMode === mode ? "normal" : mode;
+    setCatalogViewMode(nextMode);
+    if (typeof window !== "undefined") {
+      safeLocalStorageSetItem(`catalog_view_mode_${tenantId}`, nextMode);
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1257,9 +1278,42 @@ export default function ProductsPage() {
           })}
         </div>
 
-        {/* Barra de Filtros (Apenas para Produtos) */}
+        {/* Barra de Filtros e Controles de Visualização (Apenas para Produtos) */}
         {activeTab === "products" && (
-          <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-2xl">
+          <div className="flex flex-col sm:flex-row items-center gap-2 flex-1 max-w-3xl">
+            {/* Botões de Modo de Exibição de Colunas (Ocultar / Selecionar / Organizar) */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl border border-border bg-card/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleToggleCatalogViewMode("select")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
+                  catalogViewMode === "select"
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Ativar modo de seleção por Checkbox"
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                <span>Selecionar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleCatalogViewMode("organize")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
+                  catalogViewMode === "organize"
+                    ? "bg-amber-500 text-white shadow-xs dark:bg-amber-600"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Ativar modo de reorganização de Ordem (Drag & Drop + Checkbox)"
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+                <span>Organizar</span>
+              </button>
+            </div>
+
             {/* Filtro de Estoque */}
             <select
               value={stockFilter}
@@ -1272,7 +1326,7 @@ export default function ProductsPage() {
             </select>
 
             {/* Caixa de Busca */}
-            <div className="relative flex-1">
+            <div className="relative flex-1 w-full">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
                 <Search className="h-4.5 w-4.5" />
               </span>
@@ -1281,7 +1335,7 @@ export default function ProductsPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar por nome, SKU, código de barras..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 placeholder-muted-foreground text-xs focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-border bg-card/50 placeholder-muted-foreground text-xs focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
               />
             </div>
           </div>
@@ -1300,15 +1354,19 @@ export default function ProductsPage() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground select-none">
-                    <th className="p-4 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.length === paginatedProducts.length && paginatedProducts.length > 0}
-                        onChange={() => toggleSelectAllProducts(paginatedProducts)}
-                        className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                      />
-                    </th>
-                    <th className="p-4 w-16 text-center">Ordem</th>
+                    {(catalogViewMode === "select" || catalogViewMode === "organize") && (
+                      <th className="p-4 w-10 text-center transition-all animate-fade-in">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.length === paginatedProducts.length && paginatedProducts.length > 0}
+                          onChange={() => toggleSelectAllProducts(paginatedProducts)}
+                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      </th>
+                    )}
+                    {catalogViewMode === "organize" && (
+                      <th className="p-4 w-16 text-center transition-all animate-fade-in">Ordem</th>
+                    )}
                     <th className="p-4 cursor-pointer hover:text-foreground" onClick={() => handleSort("name")}>
                       <div className="flex items-center gap-1">
                         <span>Produto</span>
@@ -1360,36 +1418,40 @@ export default function ProductsPage() {
 
                       return (
                         <tr key={p.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
-                          <td className="p-4 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleSelectDocProduct(p.id)}
-                              className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                            />
-                          </td>
-                          <td className="p-4 text-center">
-                            <div className="flex items-center justify-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleMoveProduct(globalIdx, "up")}
-                                disabled={globalIdx === 0}
-                                className="p-1 rounded hover:bg-muted border border-border/50 disabled:opacity-20 disabled:cursor-not-allowed"
-                                title="Mover para cima"
-                              >
-                                <ArrowUp className="h-3 w-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleMoveProduct(globalIdx, "down")}
-                                disabled={globalIdx === sortedAndFilteredProducts.length - 1}
-                                className="p-1 rounded hover:bg-muted border border-border/50 disabled:opacity-20 disabled:cursor-not-allowed"
-                                title="Mover para baixo"
-                              >
-                                <ArrowDown className="h-3 w-3" />
-                              </button>
-                            </div>
-                          </td>
+                          {(catalogViewMode === "select" || catalogViewMode === "organize") && (
+                            <td className="p-4 text-center transition-all animate-fade-in">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectDocProduct(p.id)}
+                                className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                              />
+                            </td>
+                          )}
+                          {catalogViewMode === "organize" && (
+                            <td className="p-4 text-center transition-all animate-fade-in">
+                              <div className="flex items-center justify-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveProduct(globalIdx, "up")}
+                                  disabled={globalIdx === 0}
+                                  className="p-1 rounded hover:bg-muted border border-border/50 disabled:opacity-20 disabled:cursor-not-allowed"
+                                  title="Mover para cima"
+                                >
+                                  <ArrowUp className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveProduct(globalIdx, "down")}
+                                  disabled={globalIdx === sortedAndFilteredProducts.length - 1}
+                                  className="p-1 rounded hover:bg-muted border border-border/50 disabled:opacity-20 disabled:cursor-not-allowed"
+                                  title="Mover para baixo"
+                                >
+                                  <ArrowDown className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                           <td className="p-4">
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 rounded-lg bg-muted border border-border overflow-hidden flex items-center justify-center shrink-0">
