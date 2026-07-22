@@ -122,27 +122,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // Limpeza automática de dados mock legados no localStorage em produção
+    if (typeof window !== "undefined") {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith("mock_db_") || key.startsWith("mock_auth_") || key.startsWith("seeded_"))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      } catch (e) {
+        console.error("Erro ao limpar dados mock legados:", e);
+      }
+    }
+
     return () => unsubscribeAuth();
   }, []);
 
-  // Escuta em tempo real do Firestore (apenas se não for mock)
+  // Escuta em tempo real do Firestore (Apenas banco remoto Cloud Firestore)
   useEffect(() => {
-    if (!user || isMock) return;
-
-    // Timeout de segurança para evitar loading infinito se a conexão com o Firestore travar
-    const safetyTimeout = setTimeout(() => {
-      console.warn("Tempo limite de carregamento do perfil atingido. Ativando modo de simulação (Mock)...");
-      setIsMock(true);
-      const fallbackProf = getPersistedUserProfile();
-      setProfile(fallbackProf);
-      setLoading(false);
-    }, 6000);
+    if (!user) return;
 
     const userDocRef = doc(db, "users", user.uid);
     const unsubscribeProfile = onSnapshot(
       userDocRef,
       async (docSnap) => {
-        clearTimeout(safetyTimeout);
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
           setProfile(data);
@@ -178,30 +184,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             // Cria o perfil de usuário
             await setDoc(userDocRef, defaultProfileObj);
+            setProfile(defaultProfileObj);
+            setLoading(false);
           } catch (err) {
-            console.error("Erro ao inicializar perfil de usuário no Firestore. Ativando modo de simulação (Mock)...", err);
-            setIsMock(true);
-            const fallbackProf = getPersistedUserProfile();
-            setProfile(fallbackProf);
+            console.error("Erro ao inicializar perfil de usuário no Cloud Firestore:", err);
             setLoading(false);
           }
         }
       },
       (error) => {
-        clearTimeout(safetyTimeout);
-        console.error("Erro ao sincronizar dados do usuário no Firestore. Ativando modo de simulação (Mock)...", error);
-        setIsMock(true);
-        const fallbackProf = getPersistedUserProfile();
-        setProfile(fallbackProf);
+        console.error("Erro ao sincronizar dados do usuário no Cloud Firestore:", error);
         setLoading(false);
       }
     );
 
     return () => {
-      clearTimeout(safetyTimeout);
       unsubscribeProfile();
     };
-  }, [user, isMock]);
+  }, [user]);
 
   // Sincroniza dados da Empresa Ativa (Req 2 & 3)
   useEffect(() => {
