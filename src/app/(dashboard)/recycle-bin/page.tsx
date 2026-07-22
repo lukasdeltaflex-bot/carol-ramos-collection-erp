@@ -90,9 +90,7 @@ export default function RecycleBinPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadRecycleBin();
-    }
+    loadRecycleBin();
   }, [tenantId]);
 
   // Filtered items

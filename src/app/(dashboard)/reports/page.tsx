@@ -162,9 +162,7 @@ export default function ReportsPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadData();
-    }
+    loadData();
   }, [tenantId]);
 
   // Toggle Favorite

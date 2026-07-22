@@ -119,9 +119,7 @@ export default function ContactsPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadData();
-    }
+    loadData();
   }, [tenantId]);
 
   const handleNew = () => {

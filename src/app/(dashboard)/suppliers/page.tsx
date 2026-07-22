@@ -455,9 +455,7 @@ export default function SuppliersPage() {
   }, [getDocs, toastError, runMigration]);
 
   useEffect(() => {
-    if (tenantId) {
-      loadSuppliers();
-    }
+    loadSuppliers();
   }, [tenantId, loadSuppliers]);
 
   const filtered = suppliers.filter((s) => {

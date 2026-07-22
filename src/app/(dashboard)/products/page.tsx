@@ -441,9 +441,7 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadAllData();
-    }
+    loadAllData();
   }, [tenantId]);
 
   // Progress & Error states for Uploads

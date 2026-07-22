@@ -161,9 +161,7 @@ export default function NotificationsPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadData();
-    }
+    loadData();
   }, [tenantId]);
 
   // Mark single read

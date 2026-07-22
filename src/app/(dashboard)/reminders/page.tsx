@@ -141,9 +141,7 @@ export default function RemindersPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadReminders();
-    }
+    loadReminders();
   }, [tenantId]);
 
   // Open Create/Edit Modal

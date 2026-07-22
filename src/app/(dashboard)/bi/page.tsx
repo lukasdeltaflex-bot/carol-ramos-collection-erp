@@ -113,9 +113,7 @@ export default function BiPage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadBiData();
-    }
+    loadBiData();
   }, [tenantId]);
 
   // Executive KPIs Calculations

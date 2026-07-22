@@ -102,10 +102,8 @@ export default function AccountsPayablePage() {
   }, [getDocs, toastError]);
 
   useEffect(() => {
-    if (tenantId) {
-      loadData();
-    }
-  }, [tenantId, loadData]);
+    loadData();
+  }, [loadData]);
 
   // Auto-open modal from URL query params (?new=true or ?id=XYZ)
   useEffect(() => {

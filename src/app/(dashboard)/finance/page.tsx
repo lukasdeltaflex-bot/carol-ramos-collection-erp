@@ -393,9 +393,7 @@ export default function FinancePage() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadFinancialData();
-    }
+    loadFinancialData();
   }, [tenantId]);
 
   // 1. Abrir Drawer de Cadastro

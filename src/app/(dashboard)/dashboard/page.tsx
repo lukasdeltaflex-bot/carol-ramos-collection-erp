@@ -136,9 +136,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (tenantId) {
-      loadDashboardData();
-    }
+    loadDashboardData();
   }, [tenantId]);
 
   // 1. Cálculos de Vendas de Hoje
