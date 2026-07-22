@@ -145,6 +145,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
+    const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
+    const fallbackProfileObj: UserProfile = {
+      uid: user.uid,
+      email: user.email || "",
+      displayName: user.displayName || "Usuário",
+      activeTenantId: defaultTenantId,
+      tenants: {
+        [defaultTenantId]: {
+          role: "owner" as const,
+          joinedAt: new Date().toISOString()
+        }
+      },
+      createdAt: new Date().toISOString()
+    };
+
     const userDocRef = doc(db, "users", user.uid);
     const unsubscribeProfile = onSnapshot(
       userDocRef,
@@ -152,26 +167,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
           setProfile(data);
-          setLoading(false);
         } else {
-          // Novo usuário - Cria perfil e empresa default no Firestore
+          setProfile(fallbackProfileObj);
           try {
-            const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
-            const defaultProfileObj = {
-              uid: user.uid,
-              email: user.email || "",
-              displayName: user.displayName || "Usuário",
-              activeTenantId: defaultTenantId,
-              tenants: {
-                [defaultTenantId]: {
-                  role: "owner" as const,
-                  joinedAt: new Date().toISOString()
-                }
-              },
-              createdAt: new Date().toISOString()
-            };
-            
-            // Cria a empresa padrão
             const compDocRef = doc(db, "companies", defaultTenantId);
             await setDoc(compDocRef, {
               id: defaultTenantId,
@@ -181,19 +179,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               status: "active",
               createdAt: new Date().toISOString()
             });
-
-            // Cria o perfil de usuário
-            await setDoc(userDocRef, defaultProfileObj);
-            setProfile(defaultProfileObj);
-            setLoading(false);
+            await setDoc(userDocRef, fallbackProfileObj);
           } catch (err) {
-            console.error("Erro ao inicializar perfil de usuário no Cloud Firestore:", err);
-            setLoading(false);
+            console.error("Erro ao inicializar perfil inicial no Cloud Firestore:", err);
           }
         }
+        setLoading(false);
       },
       (error) => {
-        console.error("Erro ao sincronizar dados do usuário no Cloud Firestore:", error);
+        console.error("Erro ao escutar dados do usuário no Cloud Firestore:", error);
+        setProfile(fallbackProfileObj);
         setLoading(false);
       }
     );
