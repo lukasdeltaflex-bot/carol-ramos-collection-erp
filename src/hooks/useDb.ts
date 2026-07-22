@@ -16,6 +16,7 @@ import {
   Timestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { safeLocalStorageSetItem } from "@/lib/imageUpload";
 
 // Global cache objects for query deduplication and results caching to optimize performance
 const activeQueries: Record<string, Promise<any> | undefined> = {};
@@ -101,7 +102,7 @@ export function useDb() {
       const list = mockAudits ? JSON.parse(mockAudits) : [];
       const newAudit = { id: `audit-${Math.random().toString(36).substr(2, 9)}`, ...auditData };
       list.push(newAudit);
-      localStorage.setItem("mock_db_audit_logs", JSON.stringify(list));
+      safeLocalStorageSetItem("mock_db_audit_logs", JSON.stringify(list));
     } else {
       try {
         const auditRef = collection(db, "audit_logs");
@@ -139,7 +140,7 @@ export function useDb() {
       };
       
       list.push(newDoc);
-      localStorage.setItem(storageKey, JSON.stringify(list));
+      safeLocalStorageSetItem(storageKey, JSON.stringify(list));
       
       await logAudit("create", collectionName, newDoc.id, null, finalData);
       return newDoc;
@@ -175,13 +176,13 @@ export function useDb() {
         const finalData = injectBaseFields(data, "create");
         list.push({ id: docId, ...finalData });
       }
-      localStorage.setItem(storageKey, JSON.stringify(list));
+      safeLocalStorageSetItem(storageKey, JSON.stringify(list));
 
       if (collectionName === "companies") {
         const companyKey = `company_profile_${docId}`;
         const savedComp = localStorage.getItem(companyKey);
         const prevComp = savedComp ? JSON.parse(savedComp) : {};
-        localStorage.setItem(companyKey, JSON.stringify({ ...prevComp, ...data, id: docId }));
+        safeLocalStorageSetItem(companyKey, JSON.stringify({ ...prevComp, ...data, id: docId }));
       }
 
       await logAudit("update", collectionName, docId, previousData, data);
@@ -208,7 +209,7 @@ export function useDb() {
       const companyKey = `company_profile_${docId}`;
       const savedComp = localStorage.getItem(companyKey);
       const prevComp = savedComp ? JSON.parse(savedComp) : {};
-      localStorage.setItem(companyKey, JSON.stringify({ ...prevComp, ...data, id: docId }));
+      safeLocalStorageSetItem(companyKey, JSON.stringify({ ...prevComp, ...data, id: docId }));
     }
 
     await logAudit("update", collectionName, docId, previousData, data);
@@ -249,7 +250,7 @@ export function useDb() {
       };
 
       list[idx] = updatedData;
-      localStorage.setItem(storageKey, JSON.stringify(list));
+      safeLocalStorageSetItem(storageKey, JSON.stringify(list));
 
       // Gravar na coleção recycle_bin
       const rbStorageKey = `mock_db_recycle_bin`;
@@ -276,7 +277,7 @@ export function useDb() {
       };
 
       rbList.push(rbItem);
-      localStorage.setItem(rbStorageKey, JSON.stringify(rbList));
+      safeLocalStorageSetItem(rbStorageKey, JSON.stringify(rbList));
 
       await logAudit("soft_delete", collectionName, docId, previousData, updatedData);
       return true;
@@ -339,7 +340,7 @@ export function useDb() {
           delete list[idx].deletedAt;
           delete list[idx].deletedBy;
           delete list[idx].deletedFrom;
-          localStorage.setItem(storageKey, JSON.stringify(list));
+          safeLocalStorageSetItem(storageKey, JSON.stringify(list));
         }
       }
 
@@ -349,7 +350,7 @@ export function useDb() {
       if (rbExisting) {
         const rbList = JSON.parse(rbExisting);
         const newRbList = rbList.filter((item: any) => item.id !== recycleBinId && item.originalId !== originalId);
-        localStorage.setItem(rbStorageKey, JSON.stringify(newRbList));
+        safeLocalStorageSetItem(rbStorageKey, JSON.stringify(newRbList));
       }
 
       await logAudit("restore", originalCollection, originalId, null, { restored: true });
@@ -384,7 +385,7 @@ export function useDb() {
       if (existing) {
         const list = JSON.parse(existing);
         const newList = list.filter((item: any) => item.id !== originalId);
-        localStorage.setItem(storageKey, JSON.stringify(newList));
+        safeLocalStorageSetItem(storageKey, JSON.stringify(newList));
       }
 
       // 2. Remover da lixeira
@@ -393,7 +394,7 @@ export function useDb() {
       if (rbExisting) {
         const rbList = JSON.parse(rbExisting);
         const newRbList = rbList.filter((item: any) => item.id !== recycleBinId && item.originalId !== originalId);
-        localStorage.setItem(rbStorageKey, JSON.stringify(newRbList));
+        safeLocalStorageSetItem(rbStorageKey, JSON.stringify(newRbList));
       }
 
       await logAudit("delete", originalCollection, originalId, null, null);

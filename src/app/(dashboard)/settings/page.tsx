@@ -7,7 +7,7 @@ import { useToast } from "@/context/ToastContext";
 import { IntegrationConfig, IntegrationLog, Automation } from "@/features/integrations/types";
 import { IntegrationConfigSchema, AutomationSchema } from "@/features/integrations/schemas";
 import { Product } from "@/features/products/types";
-import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
+import { processImageUpload, MAX_IMAGE_SIZE_MB, safeLocalStorageSetItem } from "@/lib/imageUpload";
 import {
   Building2,
   Shield,
@@ -290,7 +290,7 @@ export default function SettingsPage() {
         const parsed = saved ? JSON.parse(saved) : { id };
         parsed.status = newStatus;
         parsed.updatedAt = new Date().toISOString();
-        localStorage.setItem(`company_profile_${id}`, JSON.stringify(parsed));
+        safeLocalStorageSetItem(`company_profile_${id}`, JSON.stringify(parsed));
         success("Status atualizado", `Empresa ${newStatus === "active" ? "ativada" : "desativada"} com sucesso!`);
       } else {
         await updateDoc("companies", id, { status: newStatus, updatedAt: new Date().toISOString() });
@@ -381,7 +381,7 @@ export default function SettingsPage() {
         const saved = localStorage.getItem(`company_profile_${editingCompanyId}`);
         const parsed = saved ? JSON.parse(saved) : { id: editingCompanyId };
         const updatedCompany = { ...parsed, ...payload };
-        localStorage.setItem(`company_profile_${editingCompanyId}`, JSON.stringify(updatedCompany));
+        safeLocalStorageSetItem(`company_profile_${editingCompanyId}`, JSON.stringify(updatedCompany));
         
         if (editingCompanyId === tenantId) {
           // Trigger settings state update
@@ -416,7 +416,7 @@ export default function SettingsPage() {
           const saved = localStorage.getItem(`company_profile_${id}`);
           const parsed = saved ? JSON.parse(saved) : { id };
           parsed.logo = base64Logo;
-          localStorage.setItem(`company_profile_${id}`, JSON.stringify(parsed));
+          safeLocalStorageSetItem(`company_profile_${id}`, JSON.stringify(parsed));
           success("Logo atualizado", "Logo da empresa atualizado localmente!");
         } else {
           await updateDoc("companies", id, { logo: base64Logo, updatedAt: new Date().toISOString() });
@@ -605,7 +605,7 @@ export default function SettingsPage() {
     try {
       await updateDoc("companies", tenantId, payload);
       if (typeof window !== "undefined") {
-        localStorage.setItem(`company_profile_${tenantId}`, JSON.stringify({ id: tenantId, ...payload }));
+        safeLocalStorageSetItem(`company_profile_${tenantId}`, JSON.stringify({ id: tenantId, ...payload }));
       }
       success("Sucesso", "Perfil da empresa atualizado com sucesso!");
     } catch (err: any) {
