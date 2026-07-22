@@ -324,6 +324,46 @@ export default function ProductsPage() {
         prods = (await getDocs("products") as Product[]) || [];
       }
 
+      // 1. Deduplicação em product_kits (Purga documentos duplicados com mesmo SKU ou ID)
+      const rawKits = (fetchedKits as ProductKit[]) || [];
+      const uniqueKits: ProductKit[] = [];
+      const seenKitKeys = new Set<string>();
+
+      for (const k of rawKits) {
+        if (!k || !k.id) continue;
+        const key = k.sku ? `sku:${k.sku}` : `id:${k.id}`;
+        if (seenKitKeys.has(key)) {
+          deleteDoc("product_kits", k.id).catch(() => {});
+        } else {
+          seenKitKeys.add(key);
+          seenKitKeys.add(`id:${k.id}`);
+          uniqueKits.push(k);
+        }
+      }
+
+      // 2. Deduplicação em products (Purga documentos de produtos e espelhos de kits duplicados)
+      const uniqueProducts: Product[] = [];
+      const seenProductKeys = new Set<string>();
+
+      for (const p of prods) {
+        if (!p || !p.id) continue;
+        const key = p.isKit && p.kitId 
+          ? `kit:${p.kitId}` 
+          : p.sku ? `sku:${p.sku}` : `id:${p.id}`;
+
+        if (seenProductKeys.has(key)) {
+          if (p.isKit) {
+            deleteDoc("products", p.id).catch(() => {});
+          }
+        } else {
+          seenProductKeys.add(key);
+          seenProductKeys.add(`id:${p.id}`);
+          uniqueProducts.push(p);
+        }
+      }
+
+      prods = uniqueProducts;
+
       setCategories(cats);
       setBrandList(brs);
       setLocations(locs);
@@ -331,8 +371,7 @@ export default function ProductsPage() {
       setProducts(prods);
 
       // Auditoria & Sincronização Automática dos Custos dos Kits existentes
-      const rawKits = (fetchedKits as ProductKit[]) || [];
-      const auditedKits = [...rawKits];
+      const auditedKits = [...uniqueKits];
       for (let i = 0; i < auditedKits.length; i++) {
         const kit = auditedKits[i];
         const realCalculatedCost = (kit.items || []).reduce((sum, item) => {
@@ -852,8 +891,11 @@ export default function ProductsPage() {
       };
 
       let savedKitId = editingKitId;
-      if (editingKitId) {
-        await updateDoc("product_kits", editingKitId, kitPayload);
+      const existingKitDoc = kits.find(k => (editingKitId && k.id === editingKitId) || (kitSku && k.sku === kitSku));
+
+      if (existingKitDoc) {
+        savedKitId = existingKitDoc.id;
+        await updateDoc("product_kits", existingKitDoc.id, kitPayload);
       } else {
         const newKitDoc = await createDoc("product_kits", kitPayload);
         savedKitId = newKitDoc.id;
@@ -881,9 +923,15 @@ export default function ProductsPage() {
         kitId: savedKitId
       };
 
-      const existingProdKit = products.find(p => p.isKit && p.kitId === savedKitId);
-      if (existingProdKit) {
-        await updateDoc("products", existingProdKit.id, kitProductPayload);
+      // Localizar TODOS os espelhos deste kit no catálogo de produtos para evitar duplicações
+      const matchingProdKits = products.filter(p => p.isKit && (p.kitId === savedKitId || (p.sku && p.sku === kitSku)));
+      if (matchingProdKits.length > 0) {
+        // Atualizar o primeiro documento oficial
+        await updateDoc("products", matchingProdKits[0].id, kitProductPayload);
+        // Deletar silenciosamente quaisquer duplicatas extras
+        for (let i = 1; i < matchingProdKits.length; i++) {
+          await deleteDoc("products", matchingProdKits[i].id).catch(() => {});
+        }
       } else {
         await createDoc("products", kitProductPayload);
       }
@@ -1049,8 +1097,15 @@ export default function ProductsPage() {
 
   // Filtragem e Ordenação de Produtos
   const sortedAndFilteredProducts = React.useMemo(() => {
+    const seenKeys = new Set<string>();
     const list = (products || []).filter(p => {
-      if (!p) return false;
+      if (!p || !p.id) return false;
+
+      // Garantir que nenhum produto ou kit duplicado seja renderizado
+      const uniqueKey = p.isKit && p.kitId ? `kit:${p.kitId}` : `id:${p.id}`;
+      if (seenKeys.has(uniqueKey)) return false;
+      seenKeys.add(uniqueKey);
+
       const nameStr = (p.name || "").toLowerCase();
       const skuStr = (p.sku || "").toLowerCase();
       const searchStr = (searchQuery || "").toLowerCase();
