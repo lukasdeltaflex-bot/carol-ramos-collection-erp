@@ -33,6 +33,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import PricingSimulator from "@/features/pricing/components/PricingSimulator";
 import { ProductPricingData } from "@/features/pricing/types";
+import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
 
 // Mock Inicial de Categorias
 const INITIAL_CATEGORIES = [
@@ -313,53 +314,54 @@ export default function ProductsPage() {
     }
   }, [tenantId]);
 
-  // Conversão de arquivo para Base64 para visualização em modo mock
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Progress & Error states for Uploads
+  const [uploadProgressProduct, setUploadProgressProduct] = useState<number | null>(null);
+  const [uploadErrorProduct, setUploadErrorProduct] = useState<string | null>(null);
+  const [uploadProgressKit, setUploadProgressKit] = useState<number | null>(null);
+  const [uploadErrorKit, setUploadErrorKit] = useState<string | null>(null);
+
+  // Upload de Imagem de Produto (Até 20MB com Canvas Resize + Progress Bar)
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setUploadErrorProduct(null);
+    setUploadProgressProduct(0);
+
+    const res = await processImageUpload(file, {
+      maxWidth: 1200,
+      maxHeight: 1200,
+      onProgress: (percent) => setUploadProgressProduct(percent)
+    });
+
+    if (res.success && res.dataUrl) {
+      setImageBase64(res.dataUrl);
+      setTimeout(() => setUploadProgressProduct(null), 1000);
+    } else {
+      setUploadErrorProduct(res.errorMessage || "Erro ao carregar a imagem.");
+      setUploadProgressProduct(null);
     }
   };
 
-  // Conversão de arquivo para foto do Kit (com compressão via Canvas)
-  const handleKitImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload de Imagem de Kit (Até 20MB com Canvas Resize + Progress Bar)
+  const handleKitImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 500;
-        const MAX_HEIGHT = 500;
-        let width = img.width;
-        let height = img.height;
+    setUploadErrorKit(null);
+    setUploadProgressKit(0);
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/png");
-        setKitImage(dataUrl);
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
+    const res = await processImageUpload(file, {
+      maxWidth: 1000,
+      maxHeight: 1000,
+      onProgress: (percent) => setUploadProgressKit(percent)
+    });
+
+    if (res.success && res.dataUrl) {
+      setKitImage(res.dataUrl);
+      setTimeout(() => setUploadProgressKit(null), 1000);
+    } else {
+      setUploadErrorKit(res.errorMessage || "Erro ao carregar a imagem do kit.");
+      setUploadProgressKit(null);
+    }
   };
 
   // Abrir Drawer para Novo Produto
@@ -1539,16 +1541,21 @@ export default function ProductsPage() {
                           <span>{imageBase64 ? "Trocar Foto" : "Carregar Foto"}</span>
                         </span>
                       </label>
-                      {imageBase64 && (
-                        <button
-                          type="button"
-                          onClick={() => setImageBase64("")}
-                          className="text-[10px] text-destructive font-semibold hover:underline"
-                        >
-                          Remover Foto
-                        </button>
+                      {uploadProgressProduct !== null && (
+                        <div className="w-full space-y-1 my-1">
+                          <div className="flex items-center justify-between text-[10px] text-primary font-bold">
+                            <span>Processando...</span>
+                            <span>{uploadProgressProduct}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className="bg-primary h-full transition-all duration-200" style={{ width: `${uploadProgressProduct}%` }} />
+                          </div>
+                        </div>
                       )}
-                      <p className="text-[10px] text-muted-foreground text-center">JPG, PNG, WebP (Máx 2MB)</p>
+                      {uploadErrorProduct && (
+                        <p className="text-[10px] text-destructive font-semibold text-center mt-1">{uploadErrorProduct}</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground text-center">JPG, PNG, WebP (Máx {MAX_IMAGE_SIZE_MB}MB)</p>
                     </div>
                   </div>
                 </div>
@@ -1976,15 +1983,21 @@ export default function ProductsPage() {
                           <span>{kitImage ? "Trocar Foto" : "Carregar Foto"}</span>
                         </span>
                       </label>
-                      {kitImage && (
-                        <button
-                          type="button"
-                          onClick={() => setKitImage("")}
-                          className="text-[10px] text-destructive font-semibold hover:underline"
-                        >
-                          Remover Foto
-                        </button>
+                      {uploadProgressKit !== null && (
+                        <div className="w-full space-y-1 my-1">
+                          <div className="flex items-center justify-between text-[10px] text-primary font-bold">
+                            <span>Processando...</span>
+                            <span>{uploadProgressKit}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div className="bg-primary h-full transition-all duration-200" style={{ width: `${uploadProgressKit}%` }} />
+                          </div>
+                        </div>
                       )}
+                      {uploadErrorKit && (
+                        <p className="text-[10px] text-destructive font-semibold text-center mt-1">{uploadErrorKit}</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground text-center">JPG, PNG, WebP (Máx {MAX_IMAGE_SIZE_MB}MB)</p>
                     </div>
                   </div>
                 </div>

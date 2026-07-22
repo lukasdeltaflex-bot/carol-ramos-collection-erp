@@ -7,6 +7,7 @@ import { useToast } from "@/context/ToastContext";
 import { IntegrationConfig, IntegrationLog, Automation } from "@/features/integrations/types";
 import { IntegrationConfigSchema, AutomationSchema } from "@/features/integrations/schemas";
 import { Product } from "@/features/products/types";
+import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
 import {
   Building2,
   Shield,
@@ -538,40 +539,30 @@ export default function SettingsPage() {
     });
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [logoUploadProgress, setLogoUploadProgress] = useState<number | null>(null);
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 400;
-        const MAX_HEIGHT = 400;
-        let width = img.width;
-        let height = img.height;
+    setLogoUploadError(null);
+    setLogoUploadProgress(0);
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/png");
-        setCompLogo(dataUrl);
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
+    const res = await processImageUpload(file, {
+      maxWidth: 800,
+      maxHeight: 800,
+      onProgress: (percent) => setLogoUploadProgress(percent)
+    });
+
+    if (res.success && res.dataUrl) {
+      setCompLogo(res.dataUrl);
+      success("Logo Carregada", "Foto da logo processada e anexada com sucesso.");
+      setTimeout(() => setLogoUploadProgress(null), 1000);
+    } else {
+      setLogoUploadError(res.errorMessage || "Erro ao carregar logo.");
+      toastError("Erro de Upload", res.errorMessage || "Falha no upload da logo.");
+      setLogoUploadProgress(null);
+    }
   };
 
   const handleSaveCompanyProfile = async (e: React.FormEvent) => {
@@ -1461,7 +1452,7 @@ export default function SettingsPage() {
                           <label className="px-2.5 py-1.5 bg-primary text-primary-foreground text-[10px] font-semibold rounded hover:bg-primary/95 cursor-pointer flex items-center gap-1">
                             <Upload className="h-3 w-3" />
                             <span>Upload Logo</span>
-                            <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleLogoUpload} className="hidden" />
                           </label>
                           {compLogo && (
                             <button
@@ -1473,6 +1464,21 @@ export default function SettingsPage() {
                             </button>
                           )}
                         </div>
+                        {logoUploadProgress !== null && (
+                          <div className="w-full space-y-1 my-1">
+                            <div className="flex items-center justify-between text-[10px] text-primary font-bold">
+                              <span>Enviando...</span>
+                              <span>{logoUploadProgress}%</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-primary h-full transition-all duration-200" style={{ width: `${logoUploadProgress}%` }} />
+                            </div>
+                          </div>
+                        )}
+                        {logoUploadError && (
+                          <p className="text-[10px] text-destructive font-semibold">{logoUploadError}</p>
+                        )}
+                        <p className="text-[9px] text-muted-foreground">JPG, PNG, WebP (Máx. {MAX_IMAGE_SIZE_MB}MB)</p>
                       </div>
                     </div>
 

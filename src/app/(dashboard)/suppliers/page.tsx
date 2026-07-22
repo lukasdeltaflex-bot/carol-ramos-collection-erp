@@ -8,6 +8,7 @@ import { Supplier } from "@/features/suppliers/types";
 import { SupplierSchema } from "@/features/suppliers/schemas";
 import Modal, { ModalFooter } from "@/components/ui/Modal";
 import { SkeletonCard } from "@/components/ui/Skeleton";
+import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
 import {
   Truck,
   Plus,
@@ -314,13 +315,30 @@ function EmptyState({ onNew }: { onNew: () => void }) {
 
 function LogoUploader({ value, onChange, name }: { value: string; onChange: (b64: string) => void; name: string; }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { if (ev.target?.result) onChange(ev.target.result as string); };
-    reader.readAsDataURL(file);
+    setError(null);
+    setProgress(0);
+
+    const res = await processImageUpload(file, {
+      maxWidth: 800,
+      maxHeight: 800,
+      onProgress: (pct) => setProgress(pct)
+    });
+
+    if (res.success && res.dataUrl) {
+      onChange(res.dataUrl);
+      setTimeout(() => setProgress(null), 1000);
+    } else {
+      setError(res.errorMessage || "Erro ao carregar imagem.");
+      setProgress(null);
+    }
   };
+
   const initials = getInitials(name);
   return (
     <div className="flex items-center gap-4 border border-border/80 bg-muted/10 p-3 rounded-xl">
@@ -336,9 +354,23 @@ function LogoUploader({ value, onChange, name }: { value: string; onChange: (b64
             <X className="h-3 w-3" /> Remover
           </button>
         )}
-        <p className="text-[10px] text-muted-foreground">PNG, JPG ou WebP. Máx. 2MB.</p>
+        {progress !== null && (
+          <div className="w-full space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-primary font-bold">
+              <span>Enviando...</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+              <div className="bg-primary h-full transition-all duration-200" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+        {error && (
+          <p className="text-[10px] text-destructive font-semibold">{error}</p>
+        )}
+        <p className="text-[10px] text-muted-foreground">PNG, JPG ou WebP. Máx. {MAX_IMAGE_SIZE_MB}MB.</p>
       </div>
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFile} />
     </div>
   );
 }

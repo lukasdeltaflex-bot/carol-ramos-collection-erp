@@ -7,6 +7,7 @@ import { useTheme } from "@/app/providers";
 import { useToast } from "@/context/ToastContext";
 import { useDb } from "@/hooks/useDb";
 import Modal, { ModalFooter } from "@/components/ui/Modal";
+import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
 import { updatePassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import {
@@ -117,14 +118,27 @@ export default function Header({
     }
   }, [profile, profileModalOpen]);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [photoUploadProgress, setPhotoUploadProgress] = useState<number | null>(null);
+  const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfilePhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setPhotoUploadError(null);
+    setPhotoUploadProgress(0);
+
+    const res = await processImageUpload(file, {
+      maxWidth: 600,
+      maxHeight: 600,
+      onProgress: (pct) => setPhotoUploadProgress(pct)
+    });
+
+    if (res.success && res.dataUrl) {
+      setProfilePhoto(res.dataUrl);
+      setTimeout(() => setPhotoUploadProgress(null), 1000);
+    } else {
+      setPhotoUploadError(res.errorMessage || "Erro ao carregar foto.");
+      setPhotoUploadProgress(null);
     }
   };
 
@@ -615,13 +629,28 @@ export default function Header({
                 userInitials
               )}
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 flex-1">
               <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px] block">Foto do Perfil</span>
               <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold transition-all">
                 <Upload className="h-3.5 w-3.5" />
                 <span>Escolher Imagem</span>
-                <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoUpload} className="hidden" />
               </label>
+              {photoUploadProgress !== null && (
+                <div className="w-full space-y-1 my-1">
+                  <div className="flex items-center justify-between text-[10px] text-primary font-bold">
+                    <span>Enviando...</span>
+                    <span>{photoUploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-primary h-full transition-all duration-200" style={{ width: `${photoUploadProgress}%` }} />
+                  </div>
+                </div>
+              )}
+              {photoUploadError && (
+                <p className="text-[10px] text-destructive font-semibold">{photoUploadError}</p>
+              )}
+              <p className="text-[10px] text-muted-foreground">JPG, PNG ou WebP (Máx {MAX_IMAGE_SIZE_MB}MB)</p>
             </div>
           </div>
 
