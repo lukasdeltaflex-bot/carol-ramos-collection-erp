@@ -302,32 +302,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isMock, isFirebasePlaceholder]);
 
   const loginWithGoogle = useCallback(async () => {
-    if (isMock || isFirebasePlaceholder) {
-      const currentProfile = getPersistedUserProfile();
-      const mockUser = {
-        uid: currentProfile.uid,
-        email: currentProfile.email,
-        displayName: currentProfile.displayName,
-      };
-
-      const session = {
-        ...mockUser,
-        profile: currentProfile
-      };
-
-      safeLocalStorageSetItem("mock_auth_session", JSON.stringify(session));
-      setUser(mockUser);
-      setProfile(currentProfile);
-      setIsMock(true);
-      setLoading(false);
-      return;
-    }
-
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({
       prompt: "select_account"
     });
-    await signInWithPopup(auth, provider);
+
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.warn("Firebase Google Auth error/fallback:", err);
+      if (isMock || isFirebasePlaceholder) {
+        const currentProfile = getPersistedUserProfile();
+        const mockUser = {
+          uid: currentProfile.uid,
+          email: currentProfile.email,
+          displayName: currentProfile.displayName,
+        };
+
+        const session = {
+          ...mockUser,
+          profile: currentProfile
+        };
+
+        safeLocalStorageSetItem("mock_auth_session", JSON.stringify(session));
+        setUser(mockUser);
+        setProfile(currentProfile);
+        setIsMock(true);
+        setLoading(false);
+        return;
+      }
+      throw err;
+    }
   }, [isMock, isFirebasePlaceholder]);
 
   const logout = useCallback(async () => {
