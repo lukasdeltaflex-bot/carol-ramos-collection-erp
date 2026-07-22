@@ -145,14 +145,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user || isMock) return;
 
-    // Timeout de segurança para evitar loading infinito se a conexão com o Firestore travar
+    const isDev = process.env.NODE_ENV === "development";
+    if (isDev) console.log("[Auth Step 5] Sincronizando perfil do usuário no Firestore (uid:", user.uid, ")...");
+
+    // Timeout de segurança determinístico para garantir encerramento do loading
     const safetyTimeout = setTimeout(() => {
-      console.warn("Tempo limite de carregamento do perfil atingido. Ativando modo de simulação (Mock)...");
-      setIsMock(true);
-      const fallbackProf = getPersistedUserProfile();
-      setProfile(fallbackProf);
+      if (isDev) console.warn("[Auth Step 6] Timeout do Firestore atingido. Finalizando carregamento com dados da conta...");
+      const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
+      const userProfileObj: UserProfile = {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "Usuário Google",
+        activeTenantId: defaultTenantId,
+        tenants: {
+          [defaultTenantId]: {
+            role: "owner" as const,
+            joinedAt: new Date().toISOString()
+          }
+        },
+        createdAt: new Date().toISOString()
+      };
+      setProfile((prev) => prev || userProfileObj);
       setLoading(false);
-    }, 6000);
+    }, 4000);
 
     const userDocRef = doc(db, "users", user.uid);
     const unsubscribeProfile = onSnapshot(
@@ -161,27 +176,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(safetyTimeout);
         if (docSnap.exists()) {
           const data = docSnap.data() as UserProfile;
+          if (isDev) console.log("[Auth Step 6] Perfil retornado do Firestore para:", data.email);
           setProfile(data);
           setLoading(false);
         } else {
-          // Novo usuário - Cria perfil e empresa default no Firestore
+          // Novo usuário - Cria perfil e empresa default no Firestore com os dados reais da conta Google
+          const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
+          const defaultProfileObj: UserProfile = {
+            uid: user.uid,
+            email: user.email || "",
+            displayName: user.displayName || "Usuário",
+            activeTenantId: defaultTenantId,
+            tenants: {
+              [defaultTenantId]: {
+                role: "owner" as const,
+                joinedAt: new Date().toISOString()
+              }
+            },
+            createdAt: new Date().toISOString()
+          };
+
+          // Define o perfil imediatamente com a conta do Google para liberar a UI
+          setProfile(defaultProfileObj);
+          setLoading(false);
+
           try {
-            const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
-            const defaultProfileObj = {
-              uid: user.uid,
-              email: user.email || "",
-              displayName: user.displayName || "Usuário",
-              activeTenantId: defaultTenantId,
-              tenants: {
-                [defaultTenantId]: {
-                  role: "owner" as const,
-                  joinedAt: new Date().toISOString()
-                }
-              },
-              createdAt: new Date().toISOString()
-            };
-            
-            // Cria a empresa padrão
+            if (isDev) console.log("[Auth Step 6] Novo usuário Google. Criando documento no Firestore...");
             const compDocRef = doc(db, "companies", defaultTenantId);
             await setDoc(compDocRef, {
               id: defaultTenantId,
@@ -192,23 +212,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               createdAt: new Date().toISOString()
             });
 
-            // Cria o perfil de usuário
             await setDoc(userDocRef, defaultProfileObj);
+            if (isDev) console.log("[Auth Step 7] Novo perfil salvo com sucesso no Firestore.");
           } catch (err) {
-            console.error("Erro ao inicializar perfil de usuário no Firestore. Ativando modo de simulação (Mock)...", err);
-            setIsMock(true);
-            const fallbackProf = getPersistedUserProfile();
-            setProfile(fallbackProf);
-            setLoading(false);
+            console.error("[Auth] Erro ao salvar novo perfil no Firestore (mantendo sessão do Google ativa):", err);
           }
         }
       },
       (error) => {
         clearTimeout(safetyTimeout);
-        console.error("Erro ao sincronizar dados do usuário no Firestore. Ativando modo de simulação (Mock)...", error);
-        setIsMock(true);
-        const fallbackProf = getPersistedUserProfile();
-        setProfile(fallbackProf);
+        console.error("[Auth] Erro no listener do Firestore. Utilizando dados reais da conta Google autenticada:", error);
+        const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
+        const fallbackProfile: UserProfile = {
+          uid: user.uid,
+          email: user.email || "",
+          displayName: user.displayName || "Usuário",
+          activeTenantId: defaultTenantId,
+          tenants: {
+            [defaultTenantId]: {
+              role: "owner" as const,
+              joinedAt: new Date().toISOString()
+            }
+          }
+        };
+        setProfile((prev) => prev || fallbackProfile);
         setLoading(false);
       }
     );
@@ -302,16 +329,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isMock, isFirebasePlaceholder]);
 
   const loginWithGoogle = useCallback(async () => {
+    const isDev = process.env.NODE_ENV === "development";
+    if (isDev) console.log("[Auth Step 1] Iniciando loginWithGoogle...");
+
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({
       prompt: "select_account"
     });
 
     try {
-      await signInWithPopup(auth, provider);
+      if (isDev) console.log("[Auth Step 2] Disparando signInWithPopup...");
+      const credential = await signInWithPopup(auth, provider);
+      if (isDev) console.log("[Auth Step 3] Popup Google concluído! Usuário:", credential.user?.email);
     } catch (err: any) {
-      console.warn("Firebase Google Auth error/fallback:", err);
-      if (isMock || isFirebasePlaceholder) {
+      console.error("[Auth ERROR] Erro no signInWithPopup do Google:", err);
+      if (isFirebasePlaceholder) {
+        if (isDev) console.warn("[Auth Fallback] Modo de desenvolvimento sem chaves de API. Carregando perfil mock...");
         const currentProfile = getPersistedUserProfile();
         const mockUser = {
           uid: currentProfile.uid,
@@ -331,9 +364,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       }
+      setLoading(false);
       throw err;
     }
-  }, [isMock, isFirebasePlaceholder]);
+  }, [isFirebasePlaceholder]);
 
   const logout = useCallback(async () => {
     if (isMock) {
