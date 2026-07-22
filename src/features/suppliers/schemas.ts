@@ -39,8 +39,6 @@ export const SupplierSchema = z.object({
   
   // Commercial
   category: z.string().optional(),
-  specialty: z.string().optional(),
-  specialties: z.array(z.string()).optional(),
   paymentTerms: z.string().optional(),
   leadTimeDays: z.number().int().nonnegative().optional().or(z.string().transform(v => parseInt(v) || 0).pipe(z.number().int().nonnegative())),
   bankName: z.string().optional(),

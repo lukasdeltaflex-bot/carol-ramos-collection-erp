@@ -203,16 +203,6 @@ export default function FinancePage() {
   const [purchaseInstallmentsCount, setPurchaseInstallmentsCount] = useState(1);
   const [generatedPurchaseInstallments, setGeneratedPurchaseInstallments] = useState<Array<{ number: number; amount: number; dueDate: string }>>([]);
 
-  // Custos Adicionais da Compra & Rateio
-  const [pFreight, setPFreight] = useState(0);
-  const [pInsurance, setPInsurance] = useState(0);
-  const [pTaxes, setPTaxes] = useState(0);
-  const [pFees, setPFees] = useState(0);
-  const [pCustoms, setPCustoms] = useState(0);
-  const [pPackaging, setPPackaging] = useState(0);
-  const [pOtherCosts, setPOtherCosts] = useState(0);
-  const [pAllocationMethod, setPAllocationMethod] = useState<'by_quantity' | 'by_value' | 'manual'>('by_value');
-
   // Common errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -233,9 +223,6 @@ export default function FinancePage() {
   const [selectedBankObj, setSelectedBankObj] = useState<any>(null);
 
   const purchaseTotalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-  const purchaseAdditionalCosts = (pFreight || 0) + (pInsurance || 0) + (pTaxes || 0) + (pFees || 0) + (pCustoms || 0) + (pPackaging || 0) + (pOtherCosts || 0);
-  const purchaseGrandTotal = purchaseTotalCost + purchaseAdditionalCosts;
-  const purchaseTotalQty = purchaseItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const generateDefaultPurchaseInstallments = (count: number, totalVal: number, dueDayNum?: number) => {
     if (count <= 0) return;
@@ -283,11 +270,11 @@ export default function FinancePage() {
   useEffect(() => {
     if (purchasePaymentMethod === "bank_slip" || purchasePaymentMethod === "credit_card" || purchasePaymentMethod === "company_credit_card") {
       const cardObj = companyCards.find(c => c.id === selectedCardId);
-      generateDefaultPurchaseInstallments(purchaseInstallmentsCount, purchaseGrandTotal, cardObj?.dueDay);
+      generateDefaultPurchaseInstallments(purchaseInstallmentsCount, purchaseTotalCost, cardObj?.dueDay);
     } else {
       setGeneratedPurchaseInstallments([]);
     }
-  }, [purchaseGrandTotal, purchasePaymentMethod, purchaseInstallmentsCount, selectedCardId]);
+  }, [purchaseTotalCost, purchasePaymentMethod, purchaseInstallmentsCount, selectedCardId]);
 
   // Load All Financial Data
   const loadFinancialData = async () => {
@@ -462,14 +449,6 @@ export default function FinancePage() {
     setPurchaseDueDate(new Date().toISOString().split("T")[0]);
     setPurchaseInstallmentsCount(1);
     setGeneratedPurchaseInstallments([]);
-    setPFreight(0);
-    setPInsurance(0);
-    setPTaxes(0);
-    setPFees(0);
-    setPCustoms(0);
-    setPPackaging(0);
-    setPOtherCosts(0);
-    setPAllocationMethod("by_value");
 
     setDrawerOpen(true);
   };
@@ -687,7 +666,7 @@ export default function FinancePage() {
       } 
       
       else if (drawerType === "purchase") {
-        const totalItemsCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+        const totalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
         
         const itemsPayload = purchaseItems.map(item => ({
           productId: item.productId,
@@ -701,17 +680,7 @@ export default function FinancePage() {
           items: itemsPayload,
           paymentMethod: purchasePaymentMethod,
           cardId: (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") ? selectedCardId : undefined,
-          dueDate: purchaseDueDate || undefined,
-          freightCost: pFreight || 0,
-          insuranceCost: pInsurance || 0,
-          taxCost: pTaxes || 0,
-          feesCost: pFees || 0,
-          customsCost: pCustoms || 0,
-          packagingCost: pPackaging || 0,
-          otherCosts: pOtherCosts || 0,
-          additionalCostsTotal: purchaseAdditionalCosts,
-          grandTotal: purchaseGrandTotal,
-          allocationMethod: pAllocationMethod
+          dueDate: purchaseDueDate || undefined
         };
 
         const result = PurchaseSchema.safeParse(payload);
@@ -723,46 +692,32 @@ export default function FinancePage() {
         // 1. Criar Ordem de Compra
         const newPurchase = await createDoc("purchases", {
           ...payload,
-          total: purchaseGrandTotal,
+          total: totalCost,
           status: "completed" as const,
           receivedAt: new Date().toISOString()
         });
 
-        // 2. Incrementar Estoques dos Produtos & Atualizar Preços de Custos com Rateio
+        // 2. Incrementar Estoques dos Produtos & Atualizar Preços de Custos
         for (const item of purchaseItems) {
           const prod = products.find(p => p.id === item.productId);
           if (prod) {
-            let additionalPerUnit = 0;
-            if (purchaseAdditionalCosts > 0) {
-              if (pAllocationMethod === "by_quantity" && purchaseTotalQty > 0) {
-                additionalPerUnit = purchaseAdditionalCosts / purchaseTotalQty;
-              } else if (pAllocationMethod === "by_value" && totalItemsCost > 0) {
-                const itemSubtotal = item.quantity * item.unitCost;
-                const itemRatio = itemSubtotal / totalItemsCost;
-                const itemTotalAdditional = purchaseAdditionalCosts * itemRatio;
-                additionalPerUnit = item.quantity > 0 ? itemTotalAdditional / item.quantity : 0;
-              }
-            }
-
-            const effectiveUnitCost = parseFloat((item.unitCost + additionalPerUnit).toFixed(2));
             const newStock = prod.currentStock + item.quantity;
             const newAvailable = prod.availableStock + item.quantity;
             
-            const currentAssetVal = prod.currentStock * (prod.averageCost || prod.costPrice || 0);
-            const newPurchaseVal = item.quantity * effectiveUnitCost;
+            const currentAssetVal = prod.currentStock * prod.averageCost;
+            const newPurchaseVal = item.quantity * item.unitCost;
             const finalAvgCost = parseFloat(((currentAssetVal + newPurchaseVal) / newStock).toFixed(2));
             
             const calculatedMargin = prod.sellPrice > 0 
-              ? parseFloat((((prod.sellPrice - effectiveUnitCost) / prod.sellPrice) * 100).toFixed(1)) 
+              ? parseFloat((((prod.sellPrice - item.unitCost) / prod.sellPrice) * 100).toFixed(1)) 
               : 0;
 
             await updateDoc("products", prod.id, {
               currentStock: newStock,
               availableStock: newAvailable,
-              costPrice: effectiveUnitCost,
-              totalAcquisitionCost: effectiveUnitCost,
+              costPrice: item.unitCost,
               averageCost: finalAvgCost,
-              lastPurchasePrice: effectiveUnitCost,
+              lastPurchasePrice: item.unitCost,
               lastPurchaseDate: new Date().toISOString(),
               profitMargin: calculatedMargin
             });
@@ -772,51 +727,18 @@ export default function FinancePage() {
               locationId: "deposito-central",
               type: "in" as const,
               quantity: item.quantity,
-              costPriceAtTime: effectiveUnitCost,
+              costPriceAtTime: item.unitCost,
               reason: `Ordem de Compra Ref #${newPurchase.id}`
             });
           }
         }
 
-        // Sincronização Automática dos Custos dos Kits afetados
-        try {
-          const freshProducts = (await getDocs("products")) as Product[];
-          const freshKits = (await getDocs("product_kits")) as any[];
-          if (freshKits && freshKits.length > 0) {
-            for (const kit of freshKits) {
-              const realCalculatedCost = (kit.items || []).reduce((sum: number, kItem: any) => {
-                const p = freshProducts.find(prod => prod.id === kItem.productId);
-                if (!p) return sum;
-                const pCost = (p.totalAcquisitionCost && p.totalAcquisitionCost > 0) ? p.totalAcquisitionCost : (p.costPrice || 0);
-                return sum + (pCost * (kItem.quantity || 1));
-              }, 0);
-              const realMargin = kit.price > 0 ? parseFloat((((kit.price - realCalculatedCost) / kit.price) * 100).toFixed(1)) : 0;
-              
-              await updateDoc("product_kits", kit.id, {
-                costPrice: realCalculatedCost,
-                totalAcquisitionCost: realCalculatedCost,
-                profitMargin: realMargin
-              });
-              const mirrorProd = freshProducts.find(p => p.isKit && p.kitId === kit.id);
-              if (mirrorProd) {
-                await updateDoc("products", mirrorProd.id, {
-                  costPrice: realCalculatedCost,
-                  totalAcquisitionCost: realCalculatedCost,
-                  profitMargin: realMargin
-                });
-              }
-            }
-          }
-        } catch (errKits) {
-          console.error("Erro ao sincronizar kits após compra:", errKits);
-        }
-
-        // 3. Fluxo Financeiro da Compra (Utilizando o Custo Total da Compra = grandTotal):
+        // 3. Fluxo Financeiro da Compra:
         if (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") {
           // Debitar Limite do Cartão Corporativo e gerar parcelas em Contas a Pagar
           const targetCard = companyCards.find(c => c.id === selectedCardId);
           if (targetCard) {
-            const newLimit = Math.max(0, targetCard.availableLimit - purchaseGrandTotal);
+            const newLimit = Math.max(0, targetCard.availableLimit - totalCost);
             await updateDoc("company_credit_cards", targetCard.id, {
               availableLimit: newLimit
             });
@@ -839,12 +761,12 @@ export default function FinancePage() {
           if (targetBankId) {
             const acc = bankAccounts.find(a => a.id === targetBankId);
             if (acc) {
-              await updateDoc("bank_accounts", targetBankId, { balance: acc.balance - purchaseGrandTotal });
+              await updateDoc("bank_accounts", targetBankId, { balance: acc.balance - totalCost });
             }
             await createDoc("financial_transactions", {
               type: "expense" as const,
               category: "stock_purchase" as const,
-              amount: purchaseGrandTotal,
+              amount: totalCost,
               description: `Compra de Estoque Ref #${newPurchase.id}`,
               paymentDate: new Date().toISOString().split("T")[0],
               status: "paid" as const,
@@ -1728,9 +1650,7 @@ export default function FinancePage() {
                     <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
                       <th className="p-4">Fornecedor</th>
                       <th className="p-4">Itens</th>
-                      <th className="p-4">Valor Produtos</th>
-                      <th className="p-4">Custos Adicionais</th>
-                      <th className="p-4">Custo Total</th>
+                      <th className="p-4">Total</th>
                       <th className="p-4">Método</th>
                       <th className="p-4">Data Entrada</th>
                     </tr>
@@ -1738,31 +1658,18 @@ export default function FinancePage() {
                   <tbody className="divide-y divide-border/60">
                     {paginatedPurchases.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhuma compra de estoque registrada.</td>
+                        <td colSpan={5} className="p-8 text-center text-muted-foreground">Nenhuma compra de estoque registrada.</td>
                       </tr>
                     ) : (
                       paginatedPurchases.map((pc) => {
                         const suppName = suppliers.find(s => s.id === pc.supplierId)?.name || "Fornecedor Geral";
-                        const addCosts = pc.additionalCostsTotal || 0;
-                        const itemsVal = pc.grandTotal ? (pc.grandTotal - addCosts) : (pc.total - addCosts);
-                        const grandTot = pc.grandTotal || pc.total;
                         return (
                           <tr key={pc.id} className="hover:bg-muted/10 transition-colors">
                             <td className="p-4 font-semibold text-foreground">{suppName}</td>
                             <td className="p-4">
                               <span className="font-mono">{pc.items?.length || 0} produto(s)</span>
                             </td>
-                            <td className="p-4 font-mono font-medium text-foreground">{formatCurrency(itemsVal)}</td>
-                            <td className="p-4 font-mono">
-                              {addCosts > 0 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-[10px]">
-                                  + {formatCurrency(addCosts)}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">R$ 0,00</span>
-                              )}
-                            </td>
-                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(grandTot)}</td>
+                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(pc.total)}</td>
                             <td className="p-4 uppercase text-[10px] text-muted-foreground">{pc.paymentMethod === "company_credit_card" ? "Cartão Corporativo" : pc.paymentMethod}</td>
                             <td className="p-4 font-mono text-muted-foreground">{pc.receivedAt ? formatDate(pc.receivedAt) : "-"}</td>
                           </tr>
@@ -2250,63 +2157,6 @@ export default function FinancePage() {
                       </div>
                     </div>
 
-                    {/* Card: Custos da Compra */}
-                    <div className="p-3.5 rounded-xl border border-border bg-card/60 space-y-3">
-                      <div className="flex items-center justify-between border-b border-border/60 pb-2">
-                        <span className="font-bold text-foreground text-xs flex items-center gap-1.5">
-                          <Receipt className="h-3.5 w-3.5 text-primary" />
-                          Custos da Compra
-                        </span>
-                        <span className="text-[10px] font-mono text-muted-foreground font-semibold">
-                          Adicionais: {formatCurrency(purchaseAdditionalCosts)}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Valor do Frete (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pFreight || ""} onChange={(e) => setPFreight(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Seguro (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pInsurance || ""} onChange={(e) => setPInsurance(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Impostos da Compra (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pTaxes || ""} onChange={(e) => setPTaxes(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Taxas (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pFees || ""} onChange={(e) => setPFees(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Despesas Aduaneiras (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pCustoms || ""} onChange={(e) => setPCustoms(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Embalagens (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pPackaging || ""} onChange={(e) => setPPackaging(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase">Outras Despesas (R$)</label>
-                          <input type="number" step="0.01" min={0} value={pOtherCosts || ""} onChange={(e) => setPOtherCosts(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-background font-mono" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1 pt-1 border-t border-border/40">
-                        <label className="text-[9px] font-bold text-muted-foreground uppercase">Forma de Rateio dos Custos</label>
-                        <select
-                          value={pAllocationMethod}
-                          onChange={(e) => setPAllocationMethod(e.target.value as any)}
-                          className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-foreground text-xs"
-                        >
-                          <option value="by_value">Ratear proporcionalmente pelo VALOR dos produtos</option>
-                          <option value="by_quantity">Ratear proporcionalmente pela QUANTIDADE de produtos</option>
-                          <option value="manual">Informar manualmente / Sem rateio adicional</option>
-                        </select>
-                      </div>
-                    </div>
-
                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
                       <div className="col-span-2 space-y-1">
                         <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Método de Pagamento</label>
@@ -2318,7 +2168,7 @@ export default function FinancePage() {
                             if (val === "bank_slip" || val === "credit_card" || val === "company_credit_card") {
                               setPurchaseInstallmentsCount(1);
                               const cardObj = companyCards.find(c => c.id === selectedCardId);
-                              generateDefaultPurchaseInstallments(1, purchaseGrandTotal, cardObj?.dueDay);
+                              generateDefaultPurchaseInstallments(1, purchaseTotalCost, cardObj?.dueDay);
                             }
                           }}
                           className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
@@ -2360,51 +2210,23 @@ export default function FinancePage() {
                                 const cardObj = companyCards.find(c => c.id === selectedCardId);
                                 if (val === "custom") {
                                   setPurchaseInstallmentsCount(2);
-                                  generateDefaultPurchaseInstallments(2, purchaseGrandTotal, cardObj?.dueDay);
+                                  generateDefaultPurchaseInstallments(2, purchaseTotalCost, cardObj?.dueDay);
                                 } else {
                                   const count = parseInt(val) || 1;
                                   setPurchaseInstallmentsCount(count);
-                                  generateDefaultPurchaseInstallments(count, purchaseGrandTotal, cardObj?.dueDay);
+                                  generateDefaultPurchaseInstallments(count, purchaseTotalCost, cardObj?.dueDay);
                                 }
                               }}
                               className="w-full p-2 rounded-lg border border-border bg-card text-xs font-semibold"
                             >
-                              <option value={1}>1x À Vista ({formatCurrency(purchaseGrandTotal)})</option>
+                              <option value={1}>1x À Vista ({formatCurrency(purchaseTotalCost)})</option>
                               {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24].map(n => (
-                                <option key={n} value={n}>{n}x de {formatCurrency(purchaseGrandTotal / n)}</option>
+                                <option key={n} value={n}>{n}x de {formatCurrency(purchaseTotalCost / n)}</option>
                               ))}
                             </select>
                           </div>
                         </div>
                       )}
-                    </div>
-
-                    {/* Resumo Financeiro da Compra */}
-                    <div className="p-3.5 rounded-xl border border-border bg-primary/5 space-y-2 text-xs">
-                      <div className="font-bold text-foreground flex items-center justify-between border-b border-border/50 pb-1.5">
-                        <span>Resumo Financeiro da Entrada</span>
-                        <span className="font-mono text-primary font-extrabold">{formatCurrency(purchaseGrandTotal)}</span>
-                      </div>
-                      <div className="space-y-1 text-[11px]">
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Valor dos Produtos:</span>
-                          <span className="font-mono font-medium text-foreground">{formatCurrency(purchaseTotalCost)}</span>
-                        </div>
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Custos Adicionais:</span>
-                          <span className="font-mono font-medium text-foreground">{formatCurrency(purchaseAdditionalCosts)}</span>
-                        </div>
-                        <div className="flex justify-between text-muted-foreground font-semibold pt-1 border-t border-border/30">
-                          <span>Custo Total da Compra:</span>
-                          <span className="font-mono font-bold text-foreground">{formatCurrency(purchaseGrandTotal)}</span>
-                        </div>
-                        {purchaseTotalQty > 0 && (
-                          <div className="flex justify-between text-[10px] text-muted-foreground/80 italic">
-                            <span>Custo Médio por Unidade ({purchaseTotalQty} un):</span>
-                            <span className="font-mono">{formatCurrency(purchaseGrandTotal / purchaseTotalQty)}</span>
-                          </div>
-                        )}
-                      </div>
                     </div>
                   </>
                 )}

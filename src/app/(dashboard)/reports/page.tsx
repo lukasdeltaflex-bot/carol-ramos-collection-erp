@@ -280,9 +280,9 @@ export default function ReportsPage() {
         csvContent += `"${c.name}";"${c.email || ""}";"${c.phone}";"${c.metrics?.totalOrders || 0}";"${c.metrics?.totalSpent || 0}";"${vip.label}"\n`;
       });
     } else if (selectedReportId.startsWith("supp")) {
-      csvContent += `Razao Social;CNPJ;Email;Telefone;Cidade;CarroChefe_Especialidade\n`;
+      csvContent += `Razao Social;CNPJ;Email;Telefone;Cidade\n`;
       suppliers.forEach(s => {
-        csvContent += `"${s.name}";"${s.cnpj || ""}";"${s.email || ""}";"${s.phone || ""}";"${s.address?.city || ""}";"${s.specialty || s.category || ""}"\n`;
+        csvContent += `"${s.name}";"${s.cnpj || ""}";"${s.email || ""}";"${s.phone || ""}";"${s.address?.city || ""}"\n`;
       });
     } else {
       csvContent += `SKU;Nome;Categoria;Estoque;Preco Venda\n`;

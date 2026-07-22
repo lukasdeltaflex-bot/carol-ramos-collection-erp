@@ -5,14 +5,11 @@ import {
   User as FirebaseUser, 
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  updateProfile,
   signOut,
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, onSnapshot, updateDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { safeLocalStorageSetItem } from "@/lib/imageUpload";
 
@@ -43,8 +40,6 @@ interface AuthContextType {
   role: 'owner' | 'admin' | 'operator' | 'viewer' | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  registerWithEmail: (email: string, password: string, displayName?: string) => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
@@ -111,6 +106,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : null;
 
   useEffect(() => {
+    // 1. Verificar se há sessão mock salva no localStorage
+    const savedMockSession = localStorage.getItem("mock_auth_session");
+    if (savedMockSession) {
+      try {
+        const parsed = JSON.parse(savedMockSession);
+        setUser({ uid: parsed.uid, email: parsed.email, displayName: parsed.displayName });
+        setProfile(parsed.profile);
+        setIsMock(true);
+        setLoading(false);
+        return;
+      } catch (e) {
+        console.error("Erro ao carregar sessão mock:", e);
+      }
+    }
+
     if (isFirebasePlaceholder) {
       setUser(null);
       setProfile(null);
@@ -119,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Fluxo Real do Firebase Auth
+    // 2. Fluxo Real do Firebase Auth
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       if (!firebaseUser) {
@@ -135,144 +145,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user || isMock) return;
 
-    const isDev = process.env.NODE_ENV === "development";
-    if (isDev) console.log("[Auth Step 5] Sincronizando perfil do usuário no Firestore (uid:", user.uid, ")...");
-
-    // Timeout de segurança determinístico para garantir encerramento do loading
+    // Timeout de segurança para evitar loading infinito se a conexão com o Firestore travar
     const safetyTimeout = setTimeout(() => {
-      if (isDev) console.warn("[Auth Step 6] Timeout do Firestore atingido. Finalizando carregamento com dados da conta...");
-      const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
-      const userProfileObj: UserProfile = {
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || "Usuário Google",
-        activeTenantId: defaultTenantId,
-        tenants: {
-          [defaultTenantId]: {
-            role: "owner" as const,
-            joinedAt: new Date().toISOString()
-          }
-        },
-        createdAt: new Date().toISOString()
-      };
-      setProfile((prev) => prev || userProfileObj);
+      console.warn("Tempo limite de carregamento do perfil atingido. Ativando modo de simulação (Mock)...");
+      setIsMock(true);
+      const fallbackProf = getPersistedUserProfile();
+      setProfile(fallbackProf);
       setLoading(false);
-    }, 4000);
+    }, 6000);
 
     const userDocRef = doc(db, "users", user.uid);
     const unsubscribeProfile = onSnapshot(
       userDocRef,
       async (docSnap) => {
         clearTimeout(safetyTimeout);
-
-        // PASSO 1: Procurar users/{UID}. Se existir, utilizar esse perfil e garantir vínculo com a empresa principal.
         if (docSnap.exists()) {
-          let data = docSnap.data() as UserProfile;
-          if (!data.activeTenantId || data.activeTenantId !== "carol-ramos-collection") {
-            data = {
-              ...data,
-              activeTenantId: "carol-ramos-collection",
+          const data = docSnap.data() as UserProfile;
+          setProfile(data);
+          setLoading(false);
+        } else {
+          // Novo usuário - Cria perfil e empresa default no Firestore
+          try {
+            const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
+            const defaultProfileObj = {
+              uid: user.uid,
+              email: user.email || "",
+              displayName: user.displayName || "Usuário",
+              activeTenantId: defaultTenantId,
               tenants: {
-                ...(data.tenants || {}),
-                "carol-ramos-collection": {
+                [defaultTenantId]: {
                   role: "owner" as const,
                   joinedAt: new Date().toISOString()
                 }
-              }
+              },
+              createdAt: new Date().toISOString()
             };
-            try {
-              await setDoc(userDocRef, data, { merge: true });
-            } catch (e) {
-              console.error("[Auth] Erro ao atualizar vínculo da empresa no perfil:", e);
-            }
+            
+            // Cria a empresa padrão
+            const compDocRef = doc(db, "companies", defaultTenantId);
+            await setDoc(compDocRef, {
+              id: defaultTenantId,
+              name: `${user.displayName || "Minha"} Empresa`,
+              tradeName: `${user.displayName || "Minha"} Empresa`,
+              cnpj: "00.000.000/0000-00",
+              status: "active",
+              createdAt: new Date().toISOString()
+            });
+
+            // Cria o perfil de usuário
+            await setDoc(userDocRef, defaultProfileObj);
+          } catch (err) {
+            console.error("Erro ao inicializar perfil de usuário no Firestore. Ativando modo de simulação (Mock)...", err);
+            setIsMock(true);
+            const fallbackProf = getPersistedUserProfile();
+            setProfile(fallbackProf);
+            setLoading(false);
           }
-          if (isDev) console.log("[Auth PASSO 1] Perfil retornado por UID para:", data.email, "Tenant:", data.activeTenantId);
-          setProfile(data);
-          setLoading(false);
-          return;
-        }
-
-        // PASSO 2: Se não existir users/{UID}, pesquisar no Firestore por e-mail.
-        try {
-          if (user.email) {
-            const usersQuery = query(collection(db, "users"), where("email", "==", user.email));
-            const querySnap = await getDocs(usersQuery);
-
-            if (querySnap.size === 1) {
-              // PASSO 2: Encontrado exatamente UM perfil.
-              const existingData = querySnap.docs[0].data() as UserProfile;
-              const reusedTenantId = existingData.activeTenantId || Object.keys(existingData.tenants || {})[0] || "carol-ramos-collection";
-
-              const linkedProfileObj: UserProfile = {
-                ...existingData,
-                uid: user.uid,
-                email: user.email,
-                displayName: user.displayName || existingData.displayName || "Usuário",
-                activeTenantId: reusedTenantId,
-                tenants: existingData.tenants || {
-                  [reusedTenantId]: {
-                    role: "owner" as const,
-                    joinedAt: new Date().toISOString()
-                  }
-                }
-              };
-
-              // Reutiliza activeTenantId e salva apenas o vinculo no documento users/{user.uid}
-              // NÃO cria nova empresa. NÃO cria novo tenant.
-              setProfile(linkedProfileObj);
-              setLoading(false);
-              await setDoc(userDocRef, linkedProfileObj);
-              if (isDev) console.log("[Auth PASSO 2] Vínculo reutilizado com sucesso para o tenant:", reusedTenantId);
-              return;
-            } else if (querySnap.size > 1) {
-              // PASSO 3: Encontrado MAIS DE UM perfil com o mesmo e-mail.
-              console.error(`[Auth PASSO 3] ERRO CRÍTICO: Encontrados ${querySnap.size} perfis para o mesmo e-mail (${user.email}). Interrompendo vínculo automático.`);
-              const firstProfile = querySnap.docs[0].data() as UserProfile;
-              setProfile(firstProfile);
-              setLoading(false);
-              return;
-            }
-          }
-
-          // PASSO 4: Somente se não existir nenhum perfil por UID e nenhum por e-mail.
-          const defaultTenantId = `tenant-${user.uid.substring(0, 8)}`;
-          const defaultProfileObj: UserProfile = {
-            uid: user.uid,
-            email: user.email || "",
-            displayName: user.displayName || "Usuário",
-            activeTenantId: defaultTenantId,
-            tenants: {
-              [defaultTenantId]: {
-                role: "owner" as const,
-                joinedAt: new Date().toISOString()
-              }
-            },
-            createdAt: new Date().toISOString()
-          };
-
-          setProfile(defaultProfileObj);
-          setLoading(false);
-
-          if (isDev) console.log("[Auth PASSO 4] Conta inédita. Criando novo tenant e empresa no Firestore...");
-          const compDocRef = doc(db, "companies", defaultTenantId);
-          await setDoc(compDocRef, {
-            id: defaultTenantId,
-            name: `${user.displayName || "Minha"} Empresa`,
-            tradeName: `${user.displayName || "Minha"} Empresa`,
-            cnpj: "00.000.000/0000-00",
-            status: "active",
-            createdAt: new Date().toISOString()
-          });
-
-          await setDoc(userDocRef, defaultProfileObj);
-        } catch (err) {
-          console.error("[Auth] Erro na resolução de perfil/tenant:", err);
-          setLoading(false);
         }
       },
       (error) => {
         clearTimeout(safetyTimeout);
-        console.error("[Auth] Erro no listener do Firestore:", error);
+        console.error("Erro ao sincronizar dados do usuário no Firestore. Ativando modo de simulação (Mock)...", error);
+        setIsMock(true);
+        const fallbackProf = getPersistedUserProfile();
+        setProfile(fallbackProf);
         setLoading(false);
       }
     );
@@ -336,23 +272,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [tenantId, isMock]);
 
-  const registerWithEmail = useCallback(async (email: string, password: string, displayName?: string) => {
-    if (isFirebasePlaceholder) {
-      throw new Error("Configuração do Firebase pendente. Adicione as chaves de API para cadastrar contas.");
-    }
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    if (displayName && cred.user) {
-      await updateProfile(cred.user, { displayName });
-    }
-  }, [isFirebasePlaceholder]);
-
-  const resetPassword = useCallback(async (email: string) => {
-    if (isFirebasePlaceholder) {
-      throw new Error("Configuração do Firebase pendente. Adicione as chaves de API para envio de e-mail de recuperação.");
-    }
-    await sendPasswordResetEmail(auth, email);
-  }, [isFirebasePlaceholder]);
-
   const login = useCallback(async (email: string, password: string) => {
     if (isMock || isFirebasePlaceholder || email === "admin@carolramos.com.br") {
       // Simulação de login
@@ -383,45 +302,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isMock, isFirebasePlaceholder]);
 
   const loginWithGoogle = useCallback(async () => {
-    const isDev = process.env.NODE_ENV === "development";
-    if (isDev) console.log("[Auth Step 1] Iniciando loginWithGoogle...");
+    if (isMock || isFirebasePlaceholder) {
+      const currentProfile = getPersistedUserProfile();
+      const mockUser = {
+        uid: currentProfile.uid,
+        email: currentProfile.email,
+        displayName: currentProfile.displayName,
+      };
+      const session = {
+        ...mockUser,
+        profile: currentProfile
+      };
+      safeLocalStorageSetItem("mock_auth_session", JSON.stringify(session));
+      setUser(mockUser);
+      setProfile(currentProfile);
+      setIsMock(true);
+      setLoading(false);
+      return;
+    }
 
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      prompt: "select_account"
-    });
-
-    try {
-      if (isDev) console.log("[Auth Step 2] Disparando signInWithPopup...");
-      const credential = await signInWithPopup(auth, provider);
-      if (isDev) console.log("[Auth Step 3] Popup Google concluído! Usuário:", credential.user?.email);
-    } catch (err: any) {
-      console.error("[Auth ERROR] Erro no signInWithPopup do Google:", err);
-      if (isFirebasePlaceholder) {
-        if (isDev) console.warn("[Auth Fallback] Modo de desenvolvimento sem chaves de API. Carregando perfil mock...");
-        const currentProfile = getPersistedUserProfile();
-        const mockUser = {
-          uid: currentProfile.uid,
-          email: currentProfile.email,
-          displayName: currentProfile.displayName,
-        };
-
-        const session = {
-          ...mockUser,
-          profile: currentProfile
-        };
-
-        safeLocalStorageSetItem("mock_auth_session", JSON.stringify(session));
-        setUser(mockUser);
-        setProfile(currentProfile);
-        setIsMock(true);
-        setLoading(false);
-        return;
-      }
-      setLoading(false);
-      throw err;
-    }
-  }, [isFirebasePlaceholder]);
+    await signInWithPopup(auth, provider);
+  }, [isMock, isFirebasePlaceholder]);
 
   const logout = useCallback(async () => {
     if (isMock) {
@@ -545,7 +447,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, registerWithEmail, resetPassword, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
       {children}
     </AuthContext.Provider>
   );

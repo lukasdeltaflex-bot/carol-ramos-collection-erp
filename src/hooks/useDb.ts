@@ -56,7 +56,7 @@ export function useDb() {
         updatedAt: now,
         createdBy: userId,
         updatedBy: userId,
-        tenantId: tenantId || "shared",
+        tenantId: tenantId || "carol-ramos-collection",
       };
     } else {
       return {
@@ -65,7 +65,7 @@ export function useDb() {
         updatedAt: now,
         createdBy: previousData?.createdBy || userId,
         updatedBy: userId,
-        tenantId: tenantId || "shared",
+        tenantId: tenantId || "carol-ramos-collection",
       };
     }
   };
@@ -149,8 +149,8 @@ export function useDb() {
     const colRef = collection(db, collectionName);
     const docRef = await withTimeout(
       addDoc(colRef, finalData),
-      5000,
-      `Erro ao criar registro em ${collectionName} (Sem resposta do servidor)`
+      10000,
+      `Erro ao criar registro em ${collectionName} no Cloud Firestore (projeto 'carol-ramos-collection-erp')`
     );
     
     await logAudit("create", collectionName, docRef.id, null, finalData);
@@ -448,8 +448,7 @@ export function useDb() {
           if (!Array.isArray(list)) return [];
           
           return list.filter((item: any) => {
-            if (!item) return false;
-            if (item.tenantId && targetTenant && item.tenantId !== targetTenant) return false;
+            if (!item || item.tenantId !== targetTenant) return false;
             if (!includeDeleted && item.deleted === true) return false;
             return true;
           });

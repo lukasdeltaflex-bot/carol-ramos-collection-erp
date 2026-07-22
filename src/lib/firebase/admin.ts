@@ -3,22 +3,22 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "carol-ramos-collection-erp";
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
 // Inicialização segura do Firebase Admin SDK com suporte a HMR
 const adminApp = getApps().length === 0
-  ? (projectId && clientEmail && privateKey
+  ? (clientEmail && privateKey && !privateKey.includes("YOUR-PRIVATE-KEY")
       ? initializeApp({
           credential: cert({
-            projectId,
+            projectId: "carol-ramos-collection-erp",
             clientEmail,
             privateKey: privateKey.replace(/\\n/g, "\n"),
           }),
         })
       : initializeApp({
-          projectId: projectId || "dummy-project-id",
+          projectId: "carol-ramos-collection-erp",
         }))
   : getApp();
 

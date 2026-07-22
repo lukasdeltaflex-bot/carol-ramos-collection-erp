@@ -303,15 +303,87 @@ export default function ProductsPage() {
       locs = (locs as StockLocation[]) || [];
       supps = (supps as any[]) || [];
       prods = (prods as Product[]) || [];
+      setKits((fetchedKits as ProductKit[]) || []);
 
+      // Pre-seed se o mock ou banco estiver zerado (Apenas na primeira vez)
+      const isCatsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_categories_v2") === "true";
+      const isProdsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_products_v2") === "true";
+
+      let needsRefetch = false;
+      if (cats.length === 0 && !isCatsSeeded) {
+        await Promise.all(INITIAL_CATEGORIES.map(c => createDoc("categories", c)));
+        if (typeof window !== "undefined") localStorage.setItem("seeded_categories_v2", "true");
+        needsRefetch = true;
+      }
+      if (brs.length === 0) {
+        await Promise.all(INITIAL_BRANDS.map(b => createDoc("brands", b)));
+        needsRefetch = true;
+      }
+      if (locs.length === 0) {
+        await Promise.all(INITIAL_LOCATIONS.map(l => createDoc("stock_locations", l)));
+        needsRefetch = true;
+      }
+
+      if (needsRefetch) {
+        const [freshCats, freshBrs, freshLocs] = await Promise.all([
+          getDocs("categories"),
+          getDocs("brands"),
+          getDocs("stock_locations")
+        ]);
+        cats = (freshCats as Category[]) || [];
+        brs = (freshBrs as Brand[]) || [];
+        locs = (freshLocs as StockLocation[]) || [];
+      }
+
+      const catIds = (cats as any[]).filter(Boolean).map((c: any) => c.id || "");
+      const brandIds = (brs as any[]).filter(Boolean).map((b: any) => b.id || "");
+      const suppIds = (supps as any[]).filter(Boolean).map((s: any) => s.id || "");
+
+      if (prods.length === 0 && !isProdsSeeded) {
+        await Promise.all(INITIAL_PRODUCTS(catIds, brandIds, suppIds).map(p => createDoc("products", p)));
+        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
+        prods = (await getDocs("products") as Product[]) || [];
+      }
+
+      // 1. Deduplicação em product_kits (Purga documentos duplicados com mesmo SKU ou ID)
       const rawKits = (fetchedKits as ProductKit[]) || [];
       const uniqueKits: ProductKit[] = [];
-      const seenKitIds = new Set<string>();
+      const seenKitKeys = new Set<string>();
+
       for (const k of rawKits) {
-        if (!k || !k.id || seenKitIds.has(k.id)) continue;
-        seenKitIds.add(k.id);
-        uniqueKits.push(k);
+        if (!k || !k.id) continue;
+        const key = k.sku ? `sku:${k.sku}` : `id:${k.id}`;
+        if (seenKitKeys.has(key)) {
+          deleteDoc("product_kits", k.id).catch(() => {});
+        } else {
+          seenKitKeys.add(key);
+          seenKitKeys.add(`id:${k.id}`);
+          uniqueKits.push(k);
+        }
       }
+
+      // 2. Deduplicação em products (Purga documentos de produtos e espelhos de kits duplicados)
+      const uniqueProducts: Product[] = [];
+      const seenProductKeys = new Set<string>();
+
+      for (const p of prods) {
+        if (!p || !p.id) continue;
+        const key = p.isKit && p.kitId 
+          ? `kit:${p.kitId}` 
+          : p.sku ? `sku:${p.sku}` : `id:${p.id}`;
+
+        if (seenProductKeys.has(key)) {
+          if (p.isKit) {
+            deleteDoc("products", p.id).catch(() => {});
+          }
+        } else {
+          seenProductKeys.add(key);
+          seenProductKeys.add(`id:${p.id}`);
+          uniqueProducts.push(p);
+        }
+      }
+
+      prods = uniqueProducts;
 
       setCategories(cats);
       setBrandList(brs);
@@ -665,7 +737,7 @@ export default function ProductsPage() {
       if (savedProdId) {
         const affectedKits = kits.filter(k => k.items?.some(item => item.productId === savedProdId));
         for (const kit of affectedKits) {
-          const newKitCost = (kit.items || []).reduce((sum, item) => {
+          const newKitCost = kit.items.reduce((sum, item) => {
             const p = item.productId === savedProdId 
               ? { ...payload, id: savedProdId } 
               : products.find(prod => prod.id === item.productId);
@@ -1017,21 +1089,21 @@ export default function ProductsPage() {
     });
 
     if (kitSortOption === "name_asc") {
-      return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      return list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     }
     if (kitSortOption === "name_desc") {
-      return [...list].sort((a, b) => (b.name || "").localeCompare(a.name || ""));
+      return list.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
     }
     if (kitSortOption === "created_at") {
-      return [...list].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     }
     if (kitSortOption === "updated_at") {
-      return [...list].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+      return list.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
     }
 
     // Ordenação Manual por Drag and Drop
     if (customKitOrder.length > 0) {
-      return [...list].sort((a, b) => {
+      return list.sort((a, b) => {
         const idxA = customKitOrder.indexOf(a.id);
         const idxB = customKitOrder.indexOf(b.id);
         if (idxA === -1 && idxB === -1) return 0;
@@ -1698,7 +1770,7 @@ export default function ProductsPage() {
                           <div className="border-t border-border/40 pt-3 space-y-2">
                             <div className="text-[11px] font-semibold text-foreground">Composição do Kit:</div>
                             <div className="space-y-1">
-                              {(kit.items || []).map((item, idx) => {
+                              {kit.items.map((item, idx) => {
                                 const prod = products.find(p => p.id === item.productId);
                                 return (
                                   <div key={idx} className="flex items-center justify-between text-xs text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg">

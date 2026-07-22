@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Verifica se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Regras de Produção para o ERP Carol Ramos Collection
+    match /categories/{document=**} {
+      allow read, create, update, delete: if true;
+    }
+    
+    match /products/{document=**} {
+      allow read, create, update, delete: if true;
+    }
+    
+    match /product_kits/{document=**} {
+      allow read, create, update, delete: if true;
+    }
+    
+    match /suppliers/{document=**} {
+      allow read, create, update, delete: if true;
+    }
+    
+    match /companies/{document=**} {
+      allow read, create, update, delete: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /audit_logs/{document=**} {
+      allow read, create: if true;
+    }
+
+    match /recycle_bin/{document=**} {
+      allow read, create, update, delete: if true;
+    }
+  }
+}
