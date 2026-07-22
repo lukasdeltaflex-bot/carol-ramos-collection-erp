@@ -89,6 +89,9 @@ export interface ProductKit extends BaseDocument {
   image?: string;
   items: ProductKitItem[];
   price: number;
+  costPrice?: number;
+  totalAcquisitionCost?: number;
+  profitMargin?: number;
   displayOrder?: number;
   status: 'active' | 'inactive';
 }

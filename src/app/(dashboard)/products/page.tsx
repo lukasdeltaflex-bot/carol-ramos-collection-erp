@@ -329,6 +329,45 @@ export default function ProductsPage() {
       setLocations(locs);
       setSuppliers(supps);
       setProducts(prods);
+
+      // Auditoria & Sincronização Automática dos Custos dos Kits existentes
+      const rawKits = (fetchedKits as ProductKit[]) || [];
+      const auditedKits = [...rawKits];
+      for (let i = 0; i < auditedKits.length; i++) {
+        const kit = auditedKits[i];
+        const realCalculatedCost = (kit.items || []).reduce((sum, item) => {
+          const prod = prods.find(p => p.id === item.productId);
+          if (!prod) return sum;
+          const prodCost = (prod.totalAcquisitionCost && prod.totalAcquisitionCost > 0) ? prod.totalAcquisitionCost : (prod.costPrice || 0);
+          return sum + (prodCost * (item.quantity || 1));
+        }, 0);
+
+        const realMargin = kit.price > 0 ? parseFloat((((kit.price - realCalculatedCost) / kit.price) * 100).toFixed(1)) : 0;
+
+        if (Math.abs((kit.costPrice || 0) - realCalculatedCost) > 0.01 || Math.abs((kit.profitMargin || 0) - realMargin) > 0.1) {
+          auditedKits[i] = {
+            ...kit,
+            costPrice: realCalculatedCost,
+            totalAcquisitionCost: realCalculatedCost,
+            profitMargin: realMargin
+          };
+          updateDoc("product_kits", kit.id, {
+            costPrice: realCalculatedCost,
+            totalAcquisitionCost: realCalculatedCost,
+            profitMargin: realMargin
+          }).catch(err => console.error("Erro ao sincronizar custo do kit:", err));
+
+          const mirrorProd = prods.find(p => p.isKit && p.kitId === kit.id);
+          if (mirrorProd) {
+            updateDoc("products", mirrorProd.id, {
+              costPrice: realCalculatedCost,
+              totalAcquisitionCost: realCalculatedCost,
+              profitMargin: realMargin
+            }).catch(err => console.error("Erro ao sincronizar espelho do kit:", err));
+          }
+        }
+      }
+      setKits(auditedKits);
     } catch (e) {
       console.error("Erro ao sincronizar tabelas de produtos:", e);
       setCategories([]);
@@ -626,12 +665,47 @@ export default function ProductsPage() {
 
     try {
       if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
+      let savedProdId = editingId;
       if (editingId) {
         await updateDoc("products", editingId, payload);
       } else {
-        await createDoc("products", payload);
+        const newDoc = await createDoc("products", payload);
+        savedProdId = newDoc.id;
       }
+
+      // Auto-recalcular custos de todos os Kits que contêm este produto
+      if (savedProdId) {
+        const affectedKits = kits.filter(k => k.items?.some(item => item.productId === savedProdId));
+        for (const kit of affectedKits) {
+          const newKitCost = kit.items.reduce((sum, item) => {
+            const p = item.productId === savedProdId 
+              ? { ...payload, id: savedProdId } 
+              : products.find(prod => prod.id === item.productId);
+            const pCost = (p?.totalAcquisitionCost && p.totalAcquisitionCost > 0) ? p.totalAcquisitionCost : (p?.costPrice || 0);
+            return sum + (pCost * (item.quantity || 1));
+          }, 0);
+
+          const newKitMargin = kit.price > 0 ? parseFloat((((kit.price - newKitCost) / kit.price) * 100).toFixed(1)) : 0;
+
+          await updateDoc("product_kits", kit.id, {
+            costPrice: newKitCost,
+            totalAcquisitionCost: newKitCost,
+            profitMargin: newKitMargin
+          });
+
+          const prodKitMirror = products.find(p => p.isKit && p.kitId === kit.id);
+          if (prodKitMirror) {
+            await updateDoc("products", prodKitMirror.id, {
+              costPrice: newKitCost,
+              totalAcquisitionCost: newKitCost,
+              profitMargin: newKitMargin
+            });
+          }
+        }
+      }
+
       invalidateCache("products");
+      invalidateCache("product_kits");
       setDrawerOpen(false);
       await loadAllData();
     } catch (err: any) {
@@ -754,12 +828,24 @@ export default function ProductsPage() {
       return;
     }
 
+    const calculatedKitCost = kitItems.reduce((sum, item) => {
+      const prod = products.find(p => p.id === item.productId);
+      if (!prod) return sum;
+      const prodCost = (prod.totalAcquisitionCost && prod.totalAcquisitionCost > 0) ? prod.totalAcquisitionCost : (prod.costPrice || 0);
+      return sum + (prodCost * (item.quantity || 1));
+    }, 0);
+
+    const calculatedMargin = kitPrice > 0 ? parseFloat((((kitPrice - calculatedKitCost) / kitPrice) * 100).toFixed(1)) : 0;
+
     try {
       const kitPayload = {
         name: kitName,
         sku: kitSku,
         description: kitDescription,
         price: kitPrice,
+        costPrice: calculatedKitCost,
+        totalAcquisitionCost: calculatedKitCost,
+        profitMargin: calculatedMargin,
         image: kitImage,
         items: kitItems,
         status: "active" as const
@@ -780,9 +866,10 @@ export default function ProductsPage() {
         description: kitDescription,
         categoryId: categories[0]?.id || "kits",
         brandId: brands[0]?.id || "kits",
-        costPrice: kitPrice * 0.5,
+        costPrice: calculatedKitCost,
+        totalAcquisitionCost: calculatedKitCost,
         sellPrice: kitPrice,
-        profitMargin: 50,
+        profitMargin: calculatedMargin,
         currentStock: 999, // Estoque virtual gerenciado dinamicamente pelos componentes
         availableStock: 999,
         reservedStock: 0,
@@ -1042,6 +1129,15 @@ export default function ProductsPage() {
       return acc;
     }, {} as Record<string, string>);
   }, [brands]);
+
+  const liveKitCost = React.useMemo(() => {
+    return kitItems.reduce((sum, item) => {
+      const prod = products.find(p => p.id === item.productId);
+      if (!prod) return sum;
+      const prodCost = (prod.totalAcquisitionCost && prod.totalAcquisitionCost > 0) ? prod.totalAcquisitionCost : (prod.costPrice || 0);
+      return sum + (prodCost * (item.quantity || 1));
+    }, 0);
+  }, [kitItems, products]);
 
   return (
     <div className="space-y-6">
@@ -2473,19 +2569,63 @@ export default function ProductsPage() {
                 )}
               </div>
 
-              {/* Preço do Kit */}
-              <div className="border-t border-border/40 pt-4">
-                <div className="space-y-1.5 max-w-xs">
-                  <label className="text-xs font-bold text-foreground">Preço Total do Kit (R$) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={kitPrice}
-                    onChange={(e) => setKitPrice(parseFloat(e.target.value) || 0)}
-                    placeholder="0.00"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-card text-sm font-mono font-bold text-primary focus:ring-2 focus:ring-primary/40 focus:outline-none"
-                  />
+              {/* Precificação e Custo do Kit */}
+              <div className="p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 block">
+                      Custo Total Real dos Componentes
+                    </span>
+                    <span className="text-lg font-extrabold font-mono text-foreground">
+                      {formatCurrency(liveKitCost)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const freshCost = kitItems.reduce((sum, item) => {
+                        const prod = products.find(p => p.id === item.productId);
+                        if (!prod) return sum;
+                        const prodCost = (prod.totalAcquisitionCost && prod.totalAcquisitionCost > 0) ? prod.totalAcquisitionCost : (prod.costPrice || 0);
+                        return sum + (prodCost * (item.quantity || 1));
+                      }, 0);
+                      alert(`Custo recalculado com sucesso! Valor total dos componentes: ${formatCurrency(freshCost)}`);
+                    }}
+                    className="px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>Recalcular custo</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Preço Total do Kit (R$) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={kitPrice}
+                      onChange={(e) => setKitPrice(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      className="w-full p-2.5 rounded-xl border border-border bg-card text-xs font-mono font-bold text-primary focus:ring-2 focus:ring-primary/40 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Lucro Estimado (R$)</label>
+                    <div className="p-2.5 rounded-xl border border-border bg-card font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-center h-[38px]">
+                      {formatCurrency(Math.max(0, kitPrice - liveKitCost))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-muted-foreground uppercase">Margem Bruta (%)</label>
+                    <div className="p-2.5 rounded-xl border border-border bg-card font-mono font-bold text-xs text-rosegold-500 flex items-center justify-center h-[38px]">
+                      {kitPrice > 0 ? (((kitPrice - liveKitCost) / kitPrice) * 100).toFixed(1) : 0}%
+                    </div>
+                  </div>
                 </div>
               </div>
 
