@@ -2,42 +2,51 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Verifica se o usuário está autenticado
+    // Helper: Verifica se o usuário está autenticado via Firebase Auth
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Regras de Produção para o ERP Carol Ramos Collection
+    // Regras de Segurança do ERP Carol Ramos Collection (Projeto: carol-ramos-collection-erp)
+    
+    // Categorias de Produtos
     match /categories/{document=**} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAuthenticated();
     }
     
+    // Catálogo de Produtos
     match /products/{document=**} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAuthenticated();
     }
     
+    // Kits de Produtos
     match /product_kits/{document=**} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAuthenticated();
     }
     
+    // Fornecedores
     match /suppliers/{document=**} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAuthenticated();
     }
     
+    // Empresas e Tenants
     match /companies/{document=**} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAuthenticated();
     }
 
+    // Perfis de Usuário (Acesso Restrito ao Próprio Usuário Autenticado)
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Logs de Auditoria do Sistema
     match /audit_logs/{document=**} {
-      allow read, create: if true;
+      allow read, create: if isAuthenticated();
     }
 
+    // Lixeira Inteligente
     match /recycle_bin/{document=**} {
-      allow read, create, update, delete: if true;
+      allow read, create, update, delete: if isAuthenticated();
     }
   }
 }
