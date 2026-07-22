@@ -351,6 +351,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     provider.setCustomParameters({
       prompt: "select_account"
     });
+
+    if (auth.currentUser) {
+      await signOut(auth);
+    }
+
     await signInWithPopup(auth, provider);
   }, []);
 

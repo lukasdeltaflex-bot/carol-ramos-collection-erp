@@ -32,10 +32,10 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    if (user && !loading) {
+    if (user && !loading && !authLoading) {
       router.push("/dashboard");
     }
-  }, [user, loading, router]);
+  }, [user, loading, authLoading, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +98,9 @@ export default function Home() {
       await loginWithGoogle();
       router.push("/dashboard");
     } catch (err: any) {
+      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
+        return;
+      }
       setError(err?.message || "Erro ao realizar login com o Google.");
     } finally {
       setAuthLoading(false);
