@@ -449,10 +449,7 @@ export function useDb() {
           
           return list.filter((item: any) => {
             if (!item) return false;
-            // Validação permissiva de tenant: aceita tenant exato, "shared" ou nulo
-            if (item.tenantId && targetTenant && item.tenantId !== targetTenant && item.tenantId !== "shared" && targetTenant !== "shared") {
-              return false;
-            }
+            if (item.tenantId && targetTenant && item.tenantId !== targetTenant) return false;
             if (!includeDeleted && item.deleted === true) return false;
             return true;
           });

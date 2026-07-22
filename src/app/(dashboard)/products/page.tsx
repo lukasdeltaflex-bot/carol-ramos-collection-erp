@@ -295,7 +295,7 @@ export default function ProductsPage() {
         getDocs("stock_locations"),
         getDocs("suppliers"),
         getDocs("products"),
-        getDocs("product_kits", true) // Inclui recuperáveis para restauração automática de kits
+        getDocs("product_kits")
       ]);
 
       cats = (cats as Category[]) || [];
@@ -304,24 +304,10 @@ export default function ProductsPage() {
       supps = (supps as any[]) || [];
       prods = (prods as Product[]) || [];
 
-      // Restauração Automática de Kits que foram marcados com deleted: true na auditoria anterior
       const rawKits = (fetchedKits as ProductKit[]) || [];
-      const restoredKits: ProductKit[] = [];
-      for (const k of rawKits) {
-        if (!k || !k.id) continue;
-        if ((k as any).deleted) {
-          delete (k as any).deleted;
-          delete (k as any).deletedAt;
-          delete (k as any).deletedBy;
-          updateDoc("product_kits", k.id, { deleted: false, deletedAt: null, deletedBy: null }).catch(() => {});
-        }
-        restoredKits.push(k);
-      }
-
-      // Deduplicação estritamente em memória (NUNCA chamando deleteDoc na leitura)
       const uniqueKits: ProductKit[] = [];
       const seenKitIds = new Set<string>();
-      for (const k of restoredKits) {
+      for (const k of rawKits) {
         if (!k || !k.id || seenKitIds.has(k.id)) continue;
         seenKitIds.add(k.id);
         uniqueKits.push(k);

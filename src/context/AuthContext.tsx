@@ -40,7 +40,7 @@ interface AuthContextType {
   role: 'owner' | 'admin' | 'operator' | 'viewer' | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: (selectedEmail?: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   isMock: boolean;
@@ -301,30 +301,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, email, password);
   }, [isMock, isFirebasePlaceholder]);
 
-  const loginWithGoogle = useCallback(async (selectedEmail?: string) => {
-    // 1. SignOut preventivo no Firebase para desvincular token/cookie da sessão anterior
-    try {
-      if (auth.currentUser) {
-        await signOut(auth);
-      }
-    } catch (e) {
-      console.warn("SignOut preventivo:", e);
-    }
-
+  const loginWithGoogle = useCallback(async () => {
     if (isMock || isFirebasePlaceholder) {
-      const emailToUse = selectedEmail || "admin@carolramos.com.br";
-      const nameToUse = emailToUse.split("@")[0].replace(".", " ").toUpperCase();
-      
-      const currentProfile = {
-        uid: `google-${Math.random().toString(36).substr(2, 8)}`,
-        email: emailToUse,
-        displayName: nameToUse.includes("ADMIN") ? "Carol Ramos" : nameToUse,
-        activeTenantId: "tenant-carol-ramos",
-        tenants: {
-          "tenant-carol-ramos": { role: "admin" as const, companyName: "Carol Ramos Collection ERP", joinedAt: new Date().toISOString() }
-        }
-      };
-
+      const currentProfile = getPersistedUserProfile();
       const mockUser = {
         uid: currentProfile.uid,
         email: currentProfile.email,
