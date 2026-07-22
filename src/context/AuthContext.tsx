@@ -114,7 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Escuta em tempo real da sessão do Firebase Auth
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
-      if (!firebaseUser) {
+      if (firebaseUser) {
+        setIsMock(false);
+      } else {
         setProfile(null);
         setLoading(false);
       }
