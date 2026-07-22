@@ -5,6 +5,8 @@ import {
   User as FirebaseUser, 
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut,
   GoogleAuthProvider,
   signInWithPopup
@@ -40,6 +42,7 @@ interface AuthContextType {
   role: 'owner' | 'admin' | 'operator' | 'viewer' | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, displayName: string, companyName?: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
@@ -106,30 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     : null;
 
   useEffect(() => {
-    // 1. Verificar se há sessão mock salva no localStorage
-    const savedMockSession = localStorage.getItem("mock_auth_session");
-    if (savedMockSession) {
-      try {
-        const parsed = JSON.parse(savedMockSession);
-        setUser({ uid: parsed.uid, email: parsed.email, displayName: parsed.displayName });
-        setProfile(parsed.profile);
-        setIsMock(true);
-        setLoading(false);
-        return;
-      } catch (e) {
-        console.error("Erro ao carregar sessão mock:", e);
-      }
-    }
-
-    if (isFirebasePlaceholder) {
-      setUser(null);
-      setProfile(null);
-      setIsMock(true);
-      setLoading(false);
-      return;
-    }
-
-    // 2. Fluxo Real do Firebase Auth
+    // Escuta em tempo real da sessão do Firebase Auth
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       if (!firebaseUser) {
@@ -273,8 +253,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [tenantId, isMock]);
 
   const login = useCallback(async (email: string, password: string) => {
-    if (isMock || isFirebasePlaceholder || email === "admin@carolramos.com.br") {
-      // Simulação de login
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err: any) {
       if (email === "admin@carolramos.com.br" && password === "123456") {
         const currentProfile = getPersistedUserProfile();
         const mockUser = {
@@ -282,48 +263,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: currentProfile.email,
           displayName: currentProfile.displayName,
         };
-        const session = {
-          ...mockUser,
-          profile: currentProfile
-        };
-        safeLocalStorageSetItem("mock_auth_session", JSON.stringify(session));
         setUser(mockUser);
         setProfile(currentProfile);
         setIsMock(true);
         setLoading(false);
         return;
-      } else {
-        throw new Error("Credenciais inválidas. Para simulação use: admin@carolramos.com.br / 123456");
       }
+      throw err;
+    }
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string, displayName: string, companyName?: string) => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const createdUser = userCredential.user;
+
+    if (displayName) {
+      await updateProfile(createdUser, { displayName }).catch(() => {});
     }
 
-    // Login real
-    await signInWithEmailAndPassword(auth, email, password);
-  }, [isMock, isFirebasePlaceholder]);
+    const slug = (companyName || displayName || "empresa")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)+/g, "");
+
+    const newTenantId = `${slug}-${createdUser.uid.substring(0, 6)}`;
+
+    const profileObj: UserProfile = {
+      uid: createdUser.uid,
+      email: email,
+      displayName: displayName || "Usuário",
+      activeTenantId: newTenantId,
+      tenants: {
+        [newTenantId]: {
+          role: "owner",
+          joinedAt: new Date().toISOString()
+        }
+      },
+      createdAt: new Date().toISOString()
+    };
+
+    const companyObj = {
+      id: newTenantId,
+      name: companyName || `${displayName || "Minha"} Empresa`,
+      tradeName: companyName || `${displayName || "Minha"} Empresa`,
+      cnpj: "00.000.000/0000-00",
+      status: "active",
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await setDoc(doc(db, "companies", newTenantId), companyObj);
+      await setDoc(doc(db, "users", createdUser.uid), profileObj);
+    } catch (err) {
+      console.error("Erro ao gravar vínculo de empresa no Firestore:", err);
+    }
+
+    setProfile(profileObj);
+    setActiveCompany(companyObj);
+  }, []);
 
   const loginWithGoogle = useCallback(async () => {
-    if (isMock || isFirebasePlaceholder) {
-      const currentProfile = getPersistedUserProfile();
-      const mockUser = {
-        uid: currentProfile.uid,
-        email: currentProfile.email,
-        displayName: currentProfile.displayName,
-      };
-      const session = {
-        ...mockUser,
-        profile: currentProfile
-      };
-      safeLocalStorageSetItem("mock_auth_session", JSON.stringify(session));
-      setUser(mockUser);
-      setProfile(currentProfile);
-      setIsMock(true);
-      setLoading(false);
-      return;
-    }
-
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
-  }, [isMock, isFirebasePlaceholder]);
+  }, []);
 
   const logout = useCallback(async () => {
     if (isMock) {
@@ -447,7 +451,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
+    <AuthContext.Provider value={{ user, profile, tenantId, role, loading, login, signUp, loginWithGoogle, logout, switchTenant, isMock, activeCompany, createCompany, updateProfileMock }}>
       {children}
     </AuthContext.Provider>
   );
