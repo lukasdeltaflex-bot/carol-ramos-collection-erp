@@ -273,13 +273,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
         return;
       }
-      throw err;
+
+      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
+        throw new Error("E-mail ou senha incorretos. Verifique suas credenciais.");
+      }
+      if (err.code === "auth/invalid-email") {
+        throw new Error("O e-mail digitado é inválido.");
+      }
+      if (err.code === "auth/too-many-requests") {
+        throw new Error("Muitas tentativas sem sucesso. Aguarde um momento e tente novamente.");
+      }
+      throw new Error(err.message || "Erro ao realizar login.");
     }
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, displayName: string, companyName?: string) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const createdUser = userCredential.user;
+    let createdUser: any = null;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      createdUser = userCredential.user;
+    } catch (err: any) {
+      if (err.code === "auth/email-already-in-use") {
+        throw new Error("Este e-mail já está cadastrado no sistema. Clique na aba 'Entrar na Conta' para acessar.");
+      }
+      if (err.code === "auth/weak-password") {
+        throw new Error("A senha é muito fraca. Por favor, digite pelo menos 6 caracteres.");
+      }
+      if (err.code === "auth/invalid-email") {
+        throw new Error("O e-mail digitado é inválido.");
+      }
+      throw new Error(err.message || "Erro ao criar nova conta.");
+    }
 
     if (displayName) {
       await updateProfile(createdUser, { displayName }).catch(() => {});
