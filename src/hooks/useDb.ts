@@ -124,38 +124,38 @@ export function useDb() {
     });
   }, [tenantId]);
 
-  // 1. Criar Documento
+  // 1. Criar Documento (Com Depuração Completa do Firestore)
   const createDoc = useCallback(async (collectionName: string, data: any) => {
     const finalData = injectBaseFields(data, "create");
     invalidateCache(collectionName);
 
-    if (isMock) {
-      const storageKey = `mock_db_${collectionName}`;
-      const existing = localStorage.getItem(storageKey);
-      const list = existing ? JSON.parse(existing) : [];
-      
-      const newDoc = {
-        id: `${collectionName.substring(0, 3)}-${Math.random().toString(36).substr(2, 9)}`,
-        ...finalData,
-      };
-      
-      list.push(newDoc);
-      safeLocalStorageSetItem(storageKey, JSON.stringify(list));
-      
-      await logAudit("create", collectionName, newDoc.id, null, finalData);
-      return newDoc;
-    }
-
-    const colRef = collection(db, collectionName);
-    const docRef = await withTimeout(
-      addDoc(colRef, finalData),
-      10000,
-      `Erro ao criar registro em ${collectionName} no Cloud Firestore (projeto 'carol-ramos-collection-erp')`
-    );
+    console.log("==================================================");
+    console.log(`🔍 [DEBUG createDoc] 1. Coleção: "${collectionName}"`);
+    console.log("🔍 [DEBUG createDoc] 2. Objeto db:", db);
+    console.log("🔍 [DEBUG createDoc] 3. db.app.options.projectId:", db?.app?.options?.projectId);
     
-    await logAudit("create", collectionName, docRef.id, null, finalData);
-    return { id: docRef.id, ...finalData };
-  }, [user, tenantId, isMock, invalidateCache]);
+    const colRef = collection(db, collectionName);
+    console.log("🔍 [DEBUG createDoc] 4. Caminho completo da coleção:", colRef.path);
+    console.log("🔍 [DEBUG createDoc] 5. Iniciando gravação...");
+    console.log("🔍 [DEBUG createDoc] Payload a ser enviado:", finalData);
+
+    try {
+      const docRef = await addDoc(colRef, finalData);
+      console.log(`✅ [DEBUG createDoc] 6. Documento criado com sucesso! ID: "${docRef.id}"`);
+      console.log("==================================================");
+      
+      await logAudit("create", collectionName, docRef.id, null, finalData);
+      return { id: docRef.id, ...finalData };
+    } catch (err: any) {
+      console.error("❌ [DEBUG createDoc] 7. OCORREU UM ERRO NA GRAVAÇÃO DO FIRESTORE:");
+      console.error("❌ [DEBUG createDoc] Error Code:", err?.code);
+      console.error("❌ [DEBUG createDoc] Error Message:", err?.message);
+      console.error("❌ [DEBUG createDoc] Error Stack:", err?.stack);
+      console.error("❌ [DEBUG createDoc] Objeto de erro completo:", err);
+      console.log("==================================================");
+      throw err;
+    }
+  }, [user, tenantId, invalidateCache]);
 
   // 2. Atualizar Documento
   const updateDoc = useCallback(async (collectionName: string, docId: string, data: any) => {
