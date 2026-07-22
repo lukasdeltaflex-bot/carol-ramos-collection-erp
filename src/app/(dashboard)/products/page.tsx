@@ -287,8 +287,11 @@ export default function ProductsPage() {
 
   // Carregar todos os dados do banco (Paralelizado e Reativo)
   const loadAllData = async () => {
+    console.log("⏱️ [DEBUG ProductsPage] 1. Início do carregamento da página (loadAllData)... tenantId =", tenantId);
+    console.log("⏱️ [DEBUG ProductsPage] 2. Antes de alterar loading=true");
     setLoading(true);
     try {
+      console.log("⏱️ [DEBUG ProductsPage] 3. Antes da consulta inicial ao Firestore (Promise.all getDocs)...");
       let [cats, brs, locs, supps, prods, fetchedKits] = await Promise.all([
         getDocs("categories"),
         getDocs("brands"),
@@ -297,6 +300,15 @@ export default function ProductsPage() {
         getDocs("products"),
         getDocs("product_kits")
       ]);
+      console.log("⏱️ [DEBUG ProductsPage] 4. Após a consulta inicial ao Firestore.");
+      console.log("⏱️ [DEBUG ProductsPage] Resumo retornado:", {
+        catsLength: (cats as any[])?.length,
+        brsLength: (brs as any[])?.length,
+        locsLength: (locs as any[])?.length,
+        suppsLength: (supps as any[])?.length,
+        prodsLength: (prods as any[])?.length,
+        kitsLength: (fetchedKits as any[])?.length,
+      });
 
       cats = (cats as Category[]) || [];
       brs = (brs as Brand[]) || [];
@@ -311,20 +323,24 @@ export default function ProductsPage() {
 
       let needsRefetch = false;
       if (cats.length === 0 && !isCatsSeeded) {
+        console.log("⏱️ [DEBUG ProductsPage] 5. Categorias zeradas. Criando categorias iniciais no Firestore...");
         await Promise.all(INITIAL_CATEGORIES.map(c => createDoc("categories", c)));
         if (typeof window !== "undefined") localStorage.setItem("seeded_categories_v2", "true");
         needsRefetch = true;
       }
       if (brs.length === 0) {
+        console.log("⏱️ [DEBUG ProductsPage] 6. Marcas zeradas. Criando marcas iniciais no Firestore...");
         await Promise.all(INITIAL_BRANDS.map(b => createDoc("brands", b)));
         needsRefetch = true;
       }
       if (locs.length === 0) {
+        console.log("⏱️ [DEBUG ProductsPage] 7. Locais zerados. Criando locais iniciais no Firestore...");
         await Promise.all(INITIAL_LOCATIONS.map(l => createDoc("stock_locations", l)));
         needsRefetch = true;
       }
 
       if (needsRefetch) {
+        console.log("⏱️ [DEBUG ProductsPage] 8. Recarregando categorias/marcas/locais recém-criados...");
         const [freshCats, freshBrs, freshLocs] = await Promise.all([
           getDocs("categories"),
           getDocs("brands"),
@@ -340,6 +356,7 @@ export default function ProductsPage() {
       const suppIds = (supps as any[]).filter(Boolean).map((s: any) => s.id || "");
 
       if (prods.length === 0 && !isProdsSeeded) {
+        console.log("⏱️ [DEBUG ProductsPage] 9. Produtos zerados. Criando produtos iniciais no Firestore...");
         await Promise.all(INITIAL_PRODUCTS(catIds, brandIds, suppIds).map(p => createDoc("products", p)));
         if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
         prods = (await getDocs("products") as Product[]) || [];
@@ -428,15 +445,20 @@ export default function ProductsPage() {
         }
       }
       setKits(auditedKits);
-    } catch (e) {
-      console.error("Erro ao sincronizar tabelas de produtos:", e);
+    } catch (e: any) {
+      console.error("❌ [DEBUG ProductsPage] ERRO em loadAllData:");
+      console.error("❌ Error Code:", e?.code);
+      console.error("❌ Error Message:", e?.message);
+      console.error("❌ Error Stack:", e?.stack);
       setCategories([]);
       setBrandList([]);
       setLocations([]);
       setSuppliers([]);
       setProducts([]);
     } finally {
+      console.log("⏱️ [DEBUG ProductsPage] 10. Antes de alterar loading=false");
       setLoading(false);
+      console.log("⏱️ [DEBUG ProductsPage] 11. Fim do carregamento da página (loadAllData).");
     }
   };
 
