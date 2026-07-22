@@ -99,6 +99,7 @@ function emptyForm() {
     contactEmail: "",
     contactIsWhatsapp: false,
     category: "",
+    specialty: "",
     paymentTerms: "",
     leadTimeDays: 0,
     bankName: "",
@@ -187,6 +188,15 @@ function CategoryBadge({ category }: { category?: string }) {
   );
 }
 
+function SpecialtyBadge({ specialty }: { specialty?: string }) {
+  if (!specialty) return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-semibold" title="Carro-chefe / Especialidade">
+      <span>★ {specialty}</span>
+    </span>
+  );
+}
+
 interface SupplierCardProps {
   supplier: Supplier;
   onEdit: (s: Supplier) => void;
@@ -234,6 +244,7 @@ function SupplierCard({ supplier, onEdit, onDelete, isSelected, onSelectToggle }
         <div className="flex flex-wrap items-center gap-2 mt-3">
           <StatusBadge status={supplier.status} />
           <CategoryBadge category={supplier.category} />
+          <SpecialtyBadge specialty={supplier.specialty} />
           {supplier.attachments && supplier.attachments.length > 0 && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-[9px] text-muted-foreground font-mono">
               <Paperclip className="h-2.5 w-2.5" /> {supplier.attachments.length}
@@ -467,7 +478,8 @@ export default function SuppliersPage() {
       s.tradeName?.toLowerCase().includes(q) || 
       s.cnpj?.includes(q) || 
       s.email?.toLowerCase().includes(q) || 
-      s.category?.toLowerCase().includes(q);
+      s.category?.toLowerCase().includes(q) ||
+      s.specialty?.toLowerCase().includes(q);
     const matchesStatus = statusFilter === "all" || s.status === statusFilter;
     const matchesCategory = categoryFilter === "all" || s.category === categoryFilter;
     return matchesSearch && matchesStatus && matchesCategory;
@@ -518,6 +530,7 @@ export default function SuppliersPage() {
       contactEmail: s.contactEmail || "",
       contactIsWhatsapp: !!s.contactIsWhatsapp,
       category: s.category || "",
+      specialty: s.specialty || "",
       paymentTerms: s.paymentTerms || "",
       leadTimeDays: s.leadTimeDays || 0,
       bankName: s.bankName || "",
@@ -591,6 +604,7 @@ export default function SuppliersPage() {
         state: form.state.trim() || undefined,
       },
       category: form.category || undefined,
+      specialty: form.specialty.trim() || undefined,
       paymentTerms: form.paymentTerms.trim() || undefined,
       leadTimeDays: form.leadTimeDays,
       bankName: form.bankName.trim() || undefined,
@@ -1035,19 +1049,23 @@ export default function SuppliersPage() {
                   <FormInput type="text" value={form.im} onChange={(e) => setField("im", e.target.value.replace(/\D/g, ""))} placeholder="Apenas números" className="font-mono" />
                 </div>
               </div>
-              <div>
-                <FormLabel>Situação Cadastral</FormLabel>
-                <button type="button" onClick={() => setField("status", form.status === "active" ? "inactive" : "active")}
-                  className={cn("flex items-center gap-2.5 px-4 py-2 rounded-xl border text-xs font-semibold transition-all",
-                    form.status === "active"
-                      ? "border-emerald-300/60 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-400"
-                      : "border-border bg-card text-muted-foreground"
-                  )}>
-                  <span className={cn("h-4 w-4 rounded-full border-2 flex items-center justify-center transition-all", form.status === "active" ? "border-emerald-500 bg-emerald-500" : "border-muted-foreground/40 bg-transparent")}>
-                    {form.status === "active" && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                  </span>
-                  {form.status === "active" ? "Ativo" : "Inativo"}
-                </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <FormLabel>Categoria Principal</FormLabel>
+                  <select value={form.category} onChange={(e) => setField("category", e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-card/85 text-xs focus:ring-2 focus:ring-primary/30 focus:outline-none">
+                    <option value="">Selecione uma categoria...</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <FormLabel>Carro-chefe / Especialidade</FormLabel>
+                  <FormInput
+                    type="text"
+                    value={form.specialty}
+                    onChange={(e) => setField("specialty", e.target.value)}
+                    placeholder="Ex: Perfumes Importados, Body Splash, Skincare..."
+                  />
+                </div>
               </div>
             </div>
           )}

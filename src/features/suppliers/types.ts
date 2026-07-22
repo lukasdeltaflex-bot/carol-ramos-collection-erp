@@ -26,6 +26,8 @@ export interface Supplier extends BaseDocument {
   logo?: string;          // base64 or URL
   notes?: string;
   category?: string;      // e.g. "Cosméticos", "Embalagens", "Matéria-prima"
+  specialty?: string;     // Carro-chefe / Especialidade principal (ex: "Perfumes Importados", "Body Splash", "Hidratantes")
+  specialties?: string[]; // Múltiplas especialidades / produtos comercializados
   status: 'active' | 'inactive';
   createdAt: string;
   
