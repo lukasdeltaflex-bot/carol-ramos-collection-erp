@@ -363,13 +363,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (isMock) {
       setProfile(updatedProfile);
-      savePersistedUserProfile(updatedProfile);
-      const savedMockSession = localStorage.getItem("mock_auth_session");
-      if (savedMockSession) {
-        const parsed = JSON.parse(savedMockSession);
-        parsed.profile = updatedProfile;
-        safeLocalStorageSetItem("mock_auth_session", JSON.stringify(parsed));
-      }
       return;
     }
 
@@ -421,13 +414,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isMock) {
       safeLocalStorageSetItem(`company_profile_${uniqueTenantId}`, JSON.stringify(newCompanyObj));
       setProfile(updatedProfile);
-      savePersistedUserProfile(updatedProfile);
-      const savedMockSession = localStorage.getItem("mock_auth_session");
-      if (savedMockSession) {
-        const parsed = JSON.parse(savedMockSession);
-        parsed.profile = updatedProfile;
-        safeLocalStorageSetItem("mock_auth_session", JSON.stringify(parsed));
-      }
       return uniqueTenantId;
     }
 
@@ -449,13 +435,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfileMock = useCallback((newProfile: UserProfile) => {
     setProfile(newProfile);
-    savePersistedUserProfile(newProfile);
-    const savedMockSession = localStorage.getItem("mock_auth_session");
-    if (savedMockSession) {
-      const parsed = JSON.parse(savedMockSession);
-      parsed.profile = newProfile;
-      safeLocalStorageSetItem("mock_auth_session", JSON.stringify(parsed));
-    }
   }, []);
 
   return (
