@@ -138,8 +138,21 @@ export default function NotificationsPage() {
       console.log("[Notifications Page] getDocs('system_notifications') retornou:", notifs);
 
       const rawNotifs = (notifs as any[]) || [];
+      console.log("[Notifications Page] rawNotifs array:", rawNotifs);
+      console.log("[Notifications Page] Array.isArray(rawNotifs):", Array.isArray(rawNotifs));
+
       const cleanNotifs: SystemNotification[] = rawNotifs.filter(Boolean).map((n, idx) => {
+        console.log("[Notifications Page] Processing notification item:", n);
         if (!n) return null;
+
+        let createdAtIso = new Date().toISOString();
+        if (n.createdAt) {
+          if (typeof n.createdAt === "string") createdAtIso = n.createdAt;
+          else if (typeof n.createdAt.toDate === "function") createdAtIso = n.createdAt.toDate().toISOString();
+          else if (typeof n.createdAt.seconds === "number") createdAtIso = new Date(n.createdAt.seconds * 1000).toISOString();
+          else if (n.createdAt instanceof Date) createdAtIso = n.createdAt.toISOString();
+        }
+
         return {
           ...n,
           id: n.id || `notif-${idx}-${Math.random().toString(36).substring(2, 7)}`,
@@ -149,7 +162,7 @@ export default function NotificationsPage() {
           category: n.category || n.type || "system",
           priority: n.priority || "medium",
           read: Boolean(n.read),
-          createdAt: n.createdAt || new Date().toISOString()
+          createdAt: createdAtIso
         };
       }).filter(Boolean) as SystemNotification[];
 
