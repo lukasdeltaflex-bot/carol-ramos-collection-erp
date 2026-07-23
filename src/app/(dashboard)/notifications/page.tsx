@@ -78,8 +78,7 @@ export default function NotificationsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [catFilter, setCatFilter] = useState<string>("all");
 
-  // Settings State
-  const [settings, setSettings] = useState<NotificationSettings>({
+  const defaultSettings: NotificationSettings = {
     tenantId: tenantId || "",
     smtpHost: "smtp.sendgrid.net",
     smtpPort: 587,
@@ -115,7 +114,10 @@ export default function NotificationsPage() {
       commercial: false,
       customEmails: ["financeiro@carolramos.com.br", "diretoria@carolramos.com.br"]
     }
-  });
+  };
+
+  // Settings State
+  const [settings, setSettings] = useState<NotificationSettings>(defaultSettings);
 
   const [customEmailInput, setCustomEmailInput] = useState("");
 
@@ -154,19 +156,36 @@ export default function NotificationsPage() {
       console.log("[Notifications Page] Notificações limpas:", cleanNotifs);
       setNotifications(cleanNotifs);
 
-      if (sets.length > 0) {
-        setSettings(sets[0]);
+      const loadedSets = (sets as NotificationSettings[]) || [];
+      if (loadedSets.length > 0) {
+        const loaded = loadedSets[0];
+        setSettings({
+          ...defaultSettings,
+          ...(loaded || {}),
+          activeCategories: {
+            ...defaultSettings.activeCategories,
+            ...((loaded && loaded.activeCategories) || {})
+          },
+          recipients: {
+            ...defaultSettings.recipients,
+            ...((loaded && loaded.recipients) || {}),
+            customEmails: Array.isArray(loaded?.recipients?.customEmails)
+              ? loaded.recipients.customEmails
+              : defaultSettings.recipients.customEmails
+          }
+        });
       }
 
-      if (tmpls.length === 0) {
+      let loadedTmpls = (tmpls as EmailTemplate[]) || [];
+      if (loadedTmpls.length === 0) {
         // Pre-seed templates
         await Promise.all(INITIAL_TEMPLATES.map(t => createDoc("email_templates", t)));
-        tmpls = (await getDocs("email_templates") as EmailTemplate[]) || [];
+        loadedTmpls = (await getDocs("email_templates") as EmailTemplate[]) || [];
       }
 
-      setTemplates(tmpls);
-      if (tmpls.length > 0) {
-        setSelectedTemplate(tmpls[0]);
+      setTemplates(loadedTmpls);
+      if (loadedTmpls.length > 0) {
+        setSelectedTemplate(loadedTmpls[0]);
       }
     } catch (e: any) {
       console.error("[Notifications Page] EXCEÇÃO EM loadData():", e);
@@ -590,11 +609,11 @@ export default function NotificationsPage() {
                 <label key={item.key} className="flex items-center gap-2.5 p-3 rounded-xl border border-border bg-card hover:border-primary/30 cursor-pointer transition-all">
                   <input
                     type="checkbox"
-                    checked={!!(settings.activeCategories as any)[item.key]}
+                    checked={!!(settings?.activeCategories && (settings.activeCategories as any)[item.key])}
                     onChange={(e) => setSettings({
                       ...settings,
                       activeCategories: {
-                        ...settings.activeCategories,
+                        ...(settings?.activeCategories || {}),
                         [item.key]: e.target.checked
                       }
                     })}
@@ -621,11 +640,11 @@ export default function NotificationsPage() {
                   <label key={item.key} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={!!(settings.recipients as any)[item.key]}
+                      checked={!!(settings?.recipients && (settings.recipients as any)[item.key])}
                       onChange={(e) => setSettings({
                         ...settings,
                         recipients: {
-                          ...settings.recipients,
+                          ...(settings?.recipients || { customEmails: [] }),
                           [item.key]: e.target.checked
                         }
                       })}
@@ -652,7 +671,7 @@ export default function NotificationsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-2">
-                  {settings.recipients.customEmails.map((email, i) => (
+                  {(settings?.recipients?.customEmails || []).map((email, i) => (
                     <span key={i} className="px-2.5 py-1 rounded-lg bg-muted border border-border font-mono text-[10px] flex items-center gap-1.5">
                       {email}
                       <button type="button" onClick={() => handleRemoveCustomEmail(email)} className="text-muted-foreground hover:text-destructive">
