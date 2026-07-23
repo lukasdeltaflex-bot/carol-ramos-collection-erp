@@ -133,11 +133,20 @@ export default function NotificationsPage() {
         getDocs("email_templates")
       ]);
 
-      notifs = (notifs as SystemNotification[]) || [];
-      sets = (sets as NotificationSettings[]) || [];
-      tmpls = (tmpls as EmailTemplate[]) || [];
+      const rawNotifs = (notifs as any[]) || [];
+      const cleanNotifs: SystemNotification[] = rawNotifs.filter(Boolean).map((n, idx) => ({
+        ...n,
+        id: n.id || `notif-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+        title: n.title || "Notificação",
+        description: n.description || n.message || n.desc || "",
+        message: n.message || n.description || n.desc || "",
+        category: n.category || n.type || "system",
+        priority: n.priority || "medium",
+        read: Boolean(n.read),
+        createdAt: n.createdAt || new Date().toISOString()
+      }));
 
-      setNotifications(notifs);
+      setNotifications(cleanNotifs);
 
       if (sets.length > 0) {
         setSettings(sets[0]);
@@ -166,39 +175,44 @@ export default function NotificationsPage() {
 
   // Mark single read
   const handleMarkAsRead = async (id: string) => {
+    if (!id) return;
     try {
       await updateDoc("system_notifications", id, { read: true, readAt: new Date().toISOString() });
       invalidateCache("system_notifications");
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true, readAt: new Date().toISOString() } : n));
+      setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n && n.id === id ? { ...n, read: true, readAt: new Date().toISOString() } : n));
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao marcar notificação como lida:", e);
     }
   };
 
   // Mark all read
   const handleMarkAllRead = async () => {
     try {
-      const unreadList = notifications.filter(n => !n.read);
+      const list = Array.isArray(notifications) ? notifications : [];
+      const unreadList = list.filter(n => n && n.id && !n.read);
       if (unreadList.length === 0) {
         success("Tudo em dia!", "Todas as notificações já estão marcadas como lidas.");
         return;
       }
       await Promise.all(unreadList.map(n => updateDoc("system_notifications", n.id, { read: true, readAt: new Date().toISOString() })));
       invalidateCache("system_notifications");
-      setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date().toISOString() })));
+      setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n && n.id ? ({ ...n, read: true, readAt: new Date().toISOString() }) : n));
       success("Notificações Atualizadas", "Todas as notificações foram marcadas como lidas com sucesso.");
     } catch (e: any) {
-      toastError("Erro ao atualizar", e.message);
+      toastError("Erro ao atualizar", e?.message || "Erro ao marcar todas como lidas.");
     }
   };
 
   // Delete notification
   const handleDeleteNotif = async (id: string) => {
+    if (!id) return;
     try {
       await deleteDoc("system_notifications", id);
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      invalidateCache("system_notifications");
+      setNotifications(prev => (Array.isArray(prev) ? prev : []).filter(n => n && n.id !== id));
+      success("Notificação excluída", "A notificação foi removida com sucesso.");
     } catch (e: any) {
-      toastError("Erro", e.message);
+      toastError("Erro ao excluir", e?.message || "Erro ao excluir notificação.");
     }
   };
 
@@ -376,46 +390,54 @@ export default function NotificationsPage() {
                 <p className="text-xs font-medium">Nenhuma notificação encontrada no momento.</p>
               </div>
             ) : (
-              filteredNotifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  className={cn(
-                    "p-4 flex items-start gap-4 transition-colors",
-                    !notif.read ? "bg-primary/5 font-medium" : "hover:bg-muted/10 opacity-85"
-                  )}
-                >
-                  <div className="p-2 rounded-xl border border-border bg-card shrink-0 mt-0.5">
-                    {getCategoryIcon(notif.category)}
-                  </div>
-
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-xs font-bold text-foreground truncate">{notif.title}</h4>
-                      <span className="text-[10px] text-muted-foreground font-mono">{formatDate(notif.createdAt)}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{notif.description}</p>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!notif.read && (
-                      <button
-                        onClick={() => handleMarkAsRead(notif.id)}
-                        className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                        title="Marcar como lida"
-                      >
-                        <Check className="h-4 w-4" />
-                      </button>
+              filteredNotifications.map((notif, index) => {
+                if (!notif) return null;
+                const notifId = notif.id || `notif-${index}`;
+                const title = notif.title || "Notificação";
+                const desc = notif.description || notif.message || notif.desc || "";
+                const cat = notif.category || "system";
+                const isUnread = Boolean(!notif.read);
+                return (
+                  <div
+                    key={notifId}
+                    className={cn(
+                      "p-4 flex items-start gap-4 transition-colors",
+                      isUnread ? "bg-primary/5 font-medium" : "hover:bg-muted/10 opacity-85"
                     )}
-                    <button
-                      onClick={() => handleDeleteNotif(notif.id)}
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500"
-                      title="Excluir notificação"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  >
+                    <div className="p-2 rounded-xl border border-border bg-card shrink-0 mt-0.5">
+                      {getCategoryIcon(cat as NotificationCategory)}
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-bold text-foreground truncate">{title}</h4>
+                        <span className="text-[10px] text-muted-foreground font-mono">{formatDate(notif.createdAt)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isUnread && (
+                        <button
+                          onClick={() => handleMarkAsRead(notifId)}
+                          className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          title="Marcar como lida"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteNotif(notifId)}
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500"
+                        title="Excluir notificação"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
