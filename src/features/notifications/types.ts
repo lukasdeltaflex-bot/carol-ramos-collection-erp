@@ -7,6 +7,8 @@ export interface SystemNotification extends BaseDocument {
   tenantId: string;
   title: string;
   description: string;
+  message?: string;
+  desc?: string;
   category: NotificationCategory;
   priority: NotificationPriority;
   createdAt: string;
