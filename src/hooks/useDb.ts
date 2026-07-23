@@ -41,6 +41,34 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, errorMessage: string): 
   });
 };
 
+// Helper para sanitizar recursivamente qualquer objeto antes de enviar ao Firestore, eliminando valores `undefined`
+export function sanitizeFirestoreData<T>(data: T): T {
+  if (data === undefined) return null as unknown as T;
+  if (data === null || typeof data !== "object") return data;
+
+  if (
+    data instanceof Date ||
+    (data.constructor && (
+      data.constructor.name === "Timestamp" || 
+      data.constructor.name === "FieldValue"
+    ))
+  ) {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeFirestoreData(item)) as unknown as T;
+  }
+
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data as Record<string, any>)) {
+    if (value !== undefined) {
+      cleaned[key] = sanitizeFirestoreData(value);
+    }
+  }
+  return cleaned as T;
+}
+
 export function useDb() {
   const { user, profile, tenantId, isMock } = useAuth();
 
@@ -49,8 +77,9 @@ export function useDb() {
     const now = isMock ? new Date().toISOString() : Timestamp.now();
     const userId = user?.uid || "unknown";
     
+    let result: any;
     if (action === "create") {
-      return {
+      result = {
         ...data,
         createdAt: now,
         updatedAt: now,
@@ -59,7 +88,7 @@ export function useDb() {
         tenantId: tenantId || "carol-ramos-collection",
       };
     } else {
-      return {
+      result = {
         ...data,
         createdAt: previousData?.createdAt || now,
         updatedAt: now,
@@ -68,6 +97,7 @@ export function useDb() {
         tenantId: tenantId || "carol-ramos-collection",
       };
     }
+    return sanitizeFirestoreData(result);
   };
 
   // Helper para criar log de auditoria
@@ -82,7 +112,7 @@ export function useDb() {
     const userEmail = user?.email || "unknown";
     const now = isMock ? new Date().toISOString() : Timestamp.now();
 
-    const auditData = {
+    const auditData = sanitizeFirestoreData({
       tenantId: tenantId || "shared",
       userId,
       userEmail,
@@ -95,7 +125,7 @@ export function useDb() {
       updatedAt: now,
       createdBy: userId,
       updatedBy: userId,
-    };
+    });
 
     if (isMock) {
       const mockAudits = localStorage.getItem("mock_db_audit_logs");

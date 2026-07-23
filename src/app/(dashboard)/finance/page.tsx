@@ -567,20 +567,20 @@ export default function FinancePage() {
     try {
       if (drawerType === "bank_account") {
         const payload = {
-          name: bName,
-          bankName: bBankName || bName,
-          bankCode: bBankCode || undefined,
-          agency: bAgency || undefined,
-          accountNumber: bAccountNumber || undefined,
-          accountDigit: bAccountDigit || undefined,
-          type: bType,
-          holderName: bHolderName || undefined,
-          holderCpfCnpj: bHolderCpfCnpj || undefined,
-          pixKey: bPixKey || undefined,
-          balance: bBalance,
-          initialBalance: bInitialBalance || bBalance,
-          notes: bNotes || undefined,
-          status: bStatus,
+          name: bName || "",
+          bankName: bBankName || bName || "",
+          bankCode: bBankCode || "",
+          agency: bAgency || "",
+          accountNumber: bAccountNumber || "",
+          accountDigit: bAccountDigit || "",
+          type: bType || "checking",
+          holderName: bHolderName || "",
+          holderCpfCnpj: bHolderCpfCnpj || "",
+          pixKey: bPixKey || "",
+          balance: bBalance || 0,
+          initialBalance: bInitialBalance || bBalance || 0,
+          notes: bNotes || "",
+          status: bStatus || "active",
           currency: "BRL"
         };
         const result = BankAccountSchema.safeParse(payload);
@@ -600,19 +600,19 @@ export default function FinancePage() {
       
       else if (drawerType === "company_card") {
         const payload = {
-          name: cName,
-          issuerBank: cIssuerBank,
-          flag: cFlag,
-          lastFourDigits: cLast4,
-          nameOnCard: cNameOnCard,
-          totalLimit: cTotalLimit,
+          name: cName || "",
+          issuerBank: cIssuerBank || "",
+          flag: cFlag || "visa",
+          lastFourDigits: cLast4 || "0000",
+          nameOnCard: cNameOnCard || "",
+          totalLimit: cTotalLimit || 0,
           availableLimit: cAvailableLimit > cTotalLimit ? cTotalLimit : cAvailableLimit,
-          closingDay: cClosingDay,
-          dueDay: cDueDay,
-          linkedBankAccountId: cLinkedBankAccountId || undefined,
-          responsiblePerson: cResponsiblePerson || undefined,
-          status: cStatus,
-          notes: cNotes || undefined,
+          closingDay: cClosingDay || 1,
+          dueDay: cDueDay || 10,
+          linkedBankAccountId: cLinkedBankAccountId || "",
+          responsiblePerson: cResponsiblePerson || "",
+          status: cStatus || "active",
+          notes: cNotes || "",
         };
 
         const result = CompanyCreditCardSchema.safeParse(payload);

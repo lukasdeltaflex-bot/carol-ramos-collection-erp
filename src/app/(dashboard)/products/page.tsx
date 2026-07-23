@@ -698,36 +698,36 @@ export default function ProductsPage() {
       isPrimary: true
     }] : [];
 
-    const payload = {
-      sku,
-      name,
-      description: description || undefined,
-      barcode: barcode || undefined,
-      EAN: ean || undefined,
-      NCM: ncm || undefined,
-      categoryId,
-      brandId,
-      supplierId: supplierId || undefined,
-      costPrice,
-      freightCost: effectiveFreight,
-      insuranceCost,
-      taxCost,
-      otherExpenses,
-      freightMode,
-      totalFreightCost,
-      totalFreightUnits,
-      totalAcquisitionCost: computedTotalAcquisition,
-      sellPrice,
-      promoPrice: promoPrice || undefined,
-      profitMargin: calculatedMargin,
-      currentStock,
-      reservedStock,
-      availableStock: calculatedAvailable,
-      minStock,
-      weightGrams: weightGrams || undefined,
-      dimensions: dimensionsPayload,
-      images: imagesPayload,
-      pricingData,
+    const payload: any = {
+      sku: sku || "",
+      name: name || "",
+      description: description ? description.trim() : "",
+      barcode: barcode ? barcode.trim() : "",
+      EAN: ean ? ean.trim() : "",
+      NCM: ncm ? ncm.trim() : "",
+      categoryId: categoryId || "",
+      brandId: brandId || "",
+      supplierId: supplierId || "",
+      costPrice: costPrice || 0,
+      freightCost: effectiveFreight || 0,
+      insuranceCost: insuranceCost || 0,
+      taxCost: taxCost || 0,
+      otherExpenses: otherExpenses || 0,
+      freightMode: freightMode || "per_unit",
+      totalFreightCost: totalFreightCost || 0,
+      totalFreightUnits: totalFreightUnits || 1,
+      totalAcquisitionCost: computedTotalAcquisition || 0,
+      sellPrice: sellPrice || 0,
+      promoPrice: promoPrice || 0,
+      profitMargin: calculatedMargin || 0,
+      currentStock: currentStock || 0,
+      reservedStock: reservedStock || 0,
+      availableStock: calculatedAvailable || 0,
+      minStock: minStock || 0,
+      weightGrams: weightGrams || 0,
+      dimensions: dimensionsPayload || { width: 0, height: 0, depth: 0 },
+      images: imagesPayload || [],
+      ...(pricingData ? { pricingData } : {}),
       status: "active" as const
     };
 
@@ -919,15 +919,15 @@ export default function ProductsPage() {
 
     try {
       const kitPayload = {
-        name: kitName,
-        sku: kitSku,
-        description: kitDescription,
-        price: kitPrice,
-        costPrice: calculatedKitCost,
-        totalAcquisitionCost: calculatedKitCost,
-        profitMargin: calculatedMargin,
-        image: kitImage,
-        items: kitItems,
+        name: kitName || "",
+        sku: kitSku || "",
+        description: kitDescription ? kitDescription.trim() : "",
+        price: kitPrice || 0,
+        costPrice: calculatedKitCost || 0,
+        totalAcquisitionCost: calculatedKitCost || 0,
+        profitMargin: calculatedMargin || 0,
+        image: kitImage || "",
+        items: kitItems || [],
         status: "active" as const
       };
 
@@ -944,15 +944,15 @@ export default function ProductsPage() {
 
       // Sync correspondente como produto especial no catálogo (para o PDV)
       const kitProductPayload = {
-        sku: kitSku,
-        name: `[KIT] ${kitName}`,
-        description: kitDescription,
+        sku: kitSku || "",
+        name: `[KIT] ${kitName || ""}`,
+        description: kitDescription ? kitDescription.trim() : "",
         categoryId: categories[0]?.id || "kits",
         brandId: brands[0]?.id || "kits",
-        costPrice: calculatedKitCost,
-        totalAcquisitionCost: calculatedKitCost,
-        sellPrice: kitPrice,
-        profitMargin: calculatedMargin,
+        costPrice: calculatedKitCost || 0,
+        totalAcquisitionCost: calculatedKitCost || 0,
+        sellPrice: kitPrice || 0,
+        profitMargin: calculatedMargin || 0,
         currentStock: 999, // Estoque virtual gerenciado dinamicamente pelos componentes
         availableStock: 999,
         reservedStock: 0,
@@ -961,7 +961,7 @@ export default function ProductsPage() {
         channels: { ecommerce: { id: "1", active: true } },
         status: "active" as const,
         isKit: true,
-        kitId: savedKitId
+        kitId: savedKitId || ""
       };
 
       // Localizar TODOS os espelhos deste kit no catálogo de produtos para evitar duplicações

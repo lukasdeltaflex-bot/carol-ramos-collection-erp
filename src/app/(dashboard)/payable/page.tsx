@@ -167,11 +167,11 @@ export default function AccountsPayablePage() {
     setSaving(true);
 
     const payload = {
-      supplierId: supplierId || undefined,
-      description: desc,
-      amount,
-      dueDate,
-      paymentMethod
+      supplierId: supplierId || "",
+      description: desc || "",
+      amount: amount || 0,
+      dueDate: dueDate || "",
+      paymentMethod: paymentMethod || "pix"
     };
 
     // Validation

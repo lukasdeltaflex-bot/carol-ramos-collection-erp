@@ -275,27 +275,27 @@ export default function ContactsPage() {
     setErrors({});
 
     const addressData = hasAddress ? {
-      street,
-      number,
-      complement,
-      neighborhood,
-      city,
-      state,
-      zipCode
-    } : undefined;
+      street: street || "",
+      number: number || "",
+      complement: complement || "",
+      neighborhood: neighborhood || "",
+      city: city || "",
+      state: state || "",
+      zipCode: zipCode || ""
+    } : null;
 
-    const payload = {
-      name,
-      email: email || undefined,
-      phone,
-      isWhatsapp,
-      cpf: cpf || undefined,
-      instagram: instagram || undefined,
-      birthday: birthday || undefined,
+    const payload: any = {
+      name: name || "",
+      email: email ? email.trim() : "",
+      phone: phone || "",
+      isWhatsapp: Boolean(isWhatsapp),
+      cpf: cpf ? cpf.trim() : "",
+      instagram: instagram ? instagram.trim() : "",
+      birthday: birthday ? birthday.trim() : "",
       tags: tagsInput ? tagsInput.split(",").map(t => t.trim()).filter(Boolean) : [],
-      source,
-      notes: notes || undefined,
-      address: addressData
+      source: source || "Manual",
+      notes: notes ? notes.trim() : "",
+      ...(addressData ? { address: addressData } : {})
     };
 
     const result = CustomerSchema.safeParse(payload);
