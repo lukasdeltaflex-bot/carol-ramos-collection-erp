@@ -125,6 +125,7 @@ export default function NotificationsPage() {
 
   // Load Data
   const loadData = async () => {
+    console.log("[Notifications Page] Executando loadData()...");
     setLoading(true);
     try {
       let [notifs, sets, tmpls] = await Promise.all([
@@ -132,20 +133,25 @@ export default function NotificationsPage() {
         getDocs("notification_settings"),
         getDocs("email_templates")
       ]);
+      console.log("[Notifications Page] getDocs('system_notifications') retornou:", notifs);
 
       const rawNotifs = (notifs as any[]) || [];
-      const cleanNotifs: SystemNotification[] = rawNotifs.filter(Boolean).map((n, idx) => ({
-        ...n,
-        id: n.id || `notif-${idx}-${Math.random().toString(36).substring(2, 7)}`,
-        title: n.title || "Notificação",
-        description: n.description || n.message || n.desc || "",
-        message: n.message || n.description || n.desc || "",
-        category: n.category || n.type || "system",
-        priority: n.priority || "medium",
-        read: Boolean(n.read),
-        createdAt: n.createdAt || new Date().toISOString()
-      }));
+      const cleanNotifs: SystemNotification[] = rawNotifs.filter(Boolean).map((n, idx) => {
+        if (!n) return null;
+        return {
+          ...n,
+          id: n.id || `notif-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+          title: typeof n.title === "string" ? n.title : "Notificação",
+          description: typeof n.description === "string" ? n.description : (typeof n.message === "string" ? n.message : (typeof n.desc === "string" ? n.desc : "")),
+          message: typeof n.message === "string" ? n.message : (typeof n.description === "string" ? n.description : (typeof n.desc === "string" ? n.desc : "")),
+          category: n.category || n.type || "system",
+          priority: n.priority || "medium",
+          read: Boolean(n.read),
+          createdAt: n.createdAt || new Date().toISOString()
+        };
+      }).filter(Boolean) as SystemNotification[];
 
+      console.log("[Notifications Page] Notificações limpas:", cleanNotifs);
       setNotifications(cleanNotifs);
 
       if (sets.length > 0) {
@@ -163,7 +169,7 @@ export default function NotificationsPage() {
         setSelectedTemplate(tmpls[0]);
       }
     } catch (e: any) {
-      console.error("Erro ao carregar notificações:", e);
+      console.error("[Notifications Page] EXCEÇÃO EM loadData():", e);
     } finally {
       setLoading(false);
     }
@@ -287,12 +293,22 @@ export default function NotificationsPage() {
 
   // Filtered Notifications List
   const filteredNotifications = useMemo(() => {
-    return notifications.filter(n => {
-      const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            n.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCat = catFilter === "all" || n.category === catFilter;
-      return matchesSearch && matchesCat;
-    });
+    console.log("[Notifications Page] Filtrando notificações. Total:", notifications.length);
+    try {
+      const list = Array.isArray(notifications) ? notifications : [];
+      const query = (searchQuery || "").trim().toLowerCase();
+      return list.filter(n => {
+        if (!n) return false;
+        const titleStr = typeof n.title === "string" ? n.title.toLowerCase() : "";
+        const descStr = typeof n.description === "string" ? n.description.toLowerCase() : (typeof n.message === "string" ? n.message.toLowerCase() : "");
+        const matchesSearch = !query || titleStr.includes(query) || descStr.includes(query);
+        const matchesCat = catFilter === "all" || n.category === catFilter;
+        return matchesSearch && matchesCat;
+      });
+    } catch (err) {
+      console.error("[Notifications Page] EXCEÇÃO NO FILTRO useMemo:", err);
+      return [];
+    }
   }, [notifications, searchQuery, catFilter]);
 
   const getCategoryIcon = (cat: NotificationCategory) => {

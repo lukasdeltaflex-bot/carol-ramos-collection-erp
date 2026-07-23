@@ -236,10 +236,13 @@ export default function Header({
   const [notificationsList, setNotificationsList] = useState<any[]>([]);
 
   const loadHeaderNotifications = async () => {
+    console.log("[Header Notifications] Iniciando busca de notificações...");
     try {
       let notifs = await getDocs("system_notifications");
+      console.log("[Header Notifications] getDocs('system_notifications') retornou:", notifs);
       let list = (notifs as any[]) || [];
       if (list.length === 0) {
+        console.log("[Header Notifications] Nenhuma notificação. Inicializando dados...");
         const initial = [
           { title: "Estoque Baixo", message: "Body Splash Carol Ramos Collection com menos de 5 un.", description: "Body Splash Carol Ramos Collection com menos de 5 un.", type: "stock", category: "stock", read: false, createdAt: new Date().toISOString() },
           { title: "Fatura Pendente", message: "Fornecedor Natura vence amanhã: R$ 850,00", description: "Fornecedor Natura vence amanhã: R$ 850,00", type: "financial", category: "financial", read: false, createdAt: new Date().toISOString() },
@@ -254,16 +257,17 @@ export default function Header({
       const cleanList = (Array.isArray(list) ? list : []).filter(Boolean).map((n, idx) => ({
         ...n,
         id: n.id || `notif-${idx}-${Math.random().toString(36).substring(2, 7)}`,
-        title: n.title || "Notificação",
-        message: n.message || n.description || n.desc || "",
-        description: n.description || n.message || n.desc || "",
+        title: typeof n.title === "string" ? n.title : "Notificação",
+        message: typeof n.message === "string" ? n.message : (typeof n.description === "string" ? n.description : (typeof n.desc === "string" ? n.desc : "")),
+        description: typeof n.description === "string" ? n.description : (typeof n.message === "string" ? n.message : (typeof n.desc === "string" ? n.desc : "")),
         category: n.category || n.type || "system",
         type: n.type || n.category || "system",
         read: Boolean(n.read)
       }));
+      console.log("[Header Notifications] Lista sanitizada final:", cleanList);
       setNotificationsList(cleanList);
     } catch (e) {
-      console.error("Erro ao carregar notificações no header:", e);
+      console.error("[Header Notifications] EXCEÇÃO AO CARREGAR NOTIFICAÇÕES:", e);
     }
   };
 
