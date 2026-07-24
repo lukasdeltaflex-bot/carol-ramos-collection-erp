@@ -29,11 +29,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Parâmetro 'code' ou 'action=connect' ausente." }, { status: 400 });
   } catch (error: any) {
     console.error("[Mercado Livre OAuth Route Error]:", error);
-    
-    // Fallback safe URL resolution to prevent crash in catch block
-    const baseUrl = req.nextUrl ? req.nextUrl.origin : "https://carol-ramos-collection-erp.vercel.app";
-    const errorUrl = new URL("/marketplaces?tab=mercadolibre&error=" + encodeURIComponent(error.message || "Falha na autenticação OAuth"), baseUrl);
-    
-    return NextResponse.redirect(errorUrl);
+    return NextResponse.json({ 
+      error: "Error on connect", 
+      message: error?.message || String(error), 
+      stack: error?.stack 
+    }, { status: 500 });
   }
 }
