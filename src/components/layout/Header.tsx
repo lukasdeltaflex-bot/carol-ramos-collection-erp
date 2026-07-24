@@ -320,7 +320,7 @@ export default function Header({
     {
       label: "Preferências",
       items: [
-        { label: "Aparência", href: "/appearance", icon: Palette },
+        { label: "Aparência", href: "/settings?tab=appearance", icon: Palette },
         { label: "Sobre", href: "/settings?tab=about", icon: Info },
       ],
     },

@@ -37,8 +37,14 @@ import {
   PlusCircle,
   MoreVertical,
   Edit3,
-  Power
+  Power,
+  Palette,
+  Type,
+  LayoutTemplate,
+  RotateCcw,
+  Monitor
 } from "lucide-react";
+import { useAppearance, COLOR_MAP, FONT_MAP, RADIUS_MAP, PrimaryColor, FontFamily, FontSize, BorderRadius, Spacing, ShadowLevel } from "@/context/AppearanceContext";
 
 // Custom SVG Icons for socials (Req 1)
 const InstagramIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -117,10 +123,20 @@ const DEFAULT_WEEK_SCHEDULE: WeekSchedule = {
 export default function SettingsPage() {
   const { user, profile, role, tenantId, activeCompany, createCompany, switchTenant, isMock, updateProfileMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, getDocById, invalidateCache } = useDb();
-  const { success, error: toastError, info } = useToast();
+  const { settings: appSettings, updateSetting: updateAppSetting, resetToDefaults: resetAppDefaults } = useAppearance();
 
-  const [activeTab, setActiveTab] = useState<"profile" | "rbac" | "params" | "integrations" | "logs" | "backup">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "appearance" | "rbac" | "params" | "integrations" | "logs" | "backup">("profile");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam && ["profile", "appearance", "rbac", "params", "integrations", "logs", "backup"].includes(tabParam)) {
+        setActiveTab(tabParam as any);
+      }
+    }
+  }, []);
 
   // Lists
   const [configs, setConfigs] = useState<IntegrationConfig[]>([]);
@@ -1158,6 +1174,17 @@ export default function SettingsPage() {
             <Building2 className="h-4.5 w-4.5" />
             <span>Perfil da Empresa</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab("appearance")}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors",
+              activeTab === "appearance" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Palette className="h-4.5 w-4.5" />
+            <span>Aparência & Tema</span>
+          </button>
           
           <button
             onClick={() => setActiveTab("integrations")}
@@ -1826,6 +1853,298 @@ export default function SettingsPage() {
                 </div>
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   Sua conta empresarial está associada ao plano Pro ERP, ativado com suporte ilimitado para integração de marketplaces, relatórios financeiros consolidados e assistente de IA Gemini.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: APPEARANCE */}
+          {activeTab === "appearance" && (
+            <div className="space-y-6">
+              {/* Header & Quick Action */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Palette className="h-4.5 w-4.5 text-primary" />
+                    <span>Personalização de Aparência & Tema</span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Personalize o esquema de cores, tipografia, bordas e comportamento do sistema.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAppDefaults();
+                      success("Padrões restaurados", "A aparência foi redefinida para os valores padrão.");
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-xs font-medium hover:bg-muted transition-colors text-muted-foreground"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Restaurar Padrão
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      success("Aparência salva!", "Suas preferências visuais foram aplicadas com sucesso.");
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold shadow hover:bg-primary/95 transition-colors"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Salvar Aparência
+                  </button>
+                </div>
+              </div>
+
+              {/* Realtime Preview Banner */}
+              <div className="p-4 rounded-2xl border border-primary/20 bg-primary/5 flex items-center gap-3">
+                <Monitor className="h-5 w-5 text-primary shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Pré-visualização em Tempo Real</p>
+                  <p className="text-[11px] text-muted-foreground">As alterações de cores e estilo são aplicadas instantaneamente no sistema.</p>
+                </div>
+              </div>
+
+              {/* 1. Cor Principal */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Palette className="h-4 w-4 text-primary" />
+                  <span>Cor Principal (Accent Color)</span>
+                </h4>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-2.5">
+                  {(Object.entries(COLOR_MAP) as [PrimaryColor, typeof COLOR_MAP[PrimaryColor]][]).map(([key, conf]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => updateAppSetting("primaryColor", key)}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 p-2 rounded-xl border-2 transition-all",
+                        appSettings.primaryColor === key
+                          ? "border-foreground scale-105 shadow-md"
+                          : "border-transparent hover:border-border hover:scale-105"
+                      )}
+                      title={conf.label}
+                    >
+                      <div
+                        className="h-8 w-8 rounded-xl shadow-sm"
+                        style={{ backgroundColor: conf.hex }}
+                      />
+                      <span className="text-[9px] text-muted-foreground font-medium truncate w-full text-center">{conf.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Tipografia */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Type className="h-4 w-4 text-primary" />
+                  <span>Tipografia</span>
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Família de Fonte</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1.5">
+                      {(Object.entries(FONT_MAP) as [FontFamily, typeof FONT_MAP[FontFamily]][]).map(([key, conf]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => updateAppSetting("fontFamily", key)}
+                          className={cn(
+                            "px-3 py-2.5 rounded-xl border text-xs font-medium transition-all text-left",
+                            appSettings.fontFamily === key
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                          )}
+                          style={{ fontFamily: conf.value }}
+                        >
+                          <span className="block font-semibold text-sm mb-0.5">Aa</span>
+                          <span className="text-[10px]">{conf.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tamanho da Fonte</span>
+                    <div className="flex gap-2 mt-1.5">
+                      {([
+                        { key: "sm" as FontSize, label: "Pequeno", size: "text-xs" },
+                        { key: "md" as FontSize, label: "Médio (Padrão)", size: "text-sm" },
+                        { key: "lg" as FontSize, label: "Grande", size: "text-base" },
+                      ]).map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => updateAppSetting("fontSize", opt.key)}
+                          className={cn(
+                            "flex-1 px-3 py-2.5 rounded-xl border text-center transition-all",
+                            appSettings.fontSize === opt.key
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <span className={cn("block font-semibold", opt.size)}>Aa</span>
+                          <span className="text-[10px] mt-0.5 block">{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Layout e Bordas */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <LayoutTemplate className="h-4 w-4 text-primary" />
+                  <span>Layout e Bordas</span>
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Arredondamento das Bordas</span>
+                    <div className="grid grid-cols-5 gap-2 mt-1.5">
+                      {(Object.entries(RADIUS_MAP) as [BorderRadius, typeof RADIUS_MAP[BorderRadius]][]).map(([key, conf]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => updateAppSetting("borderRadius", key)}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 border transition-all rounded-xl",
+                            appSettings.borderRadius === key
+                              ? "border-primary bg-primary/10"
+                              : "border-border hover:border-primary/40"
+                          )}
+                        >
+                          <div
+                            className="h-8 w-8 bg-primary/30 border-2 border-primary/50"
+                            style={{ borderRadius: conf.value }}
+                          />
+                          <span className="text-[9px] text-muted-foreground text-center leading-tight">{conf.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Espaçamento do Layout</span>
+                    <div className="flex gap-2 mt-1.5">
+                      {([
+                        { key: "compact" as Spacing, label: "Compacto", desc: "Mais conteúdo" },
+                        { key: "normal" as Spacing, label: "Normal (Padrão)", desc: "Equilibrado" },
+                        { key: "relaxed" as Spacing, label: "Espaçado", desc: "Mais respiro" },
+                      ]).map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => updateAppSetting("spacing", opt.key)}
+                          className={cn(
+                            "flex-1 px-3 py-2.5 rounded-xl border text-center transition-all",
+                            appSettings.spacing === opt.key
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <span className="block text-xs font-semibold">{opt.label}</span>
+                          <span className="text-[10px] mt-0.5 block">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Comportamento e Efeitos */}
+              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Sliders className="h-4 w-4 text-primary" />
+                  <span>Comportamento e Efeitos Visuais</span>
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nível de Sombras</span>
+                    <div className="grid grid-cols-4 gap-2 mt-1.5">
+                      {([
+                        { key: "none" as ShadowLevel, label: "Sem sombra" },
+                        { key: "sm" as ShadowLevel, label: "Suave" },
+                        { key: "md" as ShadowLevel, label: "Médio (Padrão)" },
+                        { key: "lg" as ShadowLevel, label: "Pronunciado" },
+                      ]).map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => updateAppSetting("shadowLevel", opt.key)}
+                          className={cn(
+                            "px-3 py-3 rounded-xl border text-center transition-all",
+                            appSettings.shadowLevel === opt.key
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border hover:border-primary/40 text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <div className={cn(
+                            "h-7 w-7 mx-auto mb-1.5 rounded-lg bg-card border border-border",
+                            opt.key === "sm" && "shadow-sm",
+                            opt.key === "md" && "shadow-md",
+                            opt.key === "lg" && "shadow-xl",
+                          )} />
+                          <span className="text-[10px] font-medium block">{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4 p-3 rounded-xl border border-border bg-card/30">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">Sidebar colapsada por padrão</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">O menu lateral inicia minimizado ao carregar o sistema.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateAppSetting("sidebarCollapsedByDefault", !appSettings.sidebarCollapsedByDefault)}
+                        className={cn(
+                          "relative h-6 w-11 rounded-full transition-colors duration-200 shrink-0",
+                          appSettings.sidebarCollapsedByDefault ? "bg-primary" : "bg-muted-foreground/30"
+                        )}
+                        role="switch"
+                        aria-checked={appSettings.sidebarCollapsedByDefault}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all duration-200",
+                            appSettings.sidebarCollapsedByDefault ? "left-6" : "left-1"
+                          )}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 p-3 rounded-xl border border-border bg-card/30">
+                      <div className="flex items-start gap-2">
+                        <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">Animações habilitadas</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Transições e micro-animações em todo o sistema.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateAppSetting("animationsEnabled", !appSettings.animationsEnabled)}
+                        className={cn(
+                          "relative h-6 w-11 rounded-full transition-colors duration-200 shrink-0",
+                          appSettings.animationsEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                        )}
+                        role="switch"
+                        aria-checked={appSettings.animationsEnabled}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all duration-200",
+                            appSettings.animationsEnabled ? "left-6" : "left-1"
+                          )}
+                        />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
