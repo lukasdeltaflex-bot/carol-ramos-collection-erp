@@ -31,19 +31,39 @@ import { MarketplaceAccount, MarketplaceSyncHistory } from "@/features/integrati
 export default function MarketplacesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { getDocs } = useDb();
   const tenantId = (user as any)?.tenantId || "default_tenant";
 
-  const { docs: accounts, loading: loadingAccounts, getDocs: getAccounts } = useDb<MarketplaceAccount>("marketplace_accounts");
-  const { docs: logs, loading: loadingLogs, getDocs: getLogs } = useDb<MarketplaceSyncHistory>("marketplace_sync_history");
+  const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
+  const [logs, setLogs] = useState<MarketplaceSyncHistory[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [loadingLogs, setLoadingLogs] = useState(true);
 
   const [activeTab, setActiveTab] = useState<"shopee" | "mercadolibre">("shopee");
   const [syncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  const loadData = React.useCallback(async () => {
+    setLoadingAccounts(true);
+    setLoadingLogs(true);
+    try {
+      const [accs, lgs] = await Promise.all([
+        getDocs("marketplace_accounts"),
+        getDocs("marketplace_sync_history")
+      ]);
+      setAccounts((accs as MarketplaceAccount[]) || []);
+      setLogs((lgs as MarketplaceSyncHistory[]) || []);
+    } catch (e) {
+      console.error("Erro ao carregar dados de marketplaces:", e);
+    } finally {
+      setLoadingAccounts(false);
+      setLoadingLogs(false);
+    }
+  }, [getDocs]);
+
   useEffect(() => {
-    getAccounts();
-    getLogs();
-  }, [getAccounts, getLogs]);
+    loadData();
+  }, [loadData]);
 
   // Conta da Shopee se existir
   const shopeeAccount = accounts.find((a) => a.channel === "shopee");
@@ -69,7 +89,7 @@ export default function MarketplacesPage() {
           description: "Estoque e produtos atualizados com sucesso.",
           variant: "success"
         });
-        getLogs();
+        loadData();
       }, 1500);
     } catch (e) {
       setSyncing(false);
@@ -102,8 +122,7 @@ export default function MarketplacesPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
-              getAccounts();
-              getLogs();
+              loadData();
             }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-accent text-sm font-medium transition-colors"
           >
