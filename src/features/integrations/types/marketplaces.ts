@@ -15,7 +15,8 @@ export type MarketplaceConnectionStatus = "connected" | "disconnected" | "expire
 
 export type SourceOfTruth = "erp" | "marketplace";
 
-export interface MarketplaceAccount extends BaseDocument {
+export interface MarketplaceAccount extends Partial<BaseDocument> {
+  id: string;
   tenantId: string;
   channel: MarketplaceChannel;
   sellerId: string;
@@ -47,7 +48,8 @@ export interface MarketplaceAccount extends BaseDocument {
   updatedBy?: string;
 }
 
-export interface MarketplaceItem extends BaseDocument {
+export interface MarketplaceItem extends Partial<BaseDocument> {
+  id: string;
   tenantId: string;
   productId: string;            // ID do produto no ERP local
   productSku?: string;          // SKU local do ERP
@@ -74,7 +76,8 @@ export interface MarketplaceItem extends BaseDocument {
 
 export type WebhookProcessStatus = "pending" | "processed" | "failed" | "duplicate";
 
-export interface MarketplaceWebhookLog extends BaseDocument {
+export interface MarketplaceWebhookLog extends Partial<BaseDocument> {
+  id: string;
   tenantId: string;
   channel: MarketplaceChannel;
   sellerId?: string;
@@ -94,7 +97,8 @@ export interface MarketplaceWebhookLog extends BaseDocument {
 
 export type LogSeverity = "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 
-export interface MarketplaceSyncHistory extends BaseDocument {
+export interface MarketplaceSyncHistory extends Partial<BaseDocument> {
+  id: string;
   tenantId: string;
   channel: MarketplaceChannel;
   severity: LogSeverity;
@@ -111,7 +115,8 @@ export interface MarketplaceSyncHistory extends BaseDocument {
   createdBy?: string;
 }
 
-export interface MarketplaceOrder extends BaseDocument {
+export interface MarketplaceOrder extends Partial<BaseDocument> {
+  id: string;
   tenantId: string;
   channel: MarketplaceChannel;
   sellerId: string;
@@ -146,7 +151,8 @@ export type QueueTaskType = "sync_stock" | "sync_price" | "import_order" | "expo
 export type QueueTaskPriority = "urgent" | "high" | "normal" | "low";
 export type QueueTaskStatus = "pending" | "processing" | "completed" | "failed";
 
-export interface MarketplaceInventoryQueue extends BaseDocument {
+export interface MarketplaceInventoryQueue extends Partial<BaseDocument> {
+  id: string;
   tenantId: string;
   channel: MarketplaceChannel;
   taskType: QueueTaskType;
