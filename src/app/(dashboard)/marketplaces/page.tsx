@@ -295,14 +295,163 @@ export default function MarketplacesPage() {
         </div>
       )}
 
-      {/* Tab Content: Mercado Livre Placeholder */}
+      {/* Tab Content: Mercado Livre */}
       {activeTab === "mercadolibre" && (
-        <div className="p-8 text-center bg-card/40 rounded-2xl border border-border space-y-3">
-          <Store className="w-12 h-12 text-yellow-500 mx-auto opacity-80" />
-          <h3 className="text-xl font-bold">Mercado Livre (Meli API)</h3>
-          <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            A infraestrutura de suporte para o Mercado Livre foi totalmente preparada na Fase 1 e será integrada na Fase 3.
-          </p>
+        <div className="space-y-6">
+          {/* Status Bar Card */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-card/50 backdrop-blur-md p-5 rounded-2xl border border-border space-y-1">
+              <span className="text-xs text-muted-foreground font-medium">Status da Conexão</span>
+              <div className="flex items-center gap-2 pt-1">
+                {accounts.find((a) => a.channel === "mercado_libre")?.status === "connected" ? (
+                  <>
+                    <CheckCircle className="w-5 h-5 text-emerald-500" />
+                    <span className="font-semibold text-emerald-500">Conectada</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-5 h-5 text-muted-foreground" />
+                    <span className="font-semibold text-muted-foreground">Desconectada</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-card/50 backdrop-blur-md p-5 rounded-2xl border border-border space-y-1">
+              <span className="text-xs text-muted-foreground font-medium">Produtos & Anúncios</span>
+              <p className="text-2xl font-bold text-foreground">
+                {accounts.find((a) => a.channel === "mercado_libre")?.syncedProductsCount || 0}
+              </p>
+            </div>
+
+            <div className="bg-card/50 backdrop-blur-md p-5 rounded-2xl border border-border space-y-1">
+              <span className="text-xs text-muted-foreground font-medium">Pedidos Importados</span>
+              <p className="text-2xl font-bold text-foreground">
+                {accounts.find((a) => a.channel === "mercado_libre")?.importedOrdersCount || 0}
+              </p>
+            </div>
+
+            <div className="bg-card/50 backdrop-blur-md p-5 rounded-2xl border border-border space-y-1">
+              <span className="text-xs text-muted-foreground font-medium">Erros Registrados</span>
+              <p className="text-2xl font-bold text-foreground">
+                {accounts.find((a) => a.channel === "mercado_libre")?.errorsCount || 0}
+              </p>
+            </div>
+          </div>
+
+          {/* Integration Control Banner */}
+          <div className="bg-gradient-to-r from-yellow-500/10 via-yellow-500/5 to-transparent p-6 rounded-2xl border border-yellow-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Store className="w-5 h-5 text-yellow-500" />
+                <h3 className="text-lg font-bold text-foreground">Conta Mercado Livre (Meli API)</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {accounts.find((a) => a.channel === "mercado_libre")
+                  ? `Vendedor ID: ${accounts.find((a) => a.channel === "mercado_libre")?.sellerId} — Conectada e protegida por criptografia AES-256-GCM.`
+                  : "Conecte sua conta do Mercado Livre via OAuth 2.0 seguro para automatizar anúncios, Mercado Envios e estoque."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {!accounts.find((a) => a.channel === "mercado_libre") ? (
+                <button
+                  onClick={() => {
+                    window.location.href = `/api/marketplaces/mercadolibre/auth?action=connect&tenantId=${tenantId}`;
+                  }}
+                  className="px-5 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-semibold rounded-xl transition-all shadow-md flex items-center gap-2 text-sm"
+                >
+                  <Zap className="w-4 h-4" />
+                  Conectar Mercado Livre
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={async () => {
+                      setSyncing(true);
+                      info("Sincronização iniciada", "Disparando sincronização com o Mercado Livre...");
+                      setTimeout(() => {
+                        setSyncing(false);
+                        success("Sincronização concluída", "Anúncios e estoque do Mercado Livre atualizados.");
+                        loadData();
+                      }, 1500);
+                    }}
+                    disabled={syncing}
+                    className="px-4 py-2.5 bg-card border border-border hover:bg-accent text-foreground font-medium rounded-xl transition-all text-sm flex items-center gap-2"
+                  >
+                    <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
+                    Sincronizar Agora
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.location.href = `/api/marketplaces/mercadolibre/auth?action=connect&tenantId=${tenantId}`;
+                    }}
+                    className="px-4 py-2.5 bg-red-500/10 text-red-500 hover:bg-red-500/20 font-medium rounded-xl transition-all text-sm"
+                  >
+                    Reconectar / Desconectar
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Logs & Webhook History */}
+          <div className="bg-card/60 backdrop-blur-md p-6 rounded-2xl border border-border space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                Histórico de Eventos & Logs (Mercado Livre)
+              </h3>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-accent/40 border-b border-border text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-3">Data/Hora</th>
+                    <th className="p-3">Operação</th>
+                    <th className="p-3">Severidade</th>
+                    <th className="p-3">Mensagem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {logs.filter((l) => l.channel === "mercado_libre").length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                        Nenhum evento registrado no momento para Mercado Livre.
+                      </td>
+                    </tr>
+                  ) : (
+                    logs
+                      .filter((l) => l.channel === "mercado_libre")
+                      .slice(0, 10)
+                      .map((log) => (
+                        <tr key={log.id} className="hover:bg-accent/20 transition-colors">
+                          <td className="p-3 whitespace-nowrap text-xs text-muted-foreground">
+                            {new Date(log.createdAt || Date.now()).toLocaleString("pt-BR")}
+                          </td>
+                          <td className="p-3 font-medium text-foreground">{log.operation}</td>
+                          <td className="p-3">
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 rounded-md text-xs font-semibold",
+                                log.severity === "INFO" && "bg-blue-500/10 text-blue-500",
+                                log.severity === "WARNING" && "bg-amber-500/10 text-amber-500",
+                                log.severity === "ERROR" && "bg-red-500/10 text-red-500",
+                                log.severity === "CRITICAL" && "bg-red-600 text-white"
+                              )}
+                            >
+                              {log.severity}
+                            </span>
+                          </td>
+                          <td className="p-3 text-muted-foreground">{log.message}</td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

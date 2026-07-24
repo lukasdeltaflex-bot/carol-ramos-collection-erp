@@ -376,6 +376,26 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
+
+            {/* Card 5: Mercado Livre Integration */}
+            <Link href="/marketplaces?tab=mercadolibre" className="p-5 rounded-2xl border border-yellow-500/30 bg-yellow-500/5 flex flex-col justify-between h-36 relative group hover:border-yellow-500 transition-all duration-300">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider flex items-center gap-1">
+                  <Globe className="h-3.5 w-3.5" /> Mercado Livre
+                </span>
+                <div className="p-2 rounded-xl bg-yellow-500/10 text-yellow-500">
+                  <ArrowUpRight className="h-4 w-4" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold tracking-tight text-foreground">
+                  Meli API v1
+                </h3>
+                <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-0.5 font-semibold">
+                  <span>Mercado Envios • Full Sync</span>
+                </p>
+              </div>
+            </Link>
           </div>
 
           {/* 3. Charts & List Section */}
