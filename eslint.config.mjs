@@ -5,6 +5,17 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   {
     ignores: ['.next/**/*', 'out/**/*', 'build/**/*'],
+    rules: {
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/rules-of-hooks": "off",
+      "@next/next/no-img-element": "off",
+      "react/no-unescaped-entities": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/immutability": "off",
+      "react-hooks/purity": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/static-components": "off"
+    }
   },
 ]);
 

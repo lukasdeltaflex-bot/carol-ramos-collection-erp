@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { MercadoLivreProvider } from "@/features/integrations/providers/MercadoLivreProvider";
 import { saveMarketplaceAccount } from "@/services/marketplaceDbService";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const searchParams = req.nextUrl.searchParams;
     const code = searchParams.get("code");
     const tenantId = searchParams.get("tenantId") || "default_tenant";
     const action = searchParams.get("action");
@@ -29,7 +29,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Parâmetro 'code' ou 'action=connect' ausente." }, { status: 400 });
   } catch (error: any) {
     console.error("[Mercado Livre OAuth Route Error]:", error);
-    const errorUrl = new URL("/marketplaces?tab=mercadolibre&error=" + encodeURIComponent(error.message || "Falha na autenticação OAuth"), req.url);
+    
+    // Fallback safe URL resolution to prevent crash in catch block
+    const baseUrl = req.nextUrl ? req.nextUrl.origin : "https://carol-ramos-collection-erp.vercel.app";
+    const errorUrl = new URL("/marketplaces?tab=mercadolibre&error=" + encodeURIComponent(error.message || "Falha na autenticação OAuth"), baseUrl);
+    
     return NextResponse.redirect(errorUrl);
   }
 }

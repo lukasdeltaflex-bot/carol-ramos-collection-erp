@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ShopeeProvider } from "@/features/integrations/providers/ShopeeProvider";
 import { saveMarketplaceAccount } from "@/services/marketplaceDbService";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const searchParams = req.nextUrl.searchParams;
     const code = searchParams.get("code");
     const tenantId = searchParams.get("tenantId") || "default_tenant";
     const action = searchParams.get("action");
@@ -30,7 +30,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Parâmetro 'code' ou 'action=connect' ausente." }, { status: 400 });
   } catch (error: any) {
     console.error("[Shopee OAuth Route Error]:", error);
-    const errorUrl = new URL("/marketplaces?tab=shopee&error=" + encodeURIComponent(error.message || "Falha na autenticação OAuth"), req.url);
+    
+    // Fallback safe URL resolution to prevent crash in catch block
+    const baseUrl = req.nextUrl ? req.nextUrl.origin : "https://carol-ramos-collection-erp.vercel.app";
+    const errorUrl = new URL("/marketplaces?tab=shopee&error=" + encodeURIComponent(error.message || "Falha na autenticação OAuth"), baseUrl);
+    
     return NextResponse.redirect(errorUrl);
   }
 }
