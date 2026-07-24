@@ -47,6 +47,7 @@ const INITIAL_TEMPLATES: Partial<EmailTemplate>[] = [
     subject: "Atenção: Produto {produto} atingiu a quantidade mínima",
     body: "Olá equipe de compras.\n\nO produto {produto} da empresa {empresa} atingiu o limite mínimo de estoque em {data}.\n\nAcesse o módulo de Produtos & Estoque para emitir uma nova Ordem de Compra.",
     variables: ["{produto}", "{empresa}", "{data}"]
+  },
   {
     category: "customer",
     name: "Mensagem de Aniversário de Cliente",
