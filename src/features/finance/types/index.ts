@@ -25,7 +25,7 @@ export interface CompanyCreditCard extends BaseDocument {
   tenantId: string;
   name: string; // e.g. "Cartão Corporativo Itaú Black"
   issuerBank: string; // e.g. "Itaú", "Nubank", "Inter"
-  flag: 'visa' | 'mastercard' | 'elo' | 'amex' | 'hipercard' | 'other';
+  flag: 'visa' | 'mastercard' | 'elo' | 'amex' | 'hipercard' | 'diners' | 'discover' | 'aura' | 'cabal' | 'unionpay' | 'jcb' | 'other';
   lastFourDigits: string; // e.g. "4589"
   nameOnCard: string; // e.g. "CAROL RAMOS"
   totalLimit: number;
@@ -36,6 +36,8 @@ export interface CompanyCreditCard extends BaseDocument {
   responsiblePerson?: string; // e.g. "Carol Ramos"
   status: 'active' | 'inactive' | 'blocked';
   color?: string;
+  issuerBankLogo?: string; // Base64 image data or logo URL
+  flagLogo?: string; // Base64 image data or logo URL
   notes?: string;
 }
 

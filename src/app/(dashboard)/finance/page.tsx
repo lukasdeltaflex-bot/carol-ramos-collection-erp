@@ -56,7 +56,9 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { BankLogo } from "@/components/ui/BankLogo";
+import { CardFlagLogo } from "@/components/ui/CardFlagLogo";
 import { KNOWN_BANKS, generateOnlineLogoCandidates, findKnownBank } from "@/lib/bankLogos";
+import { KNOWN_CARD_FLAGS, generateOnlineFlagCandidates, findKnownCardFlag } from "@/lib/cardFlags";
 
 export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
@@ -189,7 +191,7 @@ export default function FinancePage() {
   // 3. Corporate Credit Card
   const [cName, setCName] = useState("");
   const [cIssuerBank, setCIssuerBank] = useState("");
-  const [cFlag, setCFlag] = useState<'visa' | 'mastercard' | 'elo' | 'amex' | 'hipercard' | 'other'>("visa");
+  const [cFlag, setCFlag] = useState<'visa' | 'mastercard' | 'elo' | 'amex' | 'hipercard' | 'diners' | 'discover' | 'aura' | 'cabal' | 'unionpay' | 'jcb' | 'other'>("visa");
   const [cLast4, setCLast4] = useState("");
   const [cNameOnCard, setCNameOnCard] = useState("");
   const [cTotalLimit, setCTotalLimit] = useState(0);
@@ -200,6 +202,52 @@ export default function FinancePage() {
   const [cResponsiblePerson, setCResponsiblePerson] = useState("");
   const [cStatus, setCStatus] = useState<'active' | 'inactive' | 'blocked'>("active");
   const [cNotes, setCNotes] = useState("");
+  const [cIssuerBankLogo, setCIssuerBankLogo] = useState("");
+  const [cFlagLogo, setCFlagLogo] = useState("");
+  const [cIssuerLogoCandidates, setCIssuerLogoCandidates] = useState<string[]>([]);
+  const [cFlagLogoCandidates, setCFlagLogoCandidates] = useState<string[]>([]);
+  const [isSearchingIssuerLogo, setIsSearchingIssuerLogo] = useState(false);
+  const [isSearchingFlagLogo, setIsSearchingFlagLogo] = useState(false);
+
+  const handleIssuerBankLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setCIssuerBankLogo(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFlagLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setCFlagLogo(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSearchIssuerBankLogo = () => {
+    const query = cIssuerBank || cName || "banco";
+    setIsSearchingIssuerLogo(true);
+    const candidates = generateOnlineLogoCandidates(query);
+    setCIssuerLogoCandidates(candidates);
+    setIsSearchingIssuerLogo(false);
+  };
+
+  const handleSearchFlagLogo = () => {
+    const query = cFlag || "cartao";
+    setIsSearchingFlagLogo(true);
+    const candidates = generateOnlineFlagCandidates(query);
+    setCFlagLogoCandidates(candidates);
+    setIsSearchingFlagLogo(false);
+  };
 
   // 4. Purchase Form Fields
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
@@ -456,6 +504,10 @@ export default function FinancePage() {
     setCResponsiblePerson("");
     setCStatus("active");
     setCNotes("");
+    setCIssuerBankLogo("");
+    setCFlagLogo("");
+    setCIssuerLogoCandidates([]);
+    setCFlagLogoCandidates([]);
 
     setSelectedSupplierId(suppliers[0]?.id || "");
     setPurchaseInvoiceNumber("");
@@ -559,6 +611,10 @@ export default function FinancePage() {
     setCResponsiblePerson(card.responsiblePerson || "");
     setCStatus(card.status);
     setCNotes(card.notes || "");
+    setCIssuerBankLogo(card.issuerBankLogo || "");
+    setCFlagLogo(card.flagLogo || "");
+    setCIssuerLogoCandidates([]);
+    setCFlagLogoCandidates([]);
     setDrawerOpen(true);
   };
 
@@ -666,6 +722,9 @@ export default function FinancePage() {
           linkedBankAccountId: cLinkedBankAccountId || "",
           responsiblePerson: cResponsiblePerson || "",
           status: cStatus || "active",
+          color: "bg-slate-900 text-white",
+          issuerBankLogo: cIssuerBankLogo || undefined,
+          flagLogo: cFlagLogo || undefined,
           notes: cNotes || "",
         };
 
@@ -1530,11 +1589,15 @@ export default function FinancePage() {
 
                     return (
                       <div key={card.id} className="p-5 rounded-2xl border border-border bg-gradient-to-br from-card/80 via-card/40 to-muted/20 flex flex-col justify-between space-y-4 hover:border-primary/40 transition-all shadow-lg group relative overflow-hidden">
-                        {/* Status bar */}
+                        {/* Status bar & Issuer Bank */}
                         <div className="flex items-center justify-between">
-                          <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-[9px] font-bold uppercase tracking-wider">
-                            {card.flag.toUpperCase()} • CORPORATIVO
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <BankLogo account={{ logo: card.issuerBankLogo, bankName: card.issuerBank, name: card.name }} size="md" />
+                            <div>
+                              <span className="text-xs font-bold text-foreground block">{card.issuerBank}</span>
+                              <span className="text-[9px] text-muted-foreground uppercase font-semibold">CORPORATIVO</span>
+                            </div>
+                          </div>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => handleEditCompanyCard(card)}
@@ -1553,11 +1616,16 @@ export default function FinancePage() {
                           </div>
                         </div>
 
-                        {/* Card Name and Visual details */}
-                        <div className="space-y-1">
-                          <h4 className="text-lg font-bold text-foreground leading-snug">{card.name}</h4>
-                          <p className="text-xs text-muted-foreground">{card.issuerBank} • Final {card.lastFourDigits}</p>
-                          <p className="text-[11px] font-mono font-medium text-foreground uppercase tracking-widest mt-1">{card.nameOnCard}</p>
+                        {/* Card Name and Visual mockup details */}
+                        <div className="p-3.5 rounded-xl bg-card border border-border/80 space-y-2 shadow-xs">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-bold text-foreground leading-snug">{card.name}</h4>
+                            <CardFlagLogo card={{ flagLogo: card.flagLogo, flag: card.flag }} size="md" />
+                          </div>
+                          <div className="text-xs font-mono tracking-widest text-muted-foreground pt-1">
+                            •••• •••• •••• {card.lastFourDigits}
+                          </div>
+                          <p className="text-[10px] font-mono font-semibold text-foreground uppercase tracking-wider">{card.nameOnCard}</p>
                         </div>
 
                         {/* Limit Progress Bar */}
@@ -2103,6 +2171,93 @@ export default function FinancePage() {
                 {/* Form 2: Corporate Credit Card */}
                 {drawerType === "company_card" && (
                   <>
+                    {/* Live Preview of Credit Card Logos */}
+                    <div className="p-3.5 rounded-xl border border-border bg-card/60 space-y-3">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Identificação Visual do Cartão</label>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 text-white border border-slate-800 shadow-md">
+                        <div className="flex items-center gap-2">
+                          <BankLogo account={{ logo: cIssuerBankLogo, bankName: cIssuerBank, name: cName }} size="md" />
+                          <div>
+                            <span className="text-xs font-bold block text-white">{cIssuerBank || "Banco Emissor"}</span>
+                            <span className="text-[9px] text-slate-400 font-mono">{cName || "Cartão Corporativo"}</span>
+                          </div>
+                        </div>
+
+                        <CardFlagLogo card={{ flagLogo: cFlagLogo, flag: cFlag }} size="md" />
+                      </div>
+
+                      {/* Controls for Issuer Bank Logo */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-foreground">Logo do Banco Emissor:</span>
+                          {cIssuerBankLogo && (
+                            <button type="button" onClick={() => setCIssuerBankLogo("")} className="text-[9px] text-destructive hover:underline font-medium">Remover</button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSearchIssuerBankLogo}
+                            disabled={isSearchingIssuerLogo}
+                            className="flex items-center justify-center gap-1 px-2 py-1 rounded border border-border bg-background text-[9px] font-semibold text-foreground hover:bg-muted"
+                          >
+                            <Search className="h-3 w-3 text-primary" />
+                            <span>🔍 Buscar logo banco</span>
+                          </button>
+                          <label className="flex items-center justify-center gap-1 px-2 py-1 rounded border border-border bg-background text-[9px] font-semibold text-foreground hover:bg-muted cursor-pointer">
+                            <Upload className="h-3 w-3 text-primary" />
+                            <span>📤 Enviar logo banco</span>
+                            <input type="file" accept="image/*" onChange={handleIssuerBankLogoUpload} className="hidden" />
+                          </label>
+                        </div>
+                        {cIssuerLogoCandidates.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {cIssuerLogoCandidates.map((url, idx) => (
+                              <button key={idx} type="button" onClick={() => setCIssuerBankLogo(url)} className="p-0.5 rounded border border-border bg-white dark:bg-card h-7 w-7 flex items-center justify-center hover:scale-105">
+                                <img src={url} alt="Candidate" className="h-full w-full object-contain" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Controls for Card Flag Logo */}
+                      <div className="space-y-1.5 pt-1 border-t border-border/40">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-foreground">Logo da Bandeira:</span>
+                          {cFlagLogo && (
+                            <button type="button" onClick={() => setCFlagLogo("")} className="text-[9px] text-destructive hover:underline font-medium">Remover</button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSearchFlagLogo}
+                            disabled={isSearchingFlagLogo}
+                            className="flex items-center justify-center gap-1 px-2 py-1 rounded border border-border bg-background text-[9px] font-semibold text-foreground hover:bg-muted"
+                          >
+                            <Search className="h-3 w-3 text-primary" />
+                            <span>🔍 Buscar logo bandeira</span>
+                          </button>
+                          <label className="flex items-center justify-center gap-1 px-2 py-1 rounded border border-border bg-background text-[9px] font-semibold text-foreground hover:bg-muted cursor-pointer">
+                            <Upload className="h-3 w-3 text-primary" />
+                            <span>📤 Enviar logo bandeira</span>
+                            <input type="file" accept="image/*" onChange={handleFlagLogoUpload} className="hidden" />
+                          </label>
+                        </div>
+                        {cFlagLogoCandidates.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {cFlagLogoCandidates.map((url, idx) => (
+                              <button key={idx} type="button" onClick={() => setCFlagLogo(url)} className="p-0.5 rounded border border-border bg-white dark:bg-card h-7 w-7 flex items-center justify-center hover:scale-105">
+                                <img src={url} alt="Candidate" className="h-full w-full object-contain" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome Identificador do Cartão *</label>
@@ -2133,14 +2288,20 @@ export default function FinancePage() {
 
                     <div className="grid grid-cols-3 gap-3">
                       <div className="space-y-1">
-                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Bandeira</label>
-                        <select value={cFlag} onChange={(e) => setCFlag(e.target.value as any)} className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Bandeira do Cartão</label>
+                        <select value={cFlag} onChange={(e) => setCFlag(e.target.value as any)} className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground font-medium">
                           <option value="visa">Visa</option>
                           <option value="mastercard">Mastercard</option>
                           <option value="elo">Elo</option>
                           <option value="amex">American Express</option>
                           <option value="hipercard">Hipercard</option>
-                          <option value="other">Outras</option>
+                          <option value="diners">Diners Club</option>
+                          <option value="discover">Discover</option>
+                          <option value="aura">Aura</option>
+                          <option value="cabal">Cabal</option>
+                          <option value="unionpay">UnionPay</option>
+                          <option value="jcb">JCB</option>
+                          <option value="other">Outra Bandeira</option>
                         </select>
                       </div>
 

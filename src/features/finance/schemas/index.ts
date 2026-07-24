@@ -23,7 +23,7 @@ export const BankAccountSchema = z.object({
 export const CompanyCreditCardSchema = z.object({
   name: z.string().min(2, "Nome do cartão deve conter pelo menos 2 caracteres"),
   issuerBank: z.string().min(2, "Informe o banco emissor"),
-  flag: z.enum(["visa", "mastercard", "elo", "amex", "hipercard", "other"]),
+  flag: z.enum(["visa", "mastercard", "elo", "amex", "hipercard", "diners", "discover", "aura", "cabal", "unionpay", "jcb", "other"]),
   lastFourDigits: z.string().length(4, "Informe os últimos 4 dígitos"),
   nameOnCard: z.string().min(2, "Informe o nome impresso no cartão"),
   totalLimit: z.number().positive("Limite total deve ser maior que zero"),
@@ -34,6 +34,8 @@ export const CompanyCreditCardSchema = z.object({
   responsiblePerson: z.string().optional(),
   status: z.enum(["active", "inactive", "blocked"]).default("active"),
   color: z.string().optional(),
+  issuerBankLogo: z.string().optional(),
+  flagLogo: z.string().optional(),
   notes: z.string().optional(),
 });
 
