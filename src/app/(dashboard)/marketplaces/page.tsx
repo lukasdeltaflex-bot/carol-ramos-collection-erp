@@ -31,7 +31,7 @@ import { MarketplaceAccount, MarketplaceSyncHistory } from "@/features/integrati
 export default function MarketplacesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const tenantId = user?.tenantId || "default_tenant";
+  const tenantId = (user as any)?.tenantId || "default_tenant";
 
   const { docs: accounts, loading: loadingAccounts, getDocs: getAccounts } = useDb<MarketplaceAccount>("marketplace_accounts");
   const { docs: logs, loading: loadingLogs, getDocs: getLogs } = useDb<MarketplaceSyncHistory>("marketplace_sync_history");
