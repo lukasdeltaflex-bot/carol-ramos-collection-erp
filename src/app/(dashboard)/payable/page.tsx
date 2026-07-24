@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
 import { useToast } from "@/context/ToastContext";
 import Modal, { ModalFooter } from "@/components/ui/Modal";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { BankLogo } from "@/components/ui/BankLogo";
 import {
