@@ -1,6 +1,6 @@
 import { BaseDocument } from "@/types/shared";
 
-export type NotificationCategory = "financial" | "stock" | "schedule" | "customer" | "system" | "reminder";
+export type NotificationCategory = "financial" | "stock" | "customer" | "system" | "reminder";
 export type NotificationPriority = "low" | "medium" | "high" | "urgent";
 
 export interface SystemNotification extends BaseDocument {
@@ -36,9 +36,6 @@ export interface NotificationSettings extends Partial<BaseDocument> {
     financialOverduePayables: boolean;
     financialReceivables: boolean;
     financialOverdueReceivables: boolean;
-    scheduleDaily: boolean;
-    scheduleUpcoming: boolean;
-    scheduleMeetings: boolean;
     customerBirthdays: boolean;
     customerPostSale: boolean;
     stockLow: boolean;

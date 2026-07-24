@@ -47,20 +47,12 @@ const INITIAL_TEMPLATES: Partial<EmailTemplate>[] = [
     subject: "Atenção: Produto {produto} atingiu a quantidade mínima",
     body: "Olá equipe de compras.\n\nO produto {produto} da empresa {empresa} atingiu o limite mínimo de estoque em {data}.\n\nAcesse o módulo de Produtos & Estoque para emitir uma nova Ordem de Compra.",
     variables: ["{produto}", "{empresa}", "{data}"]
-  },
   {
     category: "customer",
     name: "Mensagem de Aniversário de Cliente",
     subject: "Parabéns, {nome_cliente}! Uma surpresa especial da {empresa}",
     body: "Prezado(a) {nome_cliente},\n\nDesejamos a você um feliz aniversário! Em comemoração a este dia especial, preparamos um cupom de desconto exclusivo para sua próxima compra na {empresa}.\n\nAtenciosamente,\nEquipe {empresa}",
     variables: ["{nome_cliente}", "{empresa}", "{data}"]
-  },
-  {
-    category: "schedule",
-    name: "Lembrete de Compromisso do Dia",
-    subject: "Compromisso Hoje na Agenda: {data}",
-    body: "Olá {usuario_responsavel},\n\nLembrete de compromisso agendado para hoje ({data}) referente à empresa {empresa}.\n\nConfira os detalhes na sua agenda.",
-    variables: ["{usuario_responsavel}", "{empresa}", "{data}"]
   }
 ];
 
@@ -96,9 +88,6 @@ export default function NotificationsPage() {
       financialOverduePayables: true,
       financialReceivables: true,
       financialOverdueReceivables: true,
-      scheduleDaily: true,
-      scheduleUpcoming: true,
-      scheduleMeetings: true,
       customerBirthdays: true,
       customerPostSale: false,
       stockLow: true,
@@ -347,7 +336,6 @@ export default function NotificationsPage() {
     switch (cat) {
       case "financial": return <DollarSign className="h-4 w-4 text-emerald-500" />;
       case "stock": return <Package className="h-4 w-4 text-amber-500" />;
-      case "schedule": return <Calendar className="h-4 w-4 text-blue-500" />;
       case "customer": return <Users className="h-4 w-4 text-rose-500" />;
       default: return <ShieldAlert className="h-4 w-4 text-purple-500" />;
     }
@@ -416,7 +404,6 @@ export default function NotificationsPage() {
                 <option value="all">Todas Categorias</option>
                 <option value="financial">Financeiro</option>
                 <option value="stock">Estoque</option>
-                <option value="schedule">Agenda</option>
                 <option value="customer">Clientes</option>
                 <option value="system">Sistema</option>
               </select>

@@ -112,12 +112,6 @@ export default function Sidebar({
       roles: ["owner", "admin", "viewer"],
     },
     {
-      name: "Agenda & Serviços",
-      href: "/schedule",
-      icon: Calendar,
-      roles: ["owner", "admin", "operator", "viewer"],
-    },
-    {
       name: "Lembretes & Ideias",
       href: "/reminders",
       icon: Lightbulb,
@@ -164,12 +158,6 @@ export default function Sidebar({
       name: "Aparência",
       href: "/appearance",
       icon: Palette,
-      roles: ["owner", "admin", "operator", "viewer"],
-    },
-    {
-      name: "Tutorial",
-      href: "/tutorial",
-      icon: BookOpen,
       roles: ["owner", "admin", "operator", "viewer"],
     },
   ];

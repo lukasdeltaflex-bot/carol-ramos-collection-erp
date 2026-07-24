@@ -321,7 +321,6 @@ export default function Header({
       label: "Preferências",
       items: [
         { label: "Aparência", href: "/appearance", icon: Palette },
-        { label: "Tutorial", href: "/tutorial", icon: BookOpen },
         { label: "Sobre", href: "/settings?tab=about", icon: Info },
       ],
     },
