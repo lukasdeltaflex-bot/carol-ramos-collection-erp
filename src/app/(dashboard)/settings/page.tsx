@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { useAppearance, COLOR_MAP, FONT_MAP, RADIUS_MAP, PrimaryColor, FontFamily, FontSize, BorderRadius, Spacing, ShadowLevel } from "@/context/AppearanceContext";
 import { SensitiveField } from "@/components/ui/SensitiveField";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 
 // Custom SVG Icons for socials (Req 1)
 const InstagramIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -587,6 +588,31 @@ export default function SettingsPage() {
   const handleSaveCompanyProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenantId) return;
+
+    if (compPhone && compPhone.length < 14) {
+      toastError("Telefone Fixo Inválido", "O telefone da empresa deve estar completo.");
+      return;
+    }
+    if (compWhatsapp && compWhatsapp.length < 14) {
+      toastError("WhatsApp Inválido", "O WhatsApp da empresa deve estar completo.");
+      return;
+    }
+
+    // Validate times
+    for (const [day, sched] of Object.entries(compHours)) {
+      if (sched.isOpen) {
+        for (const period of sched.periods) {
+          if (!period.open || !period.close) {
+            toastError("Horário Inválido", `O horário de ${day} está incompleto.`);
+            return;
+          }
+          if (period.open >= period.close) {
+            toastError("Horário Inválido", `Em ${day}, o horário de início deve ser menor que o horário final.`);
+            return;
+          }
+        }
+      }
+    }
 
     setLoading(true);
     const payload = {
@@ -1665,22 +1691,20 @@ export default function SettingsPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       <div className="space-y-1">
                         <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Telefone Fixo</label>
-                        <input
-                          type="text"
+                        <PhoneInput
                           value={compPhone}
-                          onChange={e => setCompPhone(e.target.value)}
+                          onChange={(val) => setCompPhone(val)}
                           placeholder="(11) 5555-5555"
                           className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">WhatsApp Comercial</label>
-                        <input
-                          type="text"
+                        <PhoneInput
                           value={compWhatsapp}
-                          onChange={e => setCompWhatsapp(e.target.value)}
+                          onChange={(val) => setCompWhatsapp(val)}
                           placeholder="(11) 99999-9999"
-                          className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                          className="w-full px-3 py-2 rounded-lg border border-border bg-card"
                         />
                       </div>
                     </div>
@@ -1786,14 +1810,14 @@ export default function SettingsPage() {
                                             type="time"
                                             value={period.open}
                                             onChange={(e) => handleUpdatePeriodTime(day, idx, "open", e.target.value)}
-                                            className="px-2 py-1 rounded border border-border bg-card font-mono text-[11px] w-20 text-center"
+                                            className="px-2 py-1.5 rounded border border-border bg-card font-mono text-[13px] w-28 text-center"
                                           />
-                                          <span className="text-muted-foreground text-[10px]">às</span>
+                                          <span className="text-muted-foreground text-[11px] font-medium px-1">às</span>
                                           <input
                                             type="time"
                                             value={period.close}
                                             onChange={(e) => handleUpdatePeriodTime(day, idx, "close", e.target.value)}
-                                            className="px-2 py-1 rounded border border-border bg-card font-mono text-[11px] w-20 text-center"
+                                            className="px-2 py-1.5 rounded border border-border bg-card font-mono text-[13px] w-28 text-center"
                                           />
                                           {sched.periods.length > 1 && (
                                             <button
