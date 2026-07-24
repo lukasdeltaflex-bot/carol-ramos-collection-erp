@@ -26,16 +26,37 @@ export class MercadoLivreProvider implements MarketplaceProvider {
   readonly channel: MarketplaceChannel = "mercado_libre";
 
   private getAppCredentials(): { appId: string; clientSecret: string; redirectUri: string } {
-    const appId = process.env.MELI_APP_ID || "123456789";
-    const clientSecret = process.env.MELI_CLIENT_SECRET || "meli_client_secret_2026";
-    const redirectUri = process.env.MELI_REDIRECT_URI || "https://carol-ramos-collection-erp.vercel.app/api/marketplaces/mercadolibre/auth";
+    const appId = process.env.MELI_APP_ID && process.env.MELI_APP_ID.trim() !== ""
+      ? process.env.MELI_APP_ID
+      : "123456789";
+
+    const clientSecret = process.env.MELI_CLIENT_SECRET && process.env.MELI_CLIENT_SECRET.trim() !== ""
+      ? process.env.MELI_CLIENT_SECRET
+      : "meli_client_secret_2026";
+
+    const redirectUri = process.env.MELI_REDIRECT_URI && process.env.MELI_REDIRECT_URI.trim() !== ""
+      ? process.env.MELI_REDIRECT_URI
+      : "https://carol-ramos-collection-erp.vercel.app/api/marketplaces/mercadolibre/auth";
+
     return { appId, clientSecret, redirectUri };
   }
 
   async getAuthUrl(tenantId: string): Promise<string> {
-    const { appId, redirectUri } = this.getAppCredentials();
-    const finalRedirect = `${redirectUri}?tenantId=${encodeURIComponent(tenantId)}`;
-    return getMeliAuthUrl(appId, finalRedirect);
+    try {
+      console.log(`[OAUTH] [MERCADO LIVRE] Validando credenciais para tenant ${tenantId}`);
+      const { appId, redirectUri } = this.getAppCredentials();
+      
+      const finalRedirect = `${redirectUri}?tenantId=${encodeURIComponent(tenantId)}`;
+      console.log(`[OAUTH] [MERCADO LIVRE] Gerando URL oficial com redirect_uri: ${finalRedirect}`);
+      
+      const authUrl = getMeliAuthUrl(appId, finalRedirect);
+      console.log(`[OAUTH] [MERCADO LIVRE] URL de autorização gerada com sucesso.`);
+      
+      return authUrl;
+    } catch (error) {
+      console.error(`[OAUTH] [MERCADO LIVRE] Falha ao gerar URL de autorização:`, error);
+      throw new Error("Falha interna ao gerar URL OAuth do Mercado Livre.");
+    }
   }
 
   async handleAuthCallback(code: string, tenantId: string): Promise<MarketplaceAccount> {

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { SensitiveField } from "@/components/ui/SensitiveField";
 import { useDb } from "@/hooks/useDb";
 import { useToast } from "@/context/ToastContext";
 import { cn, formatDate } from "@/lib/utils";
@@ -544,12 +545,11 @@ export default function NotificationsPage() {
 
               <div className="space-y-1">
                 <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Senha / Chave de API</label>
-                <input
-                  type="password"
+                <SensitiveField
                   required
                   value={settings.smtpPass}
                   onChange={(e) => setSettings({ ...settings, smtpPass: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-card font-mono"
+                  className="py-2.5 rounded-xl border border-border bg-card"
                 />
               </div>
 

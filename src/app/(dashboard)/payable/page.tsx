@@ -122,7 +122,6 @@ export default function AccountsPayablePage() {
         handleOpenEdit(item);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, payables]);
 
   // Open Create Form

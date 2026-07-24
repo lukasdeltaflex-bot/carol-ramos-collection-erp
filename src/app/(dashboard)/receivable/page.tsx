@@ -123,7 +123,6 @@ export default function AccountsReceivablePage() {
         handleOpenEdit(item);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, receivables]);
 
   // Open Create Form

@@ -10,6 +10,7 @@ import Modal, { ModalFooter } from "@/components/ui/Modal";
 import { processImageUpload, MAX_IMAGE_SIZE_MB } from "@/lib/imageUpload";
 import { updatePassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import {
   Menu,
   Bell,
@@ -834,55 +835,40 @@ export default function Header({
           {/* Senha Atual */}
           <div className="space-y-1.5">
             <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Senha Atual</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
-                <Lock className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="password"
-                required
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="••••••"
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
+            <PasswordInput
+              required
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="••••••"
+              leftIcon={<Lock className="h-4.5 w-4.5" />}
+              className="py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
           </div>
 
           {/* Nova Senha */}
           <div className="space-y-1.5">
             <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nova Senha</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
-                <Key className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="password"
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
+            <PasswordInput
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              leftIcon={<Key className="h-4.5 w-4.5" />}
+              className="py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
           </div>
 
           {/* Confirmar Nova Senha */}
           <div className="space-y-1.5">
             <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Confirmar Nova Senha</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
-                <Key className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repita a nova senha"
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
+            <PasswordInput
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repita a nova senha"
+              leftIcon={<Key className="h-4.5 w-4.5" />}
+              className="py-2.5 rounded-lg border border-border bg-card text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
           </div>
 
           <ModalFooter>

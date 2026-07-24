@@ -42,9 +42,11 @@ import {
   Type,
   LayoutTemplate,
   RotateCcw,
-  Monitor
+  Monitor,
+  Eye
 } from "lucide-react";
 import { useAppearance, COLOR_MAP, FONT_MAP, RADIUS_MAP, PrimaryColor, FontFamily, FontSize, BorderRadius, Spacing, ShadowLevel } from "@/context/AppearanceContext";
+import { SensitiveField } from "@/components/ui/SensitiveField";
 
 // Custom SVG Icons for socials (Req 1)
 const InstagramIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -2749,13 +2751,12 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Chave de Produção API Key</label>
-                    <input
-                      type="password"
+                    <SensitiveField
                       required
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="••••••••••••••••"
-                      className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                      className="py-2 rounded-lg border border-border bg-card"
                     />
                   </div>
                 </>
@@ -2765,13 +2766,12 @@ export default function SettingsPage() {
                 <>
                   <div className="space-y-1">
                     <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Chave de Acesso OAuth Access Token</label>
-                    <input
-                      type="password"
+                    <SensitiveField
                       required
                       value={accessToken}
                       onChange={(e) => setAccessToken(e.target.value)}
                       placeholder="Ex: APP_USR-823901-..."
-                      className="w-full px-3 py-2 rounded-lg border border-border bg-card font-mono"
+                      className="py-2 rounded-lg border border-border bg-card"
                     />
                   </div>
                 </>

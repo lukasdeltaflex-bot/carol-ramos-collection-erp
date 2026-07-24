@@ -13,14 +13,16 @@ try {
   let formattedKey = privateKey;
   if (formattedKey) {
     // Vercel pode injetar aspas em volta da chave ou literal \n
-    if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
+    // Remove aspas simples ou duplas do início e do fim
+    if ((formattedKey.startsWith('"') && formattedKey.endsWith('"')) || (formattedKey.startsWith("'") && formattedKey.endsWith("'"))) {
       formattedKey = formattedKey.slice(1, -1);
     }
-    formattedKey = formattedKey.replace(/\\n/g, "\n");
+    // Substitui caracteres de escape por novas linhas reais e remove \r
+    formattedKey = formattedKey.replace(/\\n/g, "\n").replace(/\\r/g, "");
   }
 
   adminApp = getApps().length === 0
-    ? (clientEmail && formattedKey && !formattedKey.includes("YOUR-PRIVATE-KEY")
+    ? (clientEmail && formattedKey && formattedKey.length > 10 && !formattedKey.includes("YOUR-PRIVATE-KEY")
         ? initializeApp({
             credential: cert({
               projectId: projectId,
@@ -33,8 +35,8 @@ try {
           }))
     : getApp();
 } catch (error) {
-  console.error("[Firebase Admin Error] Falha na inicialização:", error);
-  // Inicialização de fallback vazia para não quebrar o load do módulo
+  console.error("[Firebase Admin Error] Falha na inicialização com credenciais. Usando fallback seguro:", error);
+  // Inicialização de fallback vazia para não quebrar o load do módulo, permitindo a rota subir
   adminApp = getApps().length > 0 ? getApp() : initializeApp({ projectId: projectId });
 }
 
