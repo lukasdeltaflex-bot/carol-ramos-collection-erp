@@ -48,5 +48,25 @@ service cloud.firestore {
     match /recycle_bin/{document=**} {
       allow read, create, update, delete: if isAuthenticated();
     }
+
+    // Coleções de Integrações & Marketplaces (Shopee & Mercado Livre)
+    match /marketplace_accounts/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /marketplace_items/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /marketplace_orders/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /marketplace_webhooks_log/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /marketplace_sync_history/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /marketplace_inventory_queue/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
   }
 }
