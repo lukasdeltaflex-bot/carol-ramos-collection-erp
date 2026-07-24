@@ -122,7 +122,7 @@ const INITIAL_RECEIVABLES = [
 ];
 
 export default function FinancePage() {
-  const { tenantId, isMock } = useAuth();
+  const { user, profile, tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
 
   const [activeTab, setActiveTab] = useState<"cashflow" | "accounts" | "cards" | "payable" | "receivable" | "purchases" | "dre">("cashflow");
