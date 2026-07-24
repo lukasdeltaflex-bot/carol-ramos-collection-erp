@@ -152,12 +152,6 @@ export default function Sidebar({
       name: "Configurações",
       href: "/settings",
       icon: Settings,
-      roles: ["owner", "admin"],
-    },
-    {
-      name: "Aparência",
-      href: "/appearance",
-      icon: Palette,
       roles: ["owner", "admin", "operator", "viewer"],
     },
   ];
@@ -170,7 +164,9 @@ export default function Sidebar({
         try {
           const parsed = JSON.parse(savedOrder);
           if (Array.isArray(parsed)) {
-            setCustomOrder(parsed);
+            // Filter out removed items like /appearance, /schedule, /tutorial
+            const cleaned = parsed.filter((href: string) => href !== "/appearance" && href !== "/schedule" && href !== "/tutorial");
+            setCustomOrder(cleaned);
           }
         } catch (e) {
           console.error("Erro ao carregar ordem do menu:", e);
