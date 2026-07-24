@@ -123,6 +123,7 @@ const DEFAULT_WEEK_SCHEDULE: WeekSchedule = {
 export default function SettingsPage() {
   const { user, profile, role, tenantId, activeCompany, createCompany, switchTenant, isMock, updateProfileMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, getDocById, invalidateCache } = useDb();
+  const { success, error: toastError, info } = useToast();
   const { settings: appSettings, updateSetting: updateAppSetting, resetToDefaults: resetAppDefaults } = useAppearance();
 
   const [activeTab, setActiveTab] = useState<"profile" | "appearance" | "rbac" | "params" | "integrations" | "logs" | "backup">("profile");
