@@ -30,7 +30,7 @@ import { MarketplaceAccount, MarketplaceSyncHistory } from "@/features/integrati
 
 export default function MarketplacesPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { info, success, error: toastError } = useToast();
   const { getDocs } = useDb();
   const tenantId = (user as any)?.tenantId || "default_tenant";
 
@@ -75,29 +75,18 @@ export default function MarketplacesPage() {
 
   const handleSyncShopee = async () => {
     setSyncing(true);
-    toast({
-      title: "Sincronização iniciada",
-      description: "Disparando sincronização incremental com a Shopee v2..."
-    });
+    info("Sincronização iniciada", "Disparando sincronização incremental com a Shopee v2...");
 
     try {
       // Simula / dispara sincronização
       setTimeout(() => {
         setSyncing(false);
-        toast({
-          title: "Sincronização concluída",
-          description: "Estoque e produtos atualizados com sucesso.",
-          variant: "success"
-        });
+        success("Sincronização concluída", "Estoque e produtos atualizados com sucesso.");
         loadData();
       }, 1500);
     } catch (e) {
       setSyncing(false);
-      toast({
-        title: "Erro na sincronização",
-        description: "Falha ao comunicar com a API da Shopee.",
-        variant: "destructive"
-      });
+      toastError("Erro na sincronização", "Falha ao comunicar com a API da Shopee.");
     }
   };
 
