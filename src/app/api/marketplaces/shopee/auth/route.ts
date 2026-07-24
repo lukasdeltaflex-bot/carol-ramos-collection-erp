@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ShopeeProvider } from "@/features/integrations/providers/ShopeeProvider";
+import { getApps } from "firebase-admin/app";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,12 +9,12 @@ export async function GET(req: NextRequest) {
     const code = searchParams.get("code");
     
     // Just instantiate to see if it breaks
-    const provider = new ShopeeProvider();
+    const appsCount = getApps().length;
 
     return NextResponse.json({
-      status: "oauth route alive - with ShopeeProvider imported",
+      status: "oauth route alive - with getApps imported",
+      appsCount,
       channel: "shopee",
-      providerChannel: provider.channel,
       receivedParams: { action, tenantId, code }
     });
 
