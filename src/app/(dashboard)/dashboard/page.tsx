@@ -295,7 +295,7 @@ export default function Dashboard() {
       ) : (
         <>
           {/* 2. Metric Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             
             {/* Card 1: Faturamento Diário */}
             <div className="p-5 rounded-2xl border border-border bg-card/50 flex flex-col justify-between h-36 relative group hover:border-rosegold-500/30 transition-all duration-300">

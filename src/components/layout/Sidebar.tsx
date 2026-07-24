@@ -19,6 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  ShoppingBag,
+  Globe,
   Truck,
   BookOpen,
   Palette,
@@ -134,6 +136,12 @@ export default function Sidebar({
       name: "Fornecedores",
       href: "/suppliers",
       icon: Truck,
+      roles: ["owner", "admin", "operator"],
+    },
+    {
+      name: "Marketplaces",
+      href: "/marketplaces",
+      icon: Globe,
       roles: ["owner", "admin", "operator"],
     },
     {
