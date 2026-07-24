@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ShopeeProvider } from "@/features/integrations/providers/ShopeeProvider";
 
 export async function GET(req: NextRequest) {
   try {
@@ -6,10 +7,14 @@ export async function GET(req: NextRequest) {
     const action = searchParams.get("action");
     const tenantId = searchParams.get("tenantId") || "default_tenant";
     const code = searchParams.get("code");
+    
+    // Just instantiate to see if it breaks
+    const provider = new ShopeeProvider();
 
     return NextResponse.json({
-      status: "oauth route alive - no dependencies",
+      status: "oauth route alive - with ShopeeProvider imported",
       channel: "shopee",
+      providerChannel: provider.channel,
       receivedParams: { action, tenantId, code }
     });
 
