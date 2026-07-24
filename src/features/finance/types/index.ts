@@ -109,7 +109,4 @@ export interface Purchase extends BaseDocument {
   installments?: number;
   dueDate?: any; // If accounts payable generated
   receivedAt?: any; // Date when stock was checked in
-  createdBy?: string;
-  updatedAt?: string;
-  updatedBy?: string;
 }
