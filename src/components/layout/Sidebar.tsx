@@ -100,18 +100,6 @@ export default function Sidebar({
       roles: ["owner", "admin", "viewer"],
     },
     {
-      name: "Contas a Receber",
-      href: "/receivable",
-      icon: TrendingUp,
-      roles: ["owner", "admin", "viewer"],
-    },
-    {
-      name: "Contas a Pagar",
-      href: "/payable",
-      icon: TrendingDown,
-      roles: ["owner", "admin", "viewer"],
-    },
-    {
       name: "Lembretes & Ideias",
       href: "/reminders",
       icon: Lightbulb,
@@ -164,8 +152,8 @@ export default function Sidebar({
         try {
           const parsed = JSON.parse(savedOrder);
           if (Array.isArray(parsed)) {
-            // Filter out removed items like /appearance, /schedule, /tutorial
-            const cleaned = parsed.filter((href: string) => href !== "/appearance" && href !== "/schedule" && href !== "/tutorial");
+            // Filter out removed items like /receivable, /payable, /appearance, /schedule, /tutorial
+            const cleaned = parsed.filter((href: string) => !["/receivable", "/payable", "/appearance", "/schedule", "/tutorial"].includes(href));
             setCustomOrder(cleaned);
           }
         } catch (e) {
