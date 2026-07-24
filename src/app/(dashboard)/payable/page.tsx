@@ -5,8 +5,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useDb } from "@/hooks/useDb";
 import { useToast } from "@/context/ToastContext";
 import Modal, { ModalFooter } from "@/components/ui/Modal";
-import { SkeletonCard } from "@/components/ui/Skeleton";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { BankLogo } from "@/components/ui/BankLogo";
 import {
   TrendingDown,
   Plus,
@@ -781,17 +781,20 @@ export default function AccountsPayablePage() {
 
               <div className="space-y-1.5">
                 <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Conta de Origem</label>
-                <select
-                  value={paymentBankAccountId}
-                  onChange={(e) => setPaymentBankAccountId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-card font-semibold text-xs"
-                >
-                  {bankAccounts.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({formatCurrency(a.balance)})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <BankLogo account={bankAccounts.find(a => a.id === paymentBankAccountId)} size="md" />
+                  <select
+                    value={paymentBankAccountId}
+                    onChange={(e) => setPaymentBankAccountId(e.target.value)}
+                    className="flex-1 px-3 py-2.5 rounded-lg border border-border bg-card font-semibold text-xs text-foreground"
+                  >
+                    {bankAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({formatCurrency(a.balance)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {bankAccounts.length === 0 && (

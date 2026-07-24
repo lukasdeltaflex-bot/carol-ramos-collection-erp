@@ -16,6 +16,7 @@ export interface BankAccount extends BaseDocument {
   initialBalance?: number;
   color?: string; // Hex or tailwind badge color
   notes?: string;
+  logo?: string; // Base64 image data or logo URL
   status: 'active' | 'inactive';
   currency: string;
 }

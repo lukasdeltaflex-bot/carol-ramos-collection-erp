@@ -15,6 +15,7 @@ export const BankAccountSchema = z.object({
   initialBalance: z.number().optional(),
   color: z.string().optional(),
   notes: z.string().optional(),
+  logo: z.string().optional(),
   currency: z.string().default("BRL"),
   status: z.enum(["active", "inactive"]).default("active"),
 });

@@ -50,31 +50,15 @@ import {
   Check,
   Lock,
   PieChart,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  Image as ImageIcon
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { BankLogo } from "@/components/ui/BankLogo";
+import { KNOWN_BANKS, generateOnlineLogoCandidates, findKnownBank } from "@/lib/bankLogos";
 
-// Lista de Bancos Brasileiros para o seletor visual
-export const BRAZILIAN_BANKS = [
-  { code: "001", name: "Banco do Brasil", color: "bg-yellow-500 text-blue-900 border-yellow-600", brand: "BB" },
-  { code: "033", name: "Santander", color: "bg-red-600 text-white border-red-700", brand: "San" },
-  { code: "104", name: "Caixa Econômica", color: "bg-blue-600 text-orange-400 border-blue-700", brand: "Caixa" },
-  { code: "237", name: "Bradesco", color: "bg-red-700 text-white border-red-800", brand: "Brad" },
-  { code: "341", name: "Itaú Unibanco", color: "bg-orange-500 text-blue-950 border-orange-600", brand: "Itaú" },
-  { code: "077", name: "Banco Inter", color: "bg-orange-500 text-white border-orange-600", brand: "Inter" },
-  { code: "260", name: "Nubank", color: "bg-purple-700 text-white border-purple-800", brand: "Nu" },
-  { code: "336", name: "C6 Bank", color: "bg-black text-white border-neutral-700", brand: "C6" },
-  { code: "290", name: "PagBank", color: "bg-green-600 text-white border-green-700", brand: "Pag" },
-  { code: "121", name: "Neon", color: "bg-cyan-500 text-white border-cyan-600", brand: "Neon" },
-  { code: "041", name: "Banrisul", color: "bg-blue-800 text-white border-blue-900", brand: "BRS" },
-  { code: "756", name: "Sicoob", color: "bg-emerald-800 text-yellow-400 border-emerald-950", brand: "Sicoob" },
-  { code: "748", name: "Sicredi", color: "bg-green-700 text-white border-green-800", brand: "Sicredi" },
-  { code: "004", name: "Banco do Nordeste", color: "bg-yellow-600 text-emerald-950 border-yellow-700", brand: "BNB" },
-  { code: "197", name: "Stone", color: "bg-emerald-600 text-white border-emerald-700", brand: "Stone" },
-  { code: "318", name: "BMG", color: "bg-orange-600 text-white border-orange-700", brand: "BMG" },
-  { code: "623", name: "Banco Pan", color: "bg-blue-950 text-white border-blue-900", brand: "Pan" },
-  { code: "074", name: "Safra", color: "bg-amber-700 text-white border-amber-800", brand: "Safra" },
-];
+export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
 // Mock Inicial de Contas Bancárias
 const INITIAL_BANK_ACCOUNTS = [
@@ -177,7 +161,30 @@ export default function FinancePage() {
   const [bBalance, setBBalance] = useState(0);
   const [bInitialBalance, setBInitialBalance] = useState(0);
   const [bNotes, setBNotes] = useState("");
+  const [bLogo, setBLogo] = useState("");
+  const [bLogoCandidates, setBLogoCandidates] = useState<string[]>([]);
+  const [isSearchingLogo, setIsSearchingLogo] = useState(false);
   const [bStatus, setBStatus] = useState<'active' | 'inactive'>("active");
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setBLogo(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSearchOnlineLogos = () => {
+    const query = bBankName || bName || "banco";
+    setIsSearchingLogo(true);
+    const candidates = generateOnlineLogoCandidates(query);
+    setBLogoCandidates(candidates);
+    setIsSearchingLogo(false);
+  };
 
   // 3. Corporate Credit Card
   const [cName, setCName] = useState("");
@@ -431,6 +438,8 @@ export default function FinancePage() {
     setBBalance(0);
     setBInitialBalance(0);
     setBNotes("");
+    setBLogo("");
+    setBLogoCandidates([]);
     setBStatus("active");
     setSelectedBankObj(null);
 
@@ -484,6 +493,8 @@ export default function FinancePage() {
     setBBalance(account.balance);
     setBInitialBalance(account.initialBalance || account.balance);
     setBNotes(account.notes || "");
+    setBLogo(account.logo || "");
+    setBLogoCandidates([]);
     setBStatus(account.status || "active");
     setDrawerOpen(true);
   };
@@ -622,6 +633,7 @@ export default function FinancePage() {
           balance: bBalance || 0,
           initialBalance: bInitialBalance || bBalance || 0,
           notes: bNotes || "",
+          logo: bLogo || undefined,
           status: bStatus || "active",
           currency: "BRL"
         };
@@ -1470,16 +1482,7 @@ export default function FinancePage() {
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
-
-                            {bankMatch ? (
-                              <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shadow-sm border", bankMatch.color)}>
-                                {bankMatch.brand}
-                              </div>
-                            ) : (
-                              <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
-                                <Building2 className="h-4 w-4" />
-                              </div>
-                            )}
+                            <BankLogo account={a} size="md" />
                           </div>
                         </div>
 
@@ -1888,7 +1891,7 @@ export default function FinancePage() {
                 {drawerType === "bank_account" && (
                   <>
                     <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Sugestão de Banco</label>
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Sugestão de Banco Cadastrado</label>
                       <div className="grid grid-cols-3 gap-1.5 max-h-32 overflow-y-auto p-1 border border-border rounded-xl bg-muted/10">
                         {BRAZILIAN_BANKS.map(b => (
                           <button
@@ -1902,16 +1905,87 @@ export default function FinancePage() {
                             }}
                             className={cn(
                               "flex items-center gap-1.5 p-1.5 rounded-lg border text-left transition-all",
-                              selectedBankObj?.code === b.code ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 bg-card"
+                              selectedBankObj?.code === b.code || bBankCode === b.code ? "border-primary bg-primary/10" : "border-border hover:border-primary/30 bg-card"
                             )}
                           >
-                            <div className={cn("h-5 w-5 rounded flex items-center justify-center font-bold text-[7px] shrink-0 border", b.color)}>
-                              {b.brand}
-                            </div>
+                            <BankLogo account={{ bankCode: b.code, bankName: b.name }} size="sm" />
                             <span className="text-[9px] font-semibold text-foreground truncate">{b.name}</span>
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Logo Preview & Custom Logo Management */}
+                    <div className="p-3.5 rounded-xl border border-border bg-card/60 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Logotipo da Instituição</label>
+                        {bLogo && (
+                          <button
+                            type="button"
+                            onClick={() => setBLogo("")}
+                            className="text-[10px] font-medium text-destructive hover:underline"
+                          >
+                            Remover logo personalizada
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <BankLogo account={{ logo: bLogo, bankName: bBankName, bankCode: bBankCode, name: bName }} size="xl" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-xs text-foreground truncate">
+                            {bBankName || bName || "Instituição Financeira"}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {bLogo ? "✨ Logo personalizada configurada" : "⚡ Reconhecimento automático do logotipo ativo"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleSearchOnlineLogos}
+                          disabled={isSearchingLogo}
+                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-[10px] font-semibold transition-all"
+                        >
+                          <Search className="h-3 w-3 text-primary" />
+                          <span>{isSearchingLogo ? "Buscando..." : "🔍 Buscar logo online"}</span>
+                        </button>
+
+                        <label className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-[10px] font-semibold transition-all cursor-pointer">
+                          <Upload className="h-3 w-3 text-primary" />
+                          <span>📤 Enviar logo (Upload)</span>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                            onChange={handleLogoFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Candidates grid if search pressed */}
+                      {bLogoCandidates.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-border/50">
+                          <p className="text-[9px] font-semibold text-muted-foreground uppercase">Opções encontradas (Clique para escolher):</p>
+                          <div className="flex flex-wrap gap-2">
+                            {bLogoCandidates.map((url, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setBLogo(url)}
+                                className={cn(
+                                  "p-1 rounded-lg border bg-white dark:bg-card hover:scale-105 transition-all flex items-center justify-center h-9 w-9",
+                                  bLogo === url ? "border-primary ring-2 ring-primary/30" : "border-border"
+                                )}
+                              >
+                                <img src={url} alt="Logo candidate" className="h-full w-full object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
