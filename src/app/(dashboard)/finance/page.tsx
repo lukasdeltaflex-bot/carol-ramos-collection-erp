@@ -196,12 +196,19 @@ export default function FinancePage() {
 
   // 4. Purchase Form Fields
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [purchaseInvoiceNumber, setPurchaseInvoiceNumber] = useState("");
+  const [purchaseCategory, setPurchaseCategory] = useState("stock_purchase");
+  const [purchaseNotes, setPurchaseNotes] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseItems, setPurchaseItems] = useState<Array<{ productId: string; quantity: number; unitCost: number }>>([]);
   const [purchasePaymentMethod, setPurchasePaymentMethod] = useState<'credit_card' | 'company_credit_card' | 'bank_slip' | 'pix' | 'cash' | 'transfer' | 'bank_account'>("pix");
   const [selectedCardId, setSelectedCardId] = useState("");
   const [purchaseDueDate, setPurchaseDueDate] = useState("");
   const [purchaseInstallmentsCount, setPurchaseInstallmentsCount] = useState(1);
   const [generatedPurchaseInstallments, setGeneratedPurchaseInstallments] = useState<Array<{ number: number; amount: number; dueDate: string }>>([]);
+  const [purchaseDiscount, setPurchaseDiscount] = useState(0);
+  const [purchaseAddition, setPurchaseAddition] = useState(0);
+  const [purchaseFreight, setPurchaseFreight] = useState(0);
 
   // Common errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -222,7 +229,8 @@ export default function FinancePage() {
   const [bankSearch, setBankSearch] = useState("");
   const [selectedBankObj, setSelectedBankObj] = useState<any>(null);
 
-  const purchaseTotalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+  const purchaseSubtotalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+  const purchaseTotalCost = Math.max(0, purchaseSubtotalCost - (purchaseDiscount || 0) + (purchaseAddition || 0) + (purchaseFreight || 0));
 
   const generateDefaultPurchaseInstallments = (count: number, totalVal: number, dueDayNum?: number) => {
     if (count <= 0) return;
@@ -441,12 +449,19 @@ export default function FinancePage() {
     setCNotes("");
 
     setSelectedSupplierId(suppliers[0]?.id || "");
+    setPurchaseInvoiceNumber("");
+    setPurchaseCategory("stock_purchase");
+    setPurchaseNotes("");
+    setPurchaseDate(new Date().toISOString().split("T")[0]);
     setPurchaseItems([]);
     setPurchasePaymentMethod("pix");
     if (companyCards.length > 0) setSelectedCardId(companyCards[0].id);
     setPurchaseDueDate(new Date().toISOString().split("T")[0]);
     setPurchaseInstallmentsCount(1);
     setGeneratedPurchaseInstallments([]);
+    setPurchaseDiscount(0);
+    setPurchaseAddition(0);
+    setPurchaseFreight(0);
 
     setDrawerOpen(true);
   };
@@ -470,6 +485,33 @@ export default function FinancePage() {
     setBInitialBalance(account.initialBalance || account.balance);
     setBNotes(account.notes || "");
     setBStatus(account.status || "active");
+    setDrawerOpen(true);
+  };
+
+  // 1b2. Abrir Drawer de Edição de Compra de Estoque
+  const handleEditPurchase = (purchase: Purchase) => {
+    setDrawerType("purchase");
+    setEditingId(purchase.id);
+    setErrors({});
+    setSelectedSupplierId(purchase.supplierId || suppliers[0]?.id || "");
+    setPurchaseInvoiceNumber(purchase.invoiceNumber || "");
+    setPurchaseCategory(purchase.category || "stock_purchase");
+    setPurchaseNotes(purchase.notes || "");
+    setPurchaseDate(purchase.receivedAt ? String(purchase.receivedAt).substring(0, 10) : new Date().toISOString().split("T")[0]);
+    setPurchaseItems(
+      (purchase.items || []).map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+      }))
+    );
+    setPurchasePaymentMethod(purchase.paymentMethod || "pix");
+    setSelectedCardId(purchase.cardId || companyCards[0]?.id || "");
+    setPurchaseDueDate(purchase.dueDate || new Date().toISOString().split("T")[0]);
+    setPurchaseInstallmentsCount(purchase.installments || 1);
+    setPurchaseDiscount(purchase.discount || 0);
+    setPurchaseAddition(purchase.addition || 0);
+    setPurchaseFreight(purchase.freight || 0);
     setDrawerOpen(true);
   };
 
@@ -664,8 +706,12 @@ export default function FinancePage() {
       } 
       
       else if (drawerType === "purchase") {
-        const totalCost = purchaseItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-        
+        const subtotalVal = purchaseSubtotalCost;
+        const discountVal = Math.max(0, purchaseDiscount || 0);
+        const additionVal = Math.max(0, purchaseAddition || 0);
+        const freightVal = Math.max(0, purchaseFreight || 0);
+        const totalVal = Math.max(0, subtotalVal - discountVal + additionVal + freightVal);
+
         const itemsPayload = purchaseItems.map(item => ({
           productId: item.productId,
           name: products.find(p => p.id === item.productId)?.name || "Produto",
@@ -675,10 +721,19 @@ export default function FinancePage() {
 
         const payload = {
           supplierId: selectedSupplierId,
+          invoiceNumber: purchaseInvoiceNumber || undefined,
+          category: purchaseCategory || "stock_purchase",
+          notes: purchaseNotes || undefined,
           items: itemsPayload,
+          subtotal: subtotalVal,
+          discount: discountVal,
+          addition: additionVal,
+          freight: freightVal,
+          total: totalVal,
           paymentMethod: purchasePaymentMethod,
           cardId: (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") ? selectedCardId : undefined,
-          dueDate: purchaseDueDate || undefined
+          dueDate: purchaseDueDate || undefined,
+          receivedAt: purchaseDate ? new Date(purchaseDate).toISOString() : new Date().toISOString()
         };
 
         const result = PurchaseSchema.safeParse(payload);
@@ -687,102 +742,175 @@ export default function FinancePage() {
           return;
         }
 
-        // 1. Criar Ordem de Compra
-        const newPurchase = await createDoc("purchases", {
-          ...payload,
-          total: totalCost,
-          status: "completed" as const,
-          receivedAt: new Date().toISOString()
-        });
+        if (editingId) {
+          // --- MODO EDIÇÃO COMPRA EXISTENTE ---
+          const oldPurchase = purchases.find((p) => p.id === editingId);
 
-        // 2. Incrementar Estoques dos Produtos & Atualizar Preços de Custos
-        for (const item of purchaseItems) {
-          const prod = products.find(p => p.id === item.productId);
-          if (prod) {
-            const newStock = prod.currentStock + item.quantity;
-            const newAvailable = prod.availableStock + item.quantity;
-            
-            const currentAssetVal = prod.currentStock * prod.averageCost;
-            const newPurchaseVal = item.quantity * item.unitCost;
-            const finalAvgCost = parseFloat(((currentAssetVal + newPurchaseVal) / newStock).toFixed(2));
-            
-            const calculatedMargin = prod.sellPrice > 0 
-              ? parseFloat((((prod.sellPrice - item.unitCost) / prod.sellPrice) * 100).toFixed(1)) 
-              : 0;
+          await updateDoc("purchases", editingId, {
+            ...payload,
+            updatedAt: new Date().toISOString(),
+            updatedBy: user?.email || user?.uid || "admin"
+          });
 
-            await updateDoc("products", prod.id, {
-              currentStock: newStock,
-              availableStock: newAvailable,
-              costPrice: item.unitCost,
-              averageCost: finalAvgCost,
-              lastPurchasePrice: item.unitCost,
-              lastPurchaseDate: new Date().toISOString(),
-              profitMargin: calculatedMargin
-            });
-
-            await createDoc("inventory_transactions", {
-              productId: prod.id,
-              locationId: "deposito-central",
-              type: "in" as const,
-              quantity: item.quantity,
-              costPriceAtTime: item.unitCost,
-              reason: `Ordem de Compra Ref #${newPurchase.id}`
-            });
-          }
-        }
-
-        // 3. Fluxo Financeiro da Compra:
-        if (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") {
-          // Debitar Limite do Cartão Corporativo e gerar parcelas em Contas a Pagar
-          const targetCard = companyCards.find(c => c.id === selectedCardId);
-          if (targetCard) {
-            const newLimit = Math.max(0, targetCard.availableLimit - totalCost);
-            await updateDoc("company_credit_cards", targetCard.id, {
-              availableLimit: newLimit
+          // Ajuste fino do Estoque calculando apenas a diferença (Delta) entre a compra antiga e a nova
+          const oldQtyMap: Record<string, number> = {};
+          if (oldPurchase && oldPurchase.items) {
+            oldPurchase.items.forEach((item) => {
+              oldQtyMap[item.productId] = (oldQtyMap[item.productId] || 0) + item.quantity;
             });
           }
 
-          for (const inst of generatedPurchaseInstallments) {
-            await createDoc("accounts_payable", {
-              supplierId: selectedSupplierId || undefined,
-              purchaseId: newPurchase.id,
-              cardId: selectedCardId || undefined,
-              description: `Fatura Cartão: Parcela ${inst.number}/${generatedPurchaseInstallments.length} - Ref #${newPurchase.id}`,
-              amount: inst.amount,
-              dueDate: inst.dueDate,
-              status: "pending" as const,
-              paymentMethod: "company_credit_card" as const
-            });
-          }
-        } else if (purchasePaymentMethod === "pix" || purchasePaymentMethod === "cash") {
-          const targetBankId = purchasePaymentMethod === "pix" ? bankAccounts[1]?.id : bankAccounts[0]?.id;
-          if (targetBankId) {
-            const acc = bankAccounts.find(a => a.id === targetBankId);
-            if (acc) {
-              await updateDoc("bank_accounts", targetBankId, { balance: acc.balance - totalCost });
+          const newQtyMap: Record<string, number> = {};
+          purchaseItems.forEach((item) => {
+            newQtyMap[item.productId] = (newQtyMap[item.productId] || 0) + item.quantity;
+          });
+
+          const allProductIds = Array.from(
+            new Set([...Object.keys(oldQtyMap), ...Object.keys(newQtyMap)])
+          );
+
+          for (const prodId of allProductIds) {
+            const oldQty = oldQtyMap[prodId] || 0;
+            const newQty = newQtyMap[prodId] || 0;
+            const deltaQty = newQty - oldQty;
+
+            if (deltaQty !== 0) {
+              const prod = products.find((p) => p.id === prodId);
+              if (prod) {
+                const newStock = Math.max(0, prod.currentStock + deltaQty);
+                const newAvailable = Math.max(0, prod.availableStock + deltaQty);
+
+                const newItem = purchaseItems.find((i) => i.productId === prodId);
+                const unitCost = newItem ? newItem.unitCost : prod.costPrice;
+
+                const currentAssetVal = prod.currentStock * prod.averageCost;
+                const deltaAssetVal = deltaQty * unitCost;
+                const finalAvgCost = newStock > 0
+                  ? parseFloat((Math.max(0, currentAssetVal + deltaAssetVal) / newStock).toFixed(2))
+                  : prod.averageCost;
+
+                const calculatedMargin = prod.sellPrice > 0
+                  ? parseFloat((((prod.sellPrice - unitCost) / prod.sellPrice) * 100).toFixed(1))
+                  : prod.profitMargin;
+
+                await updateDoc("products", prod.id, {
+                  currentStock: newStock,
+                  availableStock: newAvailable,
+                  costPrice: unitCost,
+                  averageCost: finalAvgCost,
+                  lastPurchasePrice: unitCost,
+                  lastPurchaseDate: new Date().toISOString(),
+                  profitMargin: calculatedMargin
+                });
+
+                await createDoc("inventory_transactions", {
+                  productId: prod.id,
+                  locationId: "deposito-central",
+                  type: deltaQty > 0 ? ("in" as const) : ("out" as const),
+                  quantity: Math.abs(deltaQty),
+                  costPriceAtTime: unitCost,
+                  reason: `Edição da Ordem de Compra Ref #${editingId}`
+                });
+              }
             }
-            await createDoc("financial_transactions", {
-              type: "expense" as const,
-              category: "stock_purchase" as const,
-              amount: totalCost,
-              description: `Compra de Estoque Ref #${newPurchase.id}`,
-              paymentDate: new Date().toISOString().split("T")[0],
-              status: "paid" as const,
-              bankAccountId: targetBankId,
-              referenceId: newPurchase.id
-            });
           }
         } else {
-          for (const inst of generatedPurchaseInstallments) {
-            await createDoc("accounts_payable", {
-              supplierId: selectedSupplierId || undefined,
-              purchaseId: newPurchase.id,
-              description: `Parcela ${inst.number}/${generatedPurchaseInstallments.length} - Compra Reposição Ref #${newPurchase.id}`,
-              amount: inst.amount,
-              dueDate: inst.dueDate,
-              status: "pending" as const,
-              paymentMethod: purchasePaymentMethod
-            });
+          // --- MODO CRIAÇÃO NOVA COMPRA ---
+          const newPurchase = await createDoc("purchases", {
+            ...payload,
+            status: "completed" as const,
+            createdAt: new Date().toISOString(),
+            createdBy: user?.email || user?.uid || "admin"
+          });
+
+          // Incrementar Estoques dos Produtos & Atualizar Preços de Custos
+          for (const item of purchaseItems) {
+            const prod = products.find(p => p.id === item.productId);
+            if (prod) {
+              const newStock = prod.currentStock + item.quantity;
+              const newAvailable = prod.availableStock + item.quantity;
+              
+              const currentAssetVal = prod.currentStock * prod.averageCost;
+              const newPurchaseVal = item.quantity * item.unitCost;
+              const finalAvgCost = parseFloat(((currentAssetVal + newPurchaseVal) / newStock).toFixed(2));
+              
+              const calculatedMargin = prod.sellPrice > 0 
+                ? parseFloat((((prod.sellPrice - item.unitCost) / prod.sellPrice) * 100).toFixed(1)) 
+                : 0;
+
+              await updateDoc("products", prod.id, {
+                currentStock: newStock,
+                availableStock: newAvailable,
+                costPrice: item.unitCost,
+                averageCost: finalAvgCost,
+                lastPurchasePrice: item.unitCost,
+                lastPurchaseDate: new Date().toISOString(),
+                profitMargin: calculatedMargin
+              });
+
+              await createDoc("inventory_transactions", {
+                productId: prod.id,
+                locationId: "deposito-central",
+                type: "in" as const,
+                quantity: item.quantity,
+                costPriceAtTime: item.unitCost,
+                reason: `Ordem de Compra Ref #${newPurchase.id}`
+              });
+            }
+          }
+
+          // Fluxo Financeiro da Compra:
+          if (purchasePaymentMethod === "company_credit_card" || purchasePaymentMethod === "credit_card") {
+            const targetCard = companyCards.find(c => c.id === selectedCardId);
+            if (targetCard) {
+              const newLimit = Math.max(0, targetCard.availableLimit - totalVal);
+              await updateDoc("company_credit_cards", targetCard.id, {
+                availableLimit: newLimit
+              });
+            }
+
+            for (const inst of generatedPurchaseInstallments) {
+              await createDoc("accounts_payable", {
+                supplierId: selectedSupplierId || undefined,
+                purchaseId: newPurchase.id,
+                cardId: selectedCardId || undefined,
+                description: `Fatura Cartão: Parcela ${inst.number}/${generatedPurchaseInstallments.length} - Ref #${newPurchase.id}`,
+                amount: inst.amount,
+                dueDate: inst.dueDate,
+                status: "pending" as const,
+                paymentMethod: "company_credit_card" as const
+              });
+            }
+          } else if (purchasePaymentMethod === "pix" || purchasePaymentMethod === "cash") {
+            const targetBankId = purchasePaymentMethod === "pix" ? bankAccounts[1]?.id : bankAccounts[0]?.id;
+            if (targetBankId) {
+              const acc = bankAccounts.find(a => a.id === targetBankId);
+              if (acc) {
+                await updateDoc("bank_accounts", targetBankId, { balance: acc.balance - totalVal });
+              }
+              await createDoc("financial_transactions", {
+                type: "expense" as const,
+                category: "stock_purchase" as const,
+                amount: totalVal,
+                description: `Compra de Estoque Ref #${newPurchase.id}`,
+                paymentDate: new Date().toISOString().split("T")[0],
+                status: "paid" as const,
+                bankAccountId: targetBankId,
+                referenceId: newPurchase.id
+              });
+            }
+          } else {
+            for (const inst of generatedPurchaseInstallments) {
+              await createDoc("accounts_payable", {
+                supplierId: selectedSupplierId || undefined,
+                purchaseId: newPurchase.id,
+                description: `Parcela ${inst.number}/${generatedPurchaseInstallments.length} - Compra Reposição Ref #${newPurchase.id}`,
+                amount: inst.amount,
+                dueDate: inst.dueDate,
+                status: "pending" as const,
+                paymentMethod: purchasePaymentMethod
+              });
+            }
           }
         }
       }
@@ -1647,16 +1775,20 @@ export default function FinancePage() {
                   <thead>
                     <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
                       <th className="p-4">Fornecedor</th>
+                      <th className="p-4">NF / Ref</th>
                       <th className="p-4">Itens</th>
-                      <th className="p-4">Total</th>
+                      <th className="p-4">Subtotal</th>
+                      <th className="p-4">Frete</th>
+                      <th className="p-4">Total Geral</th>
                       <th className="p-4">Método</th>
                       <th className="p-4">Data Entrada</th>
+                      <th className="p-4 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
                     {paginatedPurchases.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-muted-foreground">Nenhuma compra de estoque registrada.</td>
+                        <td colSpan={9} className="p-8 text-center text-muted-foreground">Nenhuma compra de estoque registrada.</td>
                       </tr>
                     ) : (
                       paginatedPurchases.map((pc) => {
@@ -1664,12 +1796,25 @@ export default function FinancePage() {
                         return (
                           <tr key={pc.id} className="hover:bg-muted/10 transition-colors">
                             <td className="p-4 font-semibold text-foreground">{suppName}</td>
+                            <td className="p-4 font-mono text-muted-foreground">{pc.invoiceNumber || "-"}</td>
                             <td className="p-4">
                               <span className="font-mono">{pc.items?.length || 0} produto(s)</span>
                             </td>
+                            <td className="p-4 font-mono text-muted-foreground">{formatCurrency(pc.subtotal || pc.total)}</td>
+                            <td className="p-4 font-mono text-rosegold-600 dark:text-rosegold-400 font-semibold">{formatCurrency(pc.freight || 0)}</td>
                             <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(pc.total)}</td>
                             <td className="p-4 uppercase text-[10px] text-muted-foreground">{pc.paymentMethod === "company_credit_card" ? "Cartão Corporativo" : pc.paymentMethod}</td>
                             <td className="p-4 font-mono text-muted-foreground">{pc.receivedAt ? formatDate(pc.receivedAt) : "-"}</td>
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleEditPurchase(pc)}
+                                  className="px-2.5 py-1 rounded bg-primary/10 text-primary hover:bg-primary hover:text-white font-semibold text-[10px] transition-colors flex items-center gap-1"
+                                >
+                                  ✏️ Editar
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })
@@ -2104,22 +2249,74 @@ export default function FinancePage() {
                 {/* Form 4: Purchase Order */}
                 {drawerType === "purchase" && (
                   <>
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Fornecedor</label>
-                      <select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        {suppliers.length === 0 && <option value="">Sem fornecedores cadastrados</option>}
-                      </select>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Fornecedor *</label>
+                        <select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          {suppliers.length === 0 && <option value="">Sem fornecedores cadastrados</option>}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Data da Compra *</label>
+                        <input
+                          type="date"
+                          required
+                          value={purchaseDate}
+                          onChange={(e) => setPurchaseDate(e.target.value)}
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono text-foreground"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Número da Nota Fiscal (NF)</label>
+                        <input
+                          type="text"
+                          value={purchaseInvoiceNumber}
+                          onChange={(e) => setPurchaseInvoiceNumber(e.target.value)}
+                          placeholder="Ex: NF-000104"
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono text-foreground"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Categoria do Lançamento</label>
+                        <select
+                          value={purchaseCategory}
+                          onChange={(e) => setPurchaseCategory(e.target.value)}
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground"
+                        >
+                          <option value="stock_purchase">Compra de Estoque / Mercadorias</option>
+                          <option value="raw_material">Matéria-Prima / Insumos</option>
+                          <option value="packaging">Embalagens & Envelopes</option>
+                          <option value="equipment">Equipamentos & Ferramentas</option>
+                          <option value="other">Outros Suprimentos</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Selecionar Produtos para Entrada</label>
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações / Detalhes do Pedido</label>
+                      <input
+                        type="text"
+                        value={purchaseNotes}
+                        onChange={(e) => setPurchaseNotes(e.target.value)}
+                        placeholder="Ex: Entrega via transportadora XYZ com pagamento em 30 dias..."
+                        className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Adicionar Produtos à Compra</label>
                       <div className="border border-border rounded-xl p-2 max-h-36 overflow-y-auto space-y-1.5 bg-muted/20">
                         {products.map(p => (
                           <div key={p.id} className="flex justify-between items-center text-[10px] p-1 hover:bg-card rounded transition-colors">
                             <span className="font-medium text-foreground truncate max-w-[200px]">{p.name} (SKU: {p.sku})</span>
                             <button type="button" onClick={() => addPurchaseItem(p.id)} className="px-2 py-0.5 bg-rosegold-100 text-rosegold-700 dark:bg-rosegold-900/50 dark:text-rosegold-300 rounded font-bold uppercase hover:bg-primary hover:text-white">
-                              Add
+                              + Adicionar
                             </button>
                           </div>
                         ))}
@@ -2127,31 +2324,136 @@ export default function FinancePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <span className="font-bold uppercase tracking-wider text-[8px] text-muted-foreground">Itens da Ordem de Entrada</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold uppercase tracking-wider text-[8px] text-muted-foreground">Itens da Ordem de Entrada ({purchaseItems.length})</span>
+                        <span className="font-mono text-[9px] text-muted-foreground font-semibold">Subtotal: {formatCurrency(purchaseSubtotalCost)}</span>
+                      </div>
                       <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {purchaseItems.map(item => {
-                          const prod = products.find(p => p.id === item.productId);
-                          return (
-                            <div key={item.productId} className="p-2.5 rounded-lg border border-border bg-card flex items-center justify-between gap-3 text-[10px]">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-foreground truncate">{prod?.name}</p>
-                                <div className="flex items-center gap-1.5 mt-1">
-                                  <span>Custo R$</span>
-                                  <input type="number" step="0.01" value={item.unitCost || ""} onChange={(e) => updatePurchaseItemCost(item.productId, parseFloat(e.target.value) || 0)} className="w-14 p-0.5 border border-border rounded text-center font-mono" />
+                        {purchaseItems.length === 0 ? (
+                          <p className="text-[10px] text-muted-foreground text-center py-4 border border-dashed border-border rounded-lg">
+                            Nenhum produto selecionado. Clique em &quot;+ Adicionar&quot; acima.
+                          </p>
+                        ) : (
+                          purchaseItems.map(item => {
+                            const prod = products.find(p => p.id === item.productId);
+                            const itemTotal = item.quantity * item.unitCost;
+                            return (
+                              <div key={item.productId} className="p-2.5 rounded-lg border border-border bg-card flex items-center justify-between gap-3 text-[10px]">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-foreground truncate">{prod?.name || "Produto"}</p>
+                                  <div className="flex items-center gap-1.5 mt-1">
+                                    <span>Custo R$</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={item.unitCost || ""}
+                                      onChange={(e) => updatePurchaseItemCost(item.productId, parseFloat(e.target.value) || 0)}
+                                      className="w-16 p-0.5 border border-border rounded text-center font-mono"
+                                    />
+                                    <span className="text-muted-foreground ml-1">= {formatCurrency(itemTotal)}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity - 1)} className="p-1 rounded bg-muted hover:bg-muted/80">
+                                    <Minus className="h-3 w-3" />
+                                  </button>
+                                  <span className="font-bold font-mono w-5 text-center">{item.quantity}</span>
+                                  <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity + 1)} className="p-1 rounded bg-muted hover:bg-muted/80">
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                  <button type="button" onClick={() => updatePurchaseItemQty(item.productId, 0)} className="p-1 rounded text-red-500 hover:bg-red-500/10 ml-1">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity - 1)} className="p-1 rounded bg-muted">
-                                  <Minus className="h-3 w-3" />
-                                </button>
-                                <span className="font-bold font-mono w-4 text-center">{item.quantity}</span>
-                                <button type="button" onClick={() => updatePurchaseItemQty(item.productId, item.quantity + 1)} className="p-1 rounded bg-muted">
-                                  <Plus className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Novo Campo de Frete, Desconto e Acréscimo */}
+                    <div className="p-3 rounded-xl border border-border bg-card/60 space-y-3">
+                      <span className="font-bold uppercase tracking-wider text-[9px] text-muted-foreground block border-b border-border/50 pb-1">
+                        Ajustes Financeiros & Frete
+                      </span>
+                      
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <label className="font-semibold text-rosegold-600 dark:text-rosegold-400 uppercase tracking-wider text-[9px]">
+                            🚚 Frete (R$)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={purchaseFreight || ""}
+                            onChange={(e) => setPurchaseFreight(Math.max(0, parseFloat(e.target.value) || 0))}
+                            placeholder="0,00"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-card font-mono text-xs font-bold text-rosegold-600 dark:text-rosegold-400"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider text-[9px]">
+                            🏷️ Desconto (R$)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={purchaseDiscount || ""}
+                            onChange={(e) => setPurchaseDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                            placeholder="0,00"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-card font-mono text-xs font-bold text-green-600 dark:text-green-400"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider text-[9px]">
+                            ➕ Acréscimo (R$)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={purchaseAddition || ""}
+                            onChange={(e) => setPurchaseAddition(Math.max(0, parseFloat(e.target.value) || 0))}
+                            placeholder="0,00"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-card font-mono text-xs font-bold text-orange-600 dark:text-orange-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Resumo Consolidado de Valores */}
+                      <div className="pt-2 border-t border-border/40 space-y-1 font-mono text-[10px]">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Subtotal dos Produtos:</span>
+                          <span>{formatCurrency(purchaseSubtotalCost)}</span>
+                        </div>
+                        {purchaseFreight > 0 && (
+                          <div className="flex justify-between text-rosegold-600 dark:text-rosegold-400">
+                            <span>(+) Frete:</span>
+                            <span>{formatCurrency(purchaseFreight)}</span>
+                          </div>
+                        )}
+                        {purchaseDiscount > 0 && (
+                          <div className="flex justify-between text-green-600 dark:text-green-400">
+                            <span>(-) Desconto:</span>
+                            <span>{formatCurrency(purchaseDiscount)}</span>
+                          </div>
+                        )}
+                        {purchaseAddition > 0 && (
+                          <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                            <span>(+) Acréscimo:</span>
+                            <span>{formatCurrency(purchaseAddition)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold text-xs text-foreground pt-1 border-t border-border/60">
+                          <span>TOTAL DA COMPRA:</span>
+                          <span className="text-primary font-extrabold">{formatCurrency(purchaseTotalCost)}</span>
+                        </div>
                       </div>
                     </div>
 

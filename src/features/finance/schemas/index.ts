@@ -72,13 +72,21 @@ export const PurchaseItemSchema = z.object({
   name: z.string().min(1, "Nome de produto inválido"),
   quantity: z.number().int().positive("Quantidade deve ser maior que zero"),
   unitCost: z.number().positive("Preço de custo unitário deve ser maior que zero"),
+  discount: z.number().min(0, "Desconto não pode ser negativo").optional(),
 });
 
 export const PurchaseSchema = z.object({
   supplierId: z.string().min(1, "Selecione um fornecedor"),
+  invoiceNumber: z.string().optional(),
+  category: z.string().optional(),
+  notes: z.string().optional(),
   items: z.array(PurchaseItemSchema).min(1, "A compra deve conter pelo menos um item"),
   paymentMethod: z.enum(["credit_card", "company_credit_card", "bank_slip", "pix", "cash", "transfer", "bank_account"]),
   cardId: z.string().optional(),
   installments: z.number().int().positive().optional(),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data de vencimento inválida").or(z.string().length(0)).optional(),
+  subtotal: z.number().min(0).optional(),
+  discount: z.number().min(0).optional(),
+  addition: z.number().min(0).optional(),
+  freight: z.number().min(0, "Frete não pode ser negativo").optional(),
 });

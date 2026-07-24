@@ -88,12 +88,20 @@ export interface PurchaseItem {
   name: string;
   quantity: number;
   unitCost: number;
+  discount?: number;
 }
 
 export interface Purchase extends BaseDocument {
   tenantId: string;
   supplierId: string; // References Supplier
+  invoiceNumber?: string;
+  category?: string;
+  notes?: string;
   items: PurchaseItem[];
+  subtotal?: number;
+  discount?: number;
+  addition?: number;
+  freight?: number;
   total: number;
   status: 'pending' | 'completed' | 'cancelled';
   paymentMethod: 'credit_card' | 'company_credit_card' | 'bank_slip' | 'pix' | 'cash' | 'transfer' | 'bank_account';
@@ -101,4 +109,7 @@ export interface Purchase extends BaseDocument {
   installments?: number;
   dueDate?: any; // If accounts payable generated
   receivedAt?: any; // Date when stock was checked in
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
