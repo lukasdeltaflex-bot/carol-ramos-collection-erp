@@ -19,22 +19,22 @@ function getAdminApp(): App {
       formattedKey = formattedKey.replace(/\\n/g, "\n").replace(/\\r/g, "");
     }
 
+    if (!clientEmail || !formattedKey || formattedKey.length <= 10 || formattedKey.includes("YOUR-PRIVATE-KEY")) {
+      throw new Error("Credenciais do Firebase ausentes ou inválidas no process.env (FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY)");
+    }
+
     _adminApp = getApps().length === 0
-      ? (clientEmail && formattedKey && formattedKey.length > 10 && !formattedKey.includes("YOUR-PRIVATE-KEY")
-          ? initializeApp({
-              credential: cert({
-                projectId: projectId,
-                clientEmail,
-                privateKey: formattedKey,
-              }),
-            })
-          : initializeApp({
-              projectId: projectId,
-            }))
+      ? initializeApp({
+          credential: cert({
+            projectId: projectId,
+            clientEmail,
+            privateKey: formattedKey,
+          }),
+        })
       : getApp();
   } catch (error) {
-    console.error("[Firebase Admin Error] Falha na inicialização com credenciais. Usando fallback seguro:", error);
-    _adminApp = getApps().length > 0 ? getApp() : initializeApp({ projectId: projectId });
+    console.error("[Firebase Admin Error] Falha na inicialização com credenciais:", error);
+    throw error;
   }
 
   return _adminApp;
