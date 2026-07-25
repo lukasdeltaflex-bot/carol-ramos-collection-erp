@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { MercadoLivreProvider } from "@/features/integrations/providers/MercadoLivreProvider";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,22 +9,19 @@ export async function GET(req: NextRequest) {
     const code = searchParams.get("code");
     
     // Just instantiate to see if it breaks
-    const appsCount = getApps().length;
-    const hasFirestore = typeof getFirestore === "function";
+    const provider = new MercadoLivreProvider();
 
-    return NextResponse.json({
-      status: "oauth route alive - with getFirestore imported",
-      appsCount,
-      hasFirestore,
-      channel: "mercadolibre",
-      receivedParams: { action, tenantId, code }
-    });
 
+    console.warn("[OAUTH] [MERCADO LIVRE] Parâmetros insuficientes na requisição.");
+    return NextResponse.json({ error: "Parâmetro 'code' ou 'action=connect' ausente." }, { status: 400 });
   } catch (error: any) {
+    console.error("[OAUTH] [MERCADO LIVRE] [ERROR] Falha crítica na rota OAuth:", error);
     return NextResponse.json({ 
-      step: "API_ROUTE_EXECUTION_DEBUG",
-      error: "Erro interno", 
-      message: String(error)
+      step: "API_ROUTE_EXECUTION",
+      marketplace: "mercado_libre",
+      error: "Erro interno no fluxo OAuth do Mercado Livre", 
+      message: error?.message || String(error), 
+      stack: error?.stack 
     }, { status: 500 });
   }
 }
