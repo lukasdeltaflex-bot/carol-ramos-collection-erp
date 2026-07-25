@@ -13,7 +13,7 @@ import {
 import { getShopeeAuthUrl, exchangeShopeeCode, refreshShopeeAccessToken } from "@/lib/marketplaces/shopee";
 import { encrypt, decrypt } from "@/lib/encryption";
 // import { logMarketplaceEvent } from "@/services/marketplaceLogService";
-// import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
+import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
 
 export class ShopeeProvider implements MarketplaceProvider {
   readonly channel: MarketplaceChannel = "shopee";
@@ -203,14 +203,14 @@ export class ShopeeProvider implements MarketplaceProvider {
   }
 
   async fetchOrders(account: MarketplaceAccount, sinceDate?: Date): Promise<MarketplaceOrder[]> {
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "shopee",
-      severity: "INFO",
-      operation: "fetch_orders",
-      resource: "orders",
-      message: `Buscando pedidos recentes da Shopee desde ${sinceDate ? sinceDate.toISOString() : "início"}.`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId: account.tenantId,
+    //   channel: "shopee",
+    //   severity: "INFO",
+    //   operation: "fetch_orders",
+    //   resource: "orders",
+    //   message: `Buscando pedidos recentes da Shopee desde ${sinceDate ? sinceDate.toISOString() : "início"}.`
+    // });
 
     return [];
   }

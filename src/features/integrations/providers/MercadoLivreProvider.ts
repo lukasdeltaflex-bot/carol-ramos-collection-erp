@@ -20,7 +20,7 @@ import {
 } from "@/lib/marketplaces/mercadolibre";
 import { encrypt, decrypt } from "@/lib/encryption";
 // import { logMarketplaceEvent } from "@/services/marketplaceLogService";
-// import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
+import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
 
 export class MercadoLivreProvider implements MarketplaceProvider {
   readonly channel: MarketplaceChannel = "mercado_libre";
@@ -104,7 +104,7 @@ export class MercadoLivreProvider implements MarketplaceProvider {
     //   severity: "INFO",
     //   operation: "oauth_connect",
     //   resource: "account",
-    //   message: `Vendedor ML ID ${tokens.user_id} conectado com sucesso via OAuth 2.0.`
+    //   message: `Conta Mercado Livre ID ${tokens.user_id} conectada com sucesso via OAuth 2.0.`
     // });
 
     return account;
@@ -142,11 +142,14 @@ export class MercadoLivreProvider implements MarketplaceProvider {
   }
 
   async syncProducts(account: MarketplaceAccount, options?: SyncOptions): Promise<SyncResult> {
-      severity: "INFO",
-      operation: "sync_products",
-      resource: "products",
-      message: `Iniciando sincronização incremental de produtos para Mercado Livre (Seller ID: ${account.sellerId}).`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId: account.tenantId,
+    //   channel: "mercado_libre",
+    //   severity: "INFO",
+    //   operation: "sync_products",
+    //   resource: "products",
+    //   message: `Iniciando sincronização incremental de produtos para Mercado Livre (Seller ID: ${account.sellerId}).`
+    // });
 
     await enqueueMarketplaceTask({
       tenantId: account.tenantId,
@@ -237,14 +240,14 @@ export class MercadoLivreProvider implements MarketplaceProvider {
   }
 
   async fetchOrders(account: MarketplaceAccount, sinceDate?: Date): Promise<MarketplaceOrder[]> {
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "mercado_libre",
-      severity: "INFO",
-      operation: "fetch_orders",
-      resource: "orders",
-      message: `Buscando pedidos recentes do Mercado Livre.`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId: account.tenantId,
+    //   channel: "mercado_libre",
+    //   severity: "INFO",
+    //   operation: "fetch_orders",
+    //   resource: "orders",
+    //   message: `Buscando pedidos recentes do Mercado Livre.`
+    // });
 
     return [];
   }
