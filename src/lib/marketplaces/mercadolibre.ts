@@ -26,21 +26,29 @@ export async function exchangeMeliCode(
 }> {
   const url = `${MELI_API_HOST}/oauth/token`;
 
+  const bodyParams = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: appId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: redirectUri
+  }).toString();
+
+  console.log(`[OAUTH] [MERCADO LIVRE] Exchanging code. URL: ${url}, Redirect URI: ${redirectUri}, AppID: ${appId}, SecretLength: ${clientSecret.length}, CodeLength: ${code.length}`);
+
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: appId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri
-    })
+    headers: { 
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json"
+    },
+    body: bodyParams
   });
 
   const data = await response.json();
-  if (data.error) {
-    throw new Error(`[Meli OAuth Error] ${data.error}: ${data.message || data.error_description}`);
+  if (!response.ok || data.error) {
+    console.error(`[Meli OAuth Error Raw Response] Status: ${response.status}`, data);
+    throw new Error(`[Meli OAuth Error] ${data.error}: ${data.message || data.error_description || JSON.stringify(data)}`);
   }
 
   return {

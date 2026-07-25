@@ -35,7 +35,7 @@ export class MercadoLivreProvider implements MarketplaceProvider {
     }
 
     const clientSecret = process.env.MELI_CLIENT_SECRET && process.env.MELI_CLIENT_SECRET.trim() !== ""
-      ? process.env.MELI_CLIENT_SECRET
+      ? process.env.MELI_CLIENT_SECRET.trim()
       : null;
 
     if (!clientSecret) {
