@@ -485,10 +485,13 @@ export function useDb() {
         }
 
         const colRef = collection(db, collectionName);
-        const q = query(
-          colRef, 
-          where("tenantId", "==", targetTenant)
-        );
+        let q;
+        if (collectionName.startsWith("marketplace_")) {
+          const possibleTenants = Array.from(new Set([targetTenant, "default_tenant", "shared", "carol-ramos-collection"]));
+          q = query(colRef, where("tenantId", "in", possibleTenants));
+        } else {
+          q = query(colRef, where("tenantId", "==", targetTenant));
+        }
         const snap = await withTimeout(
           firestoreGetDocs(q),
           5500,

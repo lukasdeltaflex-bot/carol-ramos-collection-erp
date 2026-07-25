@@ -42,10 +42,10 @@ import {
 } from "@/features/integrations/types/marketplaces";
 
 export default function MarketplacesPage() {
-  const { user } = useAuth();
+  const { user, tenantId: authTenantId } = useAuth();
   const { info, success, error: toastError, warning } = useToast();
   const { getDocs } = useDb();
-  const tenantId = (user as any)?.tenantId || "default_tenant";
+  const tenantId = authTenantId || "default_tenant";
 
   // Firestore Data States
   const [accounts, setAccounts] = useState<MarketplaceAccount[]>([]);
@@ -88,7 +88,21 @@ export default function MarketplacesPage() {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const status = params.get("status");
+      const tab = params.get("tab");
+      if (status === "connected") {
+        success("Mercado Livre Conectado!", "Suas credenciais foram autorizadas, validadas e criptografadas em nosso banco com sucesso!");
+        setActiveTab("accounts");
+        window.history.replaceState({}, "", "/marketplaces?tab=accounts");
+      } else if (tab === "accounts" || tab === "mercadolibre" || tab === "shopee") {
+        setActiveTab("accounts");
+      } else if (tab === "queue" || tab === "logs") {
+        setActiveTab(tab);
+      }
+    }
+  }, [loadData, success]);
 
   // Contas Conectadas
   const shopeeAccount = accounts.find((a) => a.channel === "shopee");
