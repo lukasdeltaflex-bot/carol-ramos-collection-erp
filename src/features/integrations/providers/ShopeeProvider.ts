@@ -122,28 +122,28 @@ export class ShopeeProvider implements MarketplaceProvider {
       updatedAt: now.toISOString()
     };
 
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "shopee",
-      severity: "INFO",
-      operation: "oauth_refresh",
-      resource: "tokens",
-      message: `Access Token da Shopee renovado automaticamente com sucesso.`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId: account.tenantId,
+    //   channel: "shopee",
+    //   severity: "INFO",
+    //   operation: "oauth_refresh",
+    //   resource: "tokens",
+    //   message: `Access Token da Shopee renovado automaticamente com sucesso.`
+    // });
 
     return updatedAccount;
   }
 
   async syncProducts(account: MarketplaceAccount, options?: SyncOptions): Promise<SyncResult> {
     const startTime = Date.now();
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "shopee",
-      severity: "INFO",
-      operation: "sync_products",
-      resource: "products",
-      message: `Iniciando sincronização incremental de produtos para Shopee (Shop ID: ${account.sellerId}).`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId: account.tenantId,
+    //   channel: "shopee",
+    //   severity: "INFO",
+    //   operation: "sync_products",
+    //   resource: "products",
+    //   message: `Iniciando sincronização incremental de produtos para Shopee (Shop ID: ${account.sellerId}).`
+    // });
 
     // Enfileira a tarefa de sincronização de produtos
     await enqueueMarketplaceTask({

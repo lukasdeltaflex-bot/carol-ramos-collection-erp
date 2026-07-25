@@ -129,22 +129,19 @@ export class MercadoLivreProvider implements MarketplaceProvider {
       updatedAt: now.toISOString()
     };
 
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "mercado_libre",
-      severity: "INFO",
-      operation: "oauth_refresh",
-      resource: "tokens",
-      message: `Access Token do Mercado Livre renovado com sucesso.`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId: account.tenantId,
+    //   channel: "mercado_libre",
+    //   severity: "INFO",
+    //   operation: "oauth_refresh",
+    //   resource: "tokens",
+    //   message: `Access Token do Mercado Livre renovado com sucesso.`
+    // });
 
     return updatedAccount;
   }
 
   async syncProducts(account: MarketplaceAccount, options?: SyncOptions): Promise<SyncResult> {
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "mercado_libre",
       severity: "INFO",
       operation: "sync_products",
       resource: "products",
