@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-const SHOPEE_HOST = process.env.SHOPEE_API_HOST || "https://partner.shopeesz.com";
+const SHOPEE_HOST = process.env.SHOPEE_API_HOST || "https://partner.shopeemobile.com";
 
 /**
  * Assina uma requisição da API v2 da Shopee com HMAC-SHA256.
