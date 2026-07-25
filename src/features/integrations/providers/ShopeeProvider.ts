@@ -21,7 +21,11 @@ export class ShopeeProvider implements MarketplaceProvider {
   private getPartnerCredentials(): { partnerId: string; partnerKey: string; redirectUri: string } {
     const partnerId = process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_ID.trim() !== "" 
       ? process.env.SHOPEE_PARTNER_ID 
-      : "100001";
+      : null;
+
+    if (!partnerId) {
+      throw new Error("NÃO CONFIGURADO NA VERCEL: SHOPEE_PARTNER_ID ausente.");
+    }
       
     const partnerKey = process.env.SHOPEE_PARTNER_KEY && process.env.SHOPEE_PARTNER_KEY.trim() !== ""
       ? process.env.SHOPEE_PARTNER_KEY 
@@ -39,16 +43,16 @@ export class ShopeeProvider implements MarketplaceProvider {
       console.log(`[OAUTH] [SHOPEE] Validando credenciais para tenant ${tenantId}`);
       const { partnerId, partnerKey, redirectUri } = this.getPartnerCredentials();
       
-      const finalRedirect = `${redirectUri}?tenantId=${encodeURIComponent(tenantId)}`;
-      console.log(`[OAUTH] [SHOPEE] Gerando URL oficial da Shopee com redirect_uri: ${finalRedirect}`);
+      const state = tenantId;
+      console.log(`[OAUTH] [SHOPEE] Gerando URL oficial da Shopee com redirect_uri fixa: ${redirectUri} e state: ${state}`);
       
-      const authUrl = getShopeeAuthUrl(partnerId, partnerKey, finalRedirect);
+      const authUrl = getShopeeAuthUrl(partnerId, partnerKey, redirectUri, state);
       console.log(`[OAUTH] [SHOPEE] URL de autorização gerada com sucesso.`);
       
       return authUrl;
     } catch (error) {
       console.error(`[OAUTH] [SHOPEE] Falha ao gerar URL de autorização:`, error);
-      throw new Error("Falha interna ao gerar URL OAuth da Shopee.");
+      throw error;
     }
   }
 

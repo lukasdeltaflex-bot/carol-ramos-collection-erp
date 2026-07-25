@@ -21,12 +21,12 @@ export function signShopeeRequest(
 /**
  * Gera a URL oficial de autorização OAuth 2.0 para o vendedor autorizar a loja na Shopee.
  */
-export function getShopeeAuthUrl(partnerId: string, partnerKey: string, redirectUri: string): string {
+export function getShopeeAuthUrl(partnerId: string, partnerKey: string, redirectUri: string, state: string): string {
   const path = "/api/v2/shop/auth_partner";
   const timestamp = Math.floor(Date.now() / 1000);
   const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp);
   
-  return `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUri)}`;
+  return `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}&redirect=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
 }
 
 /**

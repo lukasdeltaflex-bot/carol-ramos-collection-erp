@@ -7,10 +7,11 @@ export async function GET(req: NextRequest) {
     console.log("[OAUTH] [MERCADO LIVRE] Iniciando rota de autenticação.");
     const searchParams = req.nextUrl.searchParams;
     const code = searchParams.get("code");
-    const tenantId = searchParams.get("tenantId") || "default_tenant";
+    const state = searchParams.get("state");
+    const tenantId = searchParams.get("tenantId") || state || "default_tenant";
     const action = searchParams.get("action");
 
-    console.log(`[OAUTH] [MERCADO LIVRE] Params recebidos: action=${action}, tenantId=${tenantId}, code=${code ? "presente" : "ausente"}`);
+    console.log(`[OAUTH] [MERCADO LIVRE] Params recebidos: action=${action}, tenantId=${tenantId}, code=${code ? "presente" : "ausente"}, state=${state}`);
 
     const provider = new MercadoLivreProvider();
 

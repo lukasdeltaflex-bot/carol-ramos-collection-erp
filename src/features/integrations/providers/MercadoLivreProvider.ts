@@ -28,7 +28,11 @@ export class MercadoLivreProvider implements MarketplaceProvider {
   private getAppCredentials(): { appId: string; clientSecret: string; redirectUri: string } {
     const appId = process.env.MELI_APP_ID && process.env.MELI_APP_ID.trim() !== ""
       ? process.env.MELI_APP_ID
-      : "123456789";
+      : null;
+
+    if (!appId) {
+      throw new Error("NÃO CONFIGURADO NA VERCEL: MELI_APP_ID ausente.");
+    }
 
     const clientSecret = process.env.MELI_CLIENT_SECRET && process.env.MELI_CLIENT_SECRET.trim() !== ""
       ? process.env.MELI_CLIENT_SECRET
@@ -46,24 +50,23 @@ export class MercadoLivreProvider implements MarketplaceProvider {
       console.log(`[OAUTH] [MERCADO LIVRE] Validando credenciais para tenant ${tenantId}`);
       const { appId, redirectUri } = this.getAppCredentials();
       
-      const finalRedirect = `${redirectUri}?tenantId=${encodeURIComponent(tenantId)}`;
-      console.log(`[OAUTH] [MERCADO LIVRE] Gerando URL oficial com redirect_uri: ${finalRedirect}`);
+      const state = tenantId;
+      console.log(`[OAUTH] [MERCADO LIVRE] Gerando URL oficial com redirect_uri fixa: ${redirectUri} e state: ${state}`);
       
-      const authUrl = getMeliAuthUrl(appId, finalRedirect);
+      const authUrl = getMeliAuthUrl(appId, redirectUri, state);
       console.log(`[OAUTH] [MERCADO LIVRE] URL de autorização gerada com sucesso.`);
       
       return authUrl;
     } catch (error) {
       console.error(`[OAUTH] [MERCADO LIVRE] Falha ao gerar URL de autorização:`, error);
-      throw new Error("Falha interna ao gerar URL OAuth do Mercado Livre.");
+      throw error;
     }
   }
 
   async handleAuthCallback(code: string, tenantId: string): Promise<MarketplaceAccount> {
     const { appId, clientSecret, redirectUri } = this.getAppCredentials();
-    const finalRedirect = `${redirectUri}?tenantId=${encodeURIComponent(tenantId)}`;
 
-    const tokens = await exchangeMeliCode(appId, clientSecret, code, finalRedirect);
+    const tokens = await exchangeMeliCode(appId, clientSecret, code, redirectUri);
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + tokens.expires_in * 1000).toISOString();

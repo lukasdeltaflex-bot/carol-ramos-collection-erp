@@ -4,8 +4,8 @@ const MELI_API_HOST = process.env.MELI_API_HOST || "https://api.mercadolibre.com
 /**
  * Gera a URL oficial de autorização OAuth 2.0 do Mercado Livre.
  */
-export function getMeliAuthUrl(appId: string, redirectUri: string): string {
-  return `${MELI_AUTH_HOST}/authorization?response_type=code&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+export function getMeliAuthUrl(appId: string, redirectUri: string, state: string): string {
+  return `${MELI_AUTH_HOST}/authorization?response_type=code&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
 }
 
 /**
