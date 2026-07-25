@@ -1,4 +1,4 @@
-const MELI_AUTH_HOST = process.env.MELI_AUTH_HOST || "https://auth.mercadolibre.com.br";
+const MELI_AUTH_HOST = process.env.MELI_AUTH_HOST || "https://auth.mercadolivre.com.br";
 const MELI_API_HOST = process.env.MELI_API_HOST || "https://api.mercadolibre.com";
 
 /**
