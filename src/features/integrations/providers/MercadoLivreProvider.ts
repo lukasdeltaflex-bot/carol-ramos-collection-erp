@@ -36,7 +36,11 @@ export class MercadoLivreProvider implements MarketplaceProvider {
 
     const clientSecret = process.env.MELI_CLIENT_SECRET && process.env.MELI_CLIENT_SECRET.trim() !== ""
       ? process.env.MELI_CLIENT_SECRET
-      : "meli_client_secret_2026";
+      : null;
+
+    if (!clientSecret) {
+      throw new Error("NÃO CONFIGURADO NA VERCEL: MELI_CLIENT_SECRET ausente.");
+    }
 
     const redirectUri = process.env.MELI_REDIRECT_URI && process.env.MELI_REDIRECT_URI.trim() !== ""
       ? process.env.MELI_REDIRECT_URI

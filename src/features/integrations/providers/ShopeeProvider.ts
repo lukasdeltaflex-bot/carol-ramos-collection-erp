@@ -29,7 +29,11 @@ export class ShopeeProvider implements MarketplaceProvider {
       
     const partnerKey = process.env.SHOPEE_PARTNER_KEY && process.env.SHOPEE_PARTNER_KEY.trim() !== ""
       ? process.env.SHOPEE_PARTNER_KEY 
-      : "shopee_partner_key_secret_2026";
+      : null;
+
+    if (!partnerKey) {
+      throw new Error("NÃO CONFIGURADO NA VERCEL: SHOPEE_PARTNER_KEY ausente.");
+    }
       
     const redirectUri = process.env.SHOPEE_REDIRECT_URI && process.env.SHOPEE_REDIRECT_URI.trim() !== ""
       ? process.env.SHOPEE_REDIRECT_URI 
