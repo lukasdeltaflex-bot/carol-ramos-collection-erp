@@ -1,7 +1,5 @@
 import { initializeApp, getApps, getApp, cert, App } from "firebase-admin/app";
-import { getAuth, Auth } from "firebase-admin/auth";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
-import { getStorage, Storage } from "firebase-admin/storage";
 
 let _adminApp: App | undefined;
 
@@ -43,16 +41,8 @@ function getAdminApp(): App {
 }
 
 // Inicialização Lazy usando Proxy para evitar quebras no module-load na Vercel
-export const adminAuth = new Proxy({} as unknown as Auth, {
-  get: (_, prop) => Reflect.get(getAuth(getAdminApp()), prop)
-});
-
 export const adminDb = new Proxy({} as unknown as Firestore, {
   get: (_, prop) => Reflect.get(getFirestore(getAdminApp()), prop)
-});
-
-export const adminStorage = new Proxy({} as unknown as Storage, {
-  get: (_, prop) => Reflect.get(getStorage(getAdminApp()), prop)
 });
 
 export default new Proxy({} as App, {

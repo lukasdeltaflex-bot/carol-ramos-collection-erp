@@ -12,7 +12,7 @@ import {
 } from "../types/marketplaces";
 import { getShopeeAuthUrl, exchangeShopeeCode, refreshShopeeAccessToken } from "@/lib/marketplaces/shopee";
 import { encrypt, decrypt } from "@/lib/encryption";
-// import { logMarketplaceEvent } from "@/services/marketplaceLogService";
+import { logMarketplaceEvent } from "@/services/marketplaceLogService";
 import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
 
 export class ShopeeProvider implements MarketplaceProvider {
@@ -91,14 +91,14 @@ export class ShopeeProvider implements MarketplaceProvider {
       createdBy: "system"
     };
 
-    // await logMarketplaceEvent({
-    //   tenantId,
-    //   channel: "shopee",
-    //   severity: "INFO",
-    //   operation: "oauth_connect",
-    //   resource: "account",
-    //   message: `Loja Shopee ID ${shopId} conectada com sucesso via OAuth 2.0.`
-    // });
+    await logMarketplaceEvent({
+      tenantId,
+      channel: "shopee",
+      severity: "INFO",
+      operation: "oauth_connect",
+      resource: "account",
+      message: `Loja Shopee ID ${shopId} conectada com sucesso via OAuth 2.0.`
+    });
 
     return account;
   }
@@ -122,28 +122,28 @@ export class ShopeeProvider implements MarketplaceProvider {
       updatedAt: now.toISOString()
     };
 
-    // await logMarketplaceEvent({
-    //   tenantId: account.tenantId,
-    //   channel: "shopee",
-    //   severity: "INFO",
-    //   operation: "oauth_refresh",
-    //   resource: "tokens",
-    //   message: `Access Token da Shopee renovado automaticamente com sucesso.`
-    // });
+    await logMarketplaceEvent({
+      tenantId: account.tenantId,
+      channel: "shopee",
+      severity: "INFO",
+      operation: "oauth_refresh",
+      resource: "tokens",
+      message: `Access Token da Shopee renovado automaticamente com sucesso.`
+    });
 
     return updatedAccount;
   }
 
   async syncProducts(account: MarketplaceAccount, options?: SyncOptions): Promise<SyncResult> {
     const startTime = Date.now();
-    // await logMarketplaceEvent({
-    //   tenantId: account.tenantId,
-    //   channel: "shopee",
-    //   severity: "INFO",
-    //   operation: "sync_products",
-    //   resource: "products",
-    //   message: `Iniciando sincronização incremental de produtos para Shopee (Shop ID: ${account.sellerId}).`
-    // });
+    await logMarketplaceEvent({
+      tenantId: account.tenantId,
+      channel: "shopee",
+      severity: "INFO",
+      operation: "sync_products",
+      resource: "products",
+      message: `Iniciando sincronização incremental de produtos para Shopee (Shop ID: ${account.sellerId}).`
+    });
 
     // Enfileira a tarefa de sincronização de produtos
     await enqueueMarketplaceTask({
@@ -203,14 +203,14 @@ export class ShopeeProvider implements MarketplaceProvider {
   }
 
   async fetchOrders(account: MarketplaceAccount, sinceDate?: Date): Promise<MarketplaceOrder[]> {
-    // await logMarketplaceEvent({
-    //   tenantId: account.tenantId,
-    //   channel: "shopee",
-    //   severity: "INFO",
-    //   operation: "fetch_orders",
-    //   resource: "orders",
-    //   message: `Buscando pedidos recentes da Shopee desde ${sinceDate ? sinceDate.toISOString() : "início"}.`
-    // });
+    await logMarketplaceEvent({
+      tenantId: account.tenantId,
+      channel: "shopee",
+      severity: "INFO",
+      operation: "fetch_orders",
+      resource: "orders",
+      message: `Buscando pedidos recentes da Shopee desde ${sinceDate ? sinceDate.toISOString() : "início"}.`
+    });
 
     return [];
   }
