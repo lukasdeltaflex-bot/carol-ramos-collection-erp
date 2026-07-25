@@ -11,12 +11,37 @@ function getAdminApp(): App {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
   try {
-    let formattedKey = privateKey;
+    let formattedKey: string = privateKey || "";
     if (formattedKey) {
+      formattedKey = formattedKey.trim();
+      // Caso o usuário tenha colado o JSON inteiro por engano na Vercel
+      if (formattedKey.startsWith("{") && formattedKey.endsWith("}")) {
+        try {
+          const jsonData = JSON.parse(formattedKey);
+          if (typeof jsonData.private_key === "string") {
+            formattedKey = jsonData.private_key;
+          }
+        } catch (_) {}
+      }
+      // Remove aspas nas pontas se existirem
       if ((formattedKey.startsWith('"') && formattedKey.endsWith('"')) || (formattedKey.startsWith("'") && formattedKey.endsWith("'"))) {
         formattedKey = formattedKey.slice(1, -1);
       }
+      // Substitui \n literal por quebra de linha real
       formattedKey = formattedKey.replace(/\\n/g, "\n").replace(/\\r/g, "");
+
+      // Normalização Ultra-Resiliente do PEM:
+      // Constrói um PEM perfeito independentemente de como a chave foi colada (com espaços, em uma linha só, etc.)
+      const beginHeader = "-----BEGIN PRIVATE KEY-----";
+      const endHeader = "-----END PRIVATE KEY-----";
+      if (formattedKey.includes(beginHeader) && formattedKey.includes(endHeader)) {
+        const base64Body = formattedKey
+          .substring(formattedKey.indexOf(beginHeader) + beginHeader.length, formattedKey.indexOf(endHeader))
+          .replace(/\s+/g, ""); // Remove todos os espaços e quebras incorretas do meio do base64
+        
+        const pemLines = base64Body.match(/.{1,64}/g) || [];
+        formattedKey = `${beginHeader}\n${pemLines.join("\n")}\n${endHeader}\n`;
+      }
     }
 
     if (!clientEmail || !formattedKey || formattedKey.length <= 10 || formattedKey.includes("YOUR-PRIVATE-KEY")) {
