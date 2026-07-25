@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuth } from "firebase-admin/auth";
-import { getStorage } from "firebase-admin/storage";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,13 +10,11 @@ export async function GET(req: NextRequest) {
     
     // Just instantiate to see if it breaks
     const hasAuth = typeof getAuth === "function";
-    const hasStorage = typeof getStorage === "function";
 
     return NextResponse.json({
-      status: "oauth route alive - testing other admin imports",
+      status: "oauth route alive - testing ONLY auth",
       channel: "shopee",
       hasAuth,
-      hasStorage,
       receivedParams: { action, tenantId, code }
     });
 
