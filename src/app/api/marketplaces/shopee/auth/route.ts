@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ShopeeProvider } from "@/features/integrations/providers/ShopeeProvider";
+import { adminDb } from "@/lib/firebase/admin";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,18 +9,20 @@ export async function GET(req: NextRequest) {
     const code = searchParams.get("code");
     
     // Just instantiate to see if it breaks
-    const provider = new ShopeeProvider();
+    const hasDb = !!adminDb;
 
     return NextResponse.json({
-      status: "oauth route alive - with ShopeeProvider imported",
+      status: "oauth route alive - with adminDb imported",
       channel: "shopee",
-      providerChannel: provider.channel,
+      hasDb,
       receivedParams: { action, tenantId, code }
     });
 
   } catch (error: any) {
     return NextResponse.json({ 
-      stack: error?.stack 
+      step: "API_ROUTE_EXECUTION_DEBUG",
+      error: "Erro interno", 
+      message: String(error)
     }, { status: 500 });
   }
 }
