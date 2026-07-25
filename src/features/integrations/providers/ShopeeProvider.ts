@@ -12,8 +12,8 @@ import {
 } from "../types/marketplaces";
 import { getShopeeAuthUrl, exchangeShopeeCode, refreshShopeeAccessToken } from "@/lib/marketplaces/shopee";
 import { encrypt, decrypt } from "@/lib/encryption";
-import { logMarketplaceEvent } from "@/services/marketplaceLogService";
-import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
+// import { logMarketplaceEvent } from "@/services/marketplaceLogService";
+// import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
 
 export class ShopeeProvider implements MarketplaceProvider {
   readonly channel: MarketplaceChannel = "shopee";
@@ -91,14 +91,14 @@ export class ShopeeProvider implements MarketplaceProvider {
       createdBy: "system"
     };
 
-    await logMarketplaceEvent({
-      tenantId,
-      channel: "shopee",
-      severity: "INFO",
-      operation: "oauth_connect",
-      resource: "account",
-      message: `Loja Shopee ID ${shopId} conectada com sucesso via OAuth 2.0.`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId,
+    //   channel: "shopee",
+    //   severity: "INFO",
+    //   operation: "oauth_connect",
+    //   resource: "account",
+    //   message: `Loja Shopee ID ${shopId} conectada com sucesso via OAuth 2.0.`
+    // });
 
     return account;
   }

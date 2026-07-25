@@ -19,8 +19,8 @@ import {
   updateMeliItemPrice
 } from "@/lib/marketplaces/mercadolibre";
 import { encrypt, decrypt } from "@/lib/encryption";
-import { logMarketplaceEvent } from "@/services/marketplaceLogService";
-import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
+// import { logMarketplaceEvent } from "@/services/marketplaceLogService";
+// import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
 
 export class MercadoLivreProvider implements MarketplaceProvider {
   readonly channel: MarketplaceChannel = "mercado_libre";
@@ -98,14 +98,14 @@ export class MercadoLivreProvider implements MarketplaceProvider {
       createdBy: "system"
     };
 
-    await logMarketplaceEvent({
-      tenantId,
-      channel: "mercado_libre",
-      severity: "INFO",
-      operation: "oauth_connect",
-      resource: "account",
-      message: `Conta Mercado Livre ID ${tokens.user_id} conectada com sucesso via OAuth 2.0.`
-    });
+    // await logMarketplaceEvent({
+    //   tenantId,
+    //   channel: "mercado_libre",
+    //   severity: "INFO",
+    //   operation: "oauth_connect",
+    //   resource: "account",
+    //   message: `Vendedor ML ID ${tokens.user_id} conectado com sucesso via OAuth 2.0.`
+    // });
 
     return account;
   }
