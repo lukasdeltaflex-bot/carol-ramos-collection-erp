@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
+import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,12 +10,14 @@ export async function GET(req: NextRequest) {
     const code = searchParams.get("code");
     
     // Just instantiate to see if it breaks
-    const hasDb = !!adminDb;
+    const hasAuth = typeof getAuth === "function";
+    const hasStorage = typeof getStorage === "function";
 
     return NextResponse.json({
-      status: "oauth route alive - with adminDb imported",
+      status: "oauth route alive - testing other admin imports",
       channel: "shopee",
-      hasDb,
+      hasAuth,
+      hasStorage,
       receivedParams: { action, tenantId, code }
     });
 
