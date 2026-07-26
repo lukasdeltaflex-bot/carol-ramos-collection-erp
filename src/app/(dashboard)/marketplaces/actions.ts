@@ -32,6 +32,65 @@ export async function listAccountsAction(tenantId: string) {
   }
 }
 
+// TAB 2: Sincronização - dispara tarefas na fila do SyncService
+export async function triggerFullSyncAction(tenantId: string) {
+  try {
+    const { Sync } = await import("@/services/marketplaces/SyncService");
+    const result = await Sync.triggerFullSync(tenantId);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function triggerChannelSyncAction(
+  tenantId: string,
+  channel: MarketplaceChannel,
+  syncType: "stock" | "price" | "orders"
+) {
+  try {
+    const { Sync } = await import("@/services/marketplaces/SyncService");
+    const accounts = await Marketplace.listAccounts(tenantId);
+    const account = accounts.find((a) => a.channel === channel && a.status === "connected");
+    if (!account) throw new Error(`Nenhuma conta ${channel} conectada encontrada.`);
+
+    if (syncType === "stock") {
+      // Enfileira sync de estoque para todos os produtos do canal
+      const { default: Queue } = await import("@/services/marketplaces/QueueService");
+      await Queue.enqueue(
+        tenantId,
+        channel,
+        "sync_stock",
+        { accountId: account.id, sellerId: account.sellerId, mode: "all" },
+        `manual_stock_${channel}_${Date.now()}`
+      );
+    } else if (syncType === "price") {
+      const { default: Queue } = await import("@/services/marketplaces/QueueService");
+      await Queue.enqueue(
+        tenantId,
+        channel,
+        "sync_price",
+        { accountId: account.id, sellerId: account.sellerId, mode: "all" },
+        `manual_price_${channel}_${Date.now()}`
+      );
+    } else if (syncType === "orders") {
+      const { default: Queue } = await import("@/services/marketplaces/QueueService");
+      await Queue.enqueue(
+        tenantId,
+        channel,
+        "import_order",
+        { accountId: account.id, sellerId: account.sellerId },
+        `manual_orders_${channel}_${Date.now()}`
+      );
+    }
+
+    return { success: true, data: { channel, syncType, enqueuedAt: new Date().toISOString() } };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+
 // TAB 3: Pedidos (OrderService)
 export async function listOrdersAction(tenantId: string, options?: any) {
   try {
