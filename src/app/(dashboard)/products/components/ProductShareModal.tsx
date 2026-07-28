@@ -12,10 +12,10 @@ import {
   Check,
   ExternalLink,
   MessageSquare,
+  MessageCircle,
   Send,
-  Facebook,
-  Instagram,
-  Twitter,
+  Camera,
+  Globe,
   Pin,
   Sparkles,
   AlertTriangle,
@@ -24,6 +24,7 @@ import {
   Tag,
   QrCode
 } from "lucide-react";
+
 import { cn, formatCurrency } from "@/lib/utils";
 
 interface ProductShareModalProps {
@@ -149,12 +150,13 @@ export default function ProductShareModal({
     { id: "whatsapp" as SocialPlatform, name: "WhatsApp", color: "bg-emerald-500 hover:bg-emerald-600 text-white", icon: MessageSquare },
     { id: "whatsapp_business" as SocialPlatform, name: "WA Business", color: "bg-teal-600 hover:bg-teal-700 text-white", icon: MessageSquare },
     { id: "telegram" as SocialPlatform, name: "Telegram", color: "bg-sky-500 hover:bg-sky-600 text-white", icon: Send },
-    { id: "instagram" as SocialPlatform, name: "Instagram", color: "bg-gradient-to-r from-purple-500 via-pink-500 to-amber-500 text-white", icon: Instagram },
-    { id: "facebook" as SocialPlatform, name: "Facebook", color: "bg-blue-600 hover:bg-blue-700 text-white", icon: Facebook },
-    { id: "twitter" as SocialPlatform, name: "X (Twitter)", color: "bg-slate-900 hover:bg-black text-white dark:bg-slate-800", icon: Twitter },
+    { id: "instagram" as SocialPlatform, name: "Instagram", color: "bg-gradient-to-r from-purple-500 via-pink-500 to-amber-500 text-white", icon: Camera },
+    { id: "facebook" as SocialPlatform, name: "Facebook", color: "bg-blue-600 hover:bg-blue-700 text-white", icon: Globe },
+    { id: "twitter" as SocialPlatform, name: "X (Twitter)", color: "bg-slate-900 hover:bg-black text-white dark:bg-slate-800", icon: MessageCircle },
     { id: "threads" as SocialPlatform, name: "Threads", color: "bg-neutral-800 hover:bg-black text-white", icon: Sparkles },
     { id: "pinterest" as SocialPlatform, name: "Pinterest", color: "bg-red-600 hover:bg-red-700 text-white", icon: Pin },
   ];
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
