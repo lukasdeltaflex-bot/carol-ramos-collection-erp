@@ -175,7 +175,7 @@ export default function Dashboard() {
       seenKeys.add(uniqueKey);
 
       // Ignorar produtos inativos, arquivados ou excluídos (lixeira)
-      if (p.status === "inactive" || p.status === "archived") return false;
+      if ((p.status as string) === "inactive" || (p.status as string) === "archived") return false;
       if ((p as any).deleted === true || (p as any).isDeleted === true) return false;
 
       // Ignorar kits virtuais e produtos sem controle de estoque
