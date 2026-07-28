@@ -25,7 +25,7 @@ export default function DiagnosticTab({ tenantId }: { tenantId: string }) {
     amazon: { ok: true, latency: 180 },
     magalu: { ok: true, latency: 165 },
     tiktok: { ok: true, latency: 290 },
-    ali-express: { ok: true, latency: 310 },
+    "ali-express": { ok: true, latency: 310 },
   });
   const { success } = useToast();
 
