@@ -222,3 +222,91 @@ export async function getQueueStatsAction(tenantId: string) {
     return { success: false, error: error.message };
   }
 }
+
+// TAB 11: Estoque Unificado / Single Source of Truth (UnifiedStockService & StockConfigService)
+export async function getUnifiedStockDataAction(tenantId: string) {
+  try {
+    const { UnifiedStock } = await import("@/services/marketplaces/UnifiedStockService");
+    const [metrics, summaries] = await Promise.all([
+      UnifiedStock.getDashboardMetrics(tenantId),
+      UnifiedStock.getStockSummaries(tenantId),
+    ]);
+    return { success: true, data: { metrics, summaries } };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function adjustStockAction(
+  tenantId: string,
+  productId: string,
+  newStock: number,
+  reason: string,
+  userId?: string,
+  userEmail?: string
+) {
+  try {
+    const { UnifiedStock } = await import("@/services/marketplaces/UnifiedStockService");
+    const movement = await UnifiedStock.adjustStock({
+      tenantId,
+      productId,
+      newStock,
+      reason,
+      userId,
+      userEmail,
+      origin: "adjustment",
+    });
+    return { success: true, data: movement };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function syncProductStockAction(tenantId: string, productId: string) {
+  try {
+    const { UnifiedStock } = await import("@/services/marketplaces/UnifiedStockService");
+    const doc = await (await import("@/lib/firebase/admin")).adminDb
+      .collection("products")
+      .doc(productId)
+      .get();
+    
+    if (!doc.exists) throw new Error("Produto não encontrado.");
+    const prod = doc.data() as any;
+    
+    const count = await UnifiedStock.triggerSmartSyncForProduct(tenantId, productId, prod.currentStock || 0);
+    return { success: true, data: { syncedChannelsCount: count } };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getProductStockHistoryAction(tenantId: string, productId?: string) {
+  try {
+    const { UnifiedStock } = await import("@/services/marketplaces/UnifiedStockService");
+    const movements = await UnifiedStock.getStockMovements(tenantId, productId, 50);
+    return { success: true, data: movements };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getTenantStockConfigAction(tenantId: string) {
+  try {
+    const { StockConfig } = await import("@/services/marketplaces/StockConfigService");
+    const config = await StockConfig.getConfig(tenantId);
+    return { success: true, data: config };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateTenantStockConfigAction(tenantId: string, updates: any) {
+  try {
+    const { StockConfig } = await import("@/services/marketplaces/StockConfigService");
+    const config = await StockConfig.updateConfig(tenantId, updates);
+    return { success: true, data: config };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+

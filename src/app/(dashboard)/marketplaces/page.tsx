@@ -2,7 +2,22 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Globe, RefreshCw, LayoutDashboard, ShoppingCart, Box, Edit3, DollarSign, Calculator, BrainCircuit, AlertTriangle, ShieldCheck, Activity, Store } from "lucide-react";
+import {
+  Globe,
+  RefreshCw,
+  LayoutDashboard,
+  ShoppingCart,
+  Box,
+  Edit3,
+  DollarSign,
+  Calculator,
+  BrainCircuit,
+  AlertTriangle,
+  ShieldCheck,
+  Activity,
+  Store,
+  Layers,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Tabs imports
@@ -10,6 +25,7 @@ import DashboardTab from "./components/DashboardTab";
 import AccountsTab from "./components/AccountsTab";
 import OrdersTab from "./components/OrdersTab";
 import ProductsTab from "./components/ProductsTab";
+import StockTab from "./components/StockTab";
 import EditorTab from "./components/EditorTab";
 import FinanceTab from "./components/FinanceTab";
 import SimulatorTab from "./components/SimulatorTab";
@@ -18,17 +34,18 @@ import IncidentTab from "./components/IncidentTab";
 import AuditTab from "./components/AuditTab";
 import ObservabilityTab from "./components/ObservabilityTab";
 
-type TabId = 
-  | "dashboard" 
+type TabId =
+  | "dashboard"
   | "accounts"
-  | "orders" 
-  | "products" 
-  | "editor" 
-  | "finance" 
-  | "simulator" 
-  | "ai" 
-  | "incidents" 
-  | "audit" 
+  | "orders"
+  | "products"
+  | "stock"
+  | "editor"
+  | "finance"
+  | "simulator"
+  | "ai"
+  | "incidents"
+  | "audit"
   | "observability";
 
 export default function MarketplacesPage() {
@@ -50,6 +67,7 @@ export default function MarketplacesPage() {
     { id: "accounts", label: "Contas e Sync", icon: Store },
     { id: "orders", label: "Pedidos", icon: ShoppingCart },
     { id: "products", label: "Produtos", icon: Box },
+    { id: "stock", label: "Estoque Unificado", icon: Layers },
     { id: "editor", label: "Editor", icon: Edit3 },
     { id: "finance", label: "Financeiro", icon: DollarSign },
     { id: "simulator", label: "Simulador", icon: Calculator },
@@ -76,7 +94,7 @@ export default function MarketplacesPage() {
                 </span>
               </h1>
               <p className="text-sm text-muted-foreground">
-                Gestão Omnichannel Completa - Integração nativa com Mercado Livre, Shopee e expansões.
+                Gestão Omnichannel Completa - Estoque Unificado (Single Source of Truth) & Integrações.
               </p>
             </div>
           </div>
@@ -91,7 +109,7 @@ export default function MarketplacesPage() {
             <button
               key={tab.id}
               onClick={() => {
-                setActiveTab(tab.id);
+                setActiveTab(tab.id as TabId);
                 window.history.replaceState({}, "", `/marketplaces?tab=${tab.id}`);
               }}
               className={cn(
@@ -114,6 +132,7 @@ export default function MarketplacesPage() {
         {activeTab === "accounts" && <AccountsTab tenantId={tenantId} />}
         {activeTab === "orders" && <OrdersTab tenantId={tenantId} />}
         {activeTab === "products" && <ProductsTab tenantId={tenantId} />}
+        {activeTab === "stock" && <StockTab tenantId={tenantId} />}
         {activeTab === "editor" && <EditorTab tenantId={tenantId} />}
         {activeTab === "finance" && <FinanceTab tenantId={tenantId} />}
         {activeTab === "simulator" && <SimulatorTab tenantId={tenantId} />}
