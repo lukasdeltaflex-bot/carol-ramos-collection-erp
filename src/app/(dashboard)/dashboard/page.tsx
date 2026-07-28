@@ -156,7 +156,13 @@ export default function Dashboard() {
   const todayStats = React.useMemo(() => getTodayStats(), [sales]);
 
   // 2. Itens Críticos (Estoque crítico ou abaixo do mínimo de reposição)
-  const criticalItemsCount = React.useMemo(() => products.filter(p => p.currentStock <= 5).length, [products]);
+  const criticalItemsCount = React.useMemo(() => {
+    return products.filter(p => {
+      const stock = p.currentStock ?? p.availableStock ?? 0;
+      const min = p.minStock ?? 0;
+      return stock <= min;
+    }).length;
+  }, [products]);
 
   // 3. Contas a Receber Pendentes
   const totalReceivables = React.useMemo(() => receivables
