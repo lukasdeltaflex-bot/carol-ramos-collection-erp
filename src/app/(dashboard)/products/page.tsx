@@ -1267,11 +1267,20 @@ export default function ProductsPage() {
             <span>Novo Produto</span>
           </button>
         )}
+
+        {activeTab === "kits" && (
+          <button
+            onClick={() => handleOpenKitModal()}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Novo Kit de Produtos</span>
+          </button>
+        )}
       </div>
 
       {/* 1b. Painel Estatístico de Ofertas (Central Oficial de Ofertas) */}
       {activeTab === "products" && (
-
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total de Ofertas</span>
@@ -1315,17 +1324,6 @@ export default function ProductsPage() {
         </div>
       )}
 
-
-        {activeTab === "kits" && (
-          <button
-            onClick={() => handleOpenKitModal()}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/95 transition-all shadow-md shadow-primary/10 self-start sm:self-auto"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Novo Kit de Produtos</span>
-          </button>
-        )}
-      </div>
 
       {/* 2. Seleção de Abas & Filtros */}
       <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
