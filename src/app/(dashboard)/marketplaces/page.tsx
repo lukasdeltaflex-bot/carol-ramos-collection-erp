@@ -8,10 +8,8 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Box,
-  Edit3,
   DollarSign,
   Calculator,
-  BrainCircuit,
   AlertTriangle,
   ShieldCheck,
   Activity,
@@ -26,10 +24,8 @@ import AccountsTab from "./components/AccountsTab";
 import OrdersTab from "./components/OrdersTab";
 import ProductsTab from "./components/ProductsTab";
 import StockTab from "./components/StockTab";
-import EditorTab from "./components/EditorTab";
 import FinanceTab from "./components/FinanceTab";
 import SimulatorTab from "./components/SimulatorTab";
-import AiTab from "./components/AiTab";
 import IncidentTab from "./components/IncidentTab";
 import AuditTab from "./components/AuditTab";
 import ObservabilityTab from "./components/ObservabilityTab";
@@ -40,10 +36,8 @@ type TabId =
   | "orders"
   | "products"
   | "stock"
-  | "editor"
   | "finance"
   | "simulator"
-  | "ai"
   | "incidents"
   | "audit"
   | "observability";
@@ -68,10 +62,8 @@ export default function MarketplacesPage() {
     { id: "orders", label: "Pedidos", icon: ShoppingCart },
     { id: "products", label: "Produtos", icon: Box },
     { id: "stock", label: "Estoque Unificado", icon: Layers },
-    { id: "editor", label: "Editor", icon: Edit3 },
     { id: "finance", label: "Financeiro", icon: DollarSign },
     { id: "simulator", label: "Simulador", icon: Calculator },
-    { id: "ai", label: "IA", icon: BrainCircuit },
     { id: "incidents", label: "Incidentes", icon: AlertTriangle },
     { id: "audit", label: "Auditoria", icon: ShieldCheck },
     { id: "observability", label: "Observabilidade", icon: Activity },
@@ -133,10 +125,8 @@ export default function MarketplacesPage() {
         {activeTab === "orders" && <OrdersTab tenantId={tenantId} />}
         {activeTab === "products" && <ProductsTab tenantId={tenantId} />}
         {activeTab === "stock" && <StockTab tenantId={tenantId} />}
-        {activeTab === "editor" && <EditorTab tenantId={tenantId} />}
         {activeTab === "finance" && <FinanceTab tenantId={tenantId} />}
         {activeTab === "simulator" && <SimulatorTab tenantId={tenantId} />}
-        {activeTab === "ai" && <AiTab tenantId={tenantId} />}
         {activeTab === "incidents" && <IncidentTab tenantId={tenantId} />}
         {activeTab === "audit" && <AuditTab tenantId={tenantId} />}
         {activeTab === "observability" && <ObservabilityTab tenantId={tenantId} />}

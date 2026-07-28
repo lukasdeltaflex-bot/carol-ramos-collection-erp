@@ -137,6 +137,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboardData();
+
+    const handleFocus = () => {
+      loadDashboardData();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
   }, [tenantId]);
 
   // 1. Cálculos de Vendas de Hoje
@@ -157,9 +163,30 @@ export default function Dashboard() {
 
   // 2. Itens Críticos (Estoque crítico ou abaixo do mínimo de reposição)
   const criticalItemsCount = React.useMemo(() => {
+    if (!Array.isArray(products)) return 0;
+    const seenKeys = new Set<string>();
+
     return products.filter(p => {
-      const stock = p.currentStock ?? p.availableStock ?? 0;
-      const min = p.minStock ?? 0;
+      if (!p || !p.id) return false;
+
+      // Evitar contagem duplicada de um mesmo produto ou kit espelhado
+      const uniqueKey = p.isKit && p.kitId ? `kit:${p.kitId}` : `id:${p.id}`;
+      if (seenKeys.has(uniqueKey)) return false;
+      seenKeys.add(uniqueKey);
+
+      // Ignorar produtos inativos, arquivados ou excluídos (lixeira)
+      if (p.status === "inactive" || p.status === "archived") return false;
+      if ((p as any).deleted === true || (p as any).isDeleted === true) return false;
+
+      // Ignorar kits virtuais e produtos sem controle de estoque
+      if (p.isKit === true) return false;
+      if ((p as any).trackStock === false || (p as any).stockControl === false) return false;
+
+      // Determinar o estoque real disponível e o estoque mínimo configurado
+      const stock = typeof p.availableStock === "number" ? p.availableStock : (typeof p.currentStock === "number" ? p.currentStock : 0);
+      const min = typeof p.minStock === "number" ? p.minStock : 0;
+
+      // Item crítico se o estoque real for menor ou igual ao mínimo estipulado
       return stock <= min;
     }).length;
   }, [products]);

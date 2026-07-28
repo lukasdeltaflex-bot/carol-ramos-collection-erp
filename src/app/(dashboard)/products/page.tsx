@@ -1607,16 +1607,6 @@ export default function ProductsPage() {
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              {/* Botão Principal Compartilhar */}
-                              <button
-                                onClick={() => setSharingProduct(p)}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold transition-all shadow-sm shrink-0"
-                                title="Compartilhar Oferta com IA"
-                              >
-                                <Share2 className="h-3.5 w-3.5" />
-                                <span>Compartilhar</span>
-                              </button>
-
                               {/* Histórico de Envios */}
                               <button
                                 onClick={() => setHistoryProduct(p)}
