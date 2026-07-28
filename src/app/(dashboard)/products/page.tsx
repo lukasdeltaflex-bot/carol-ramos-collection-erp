@@ -30,13 +30,21 @@ import {
   ArrowDown,
   GripVertical,
   RotateCcw,
-  CheckSquare
+  CheckSquare,
+  Share2,
+  History,
+  Copy,
+  Sparkles,
+  Share
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import PricingSimulator from "@/features/pricing/components/PricingSimulator";
 import { ProductPricingData } from "@/features/pricing/types";
 import { processImageUpload, MAX_IMAGE_SIZE_MB, safeLocalStorageSetItem } from "@/lib/imageUpload";
+import ProductShareModal from "./components/ProductShareModal";
+import ProductShareHistoryModal from "./components/ProductShareHistoryModal";
+
 
 // Mock Inicial de Categorias
 const INITIAL_CATEGORIES = [
@@ -142,6 +150,11 @@ export default function ProductsPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+
+  // Modais de Compartilhamento & Histórico
+  const [sharingProduct, setSharingProduct] = useState<Product | null>(null);
+  const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
+
 
   // Ordenação e Ordem Personalizada para Produtos
   const [sortField, setSortField] = useState<"none" | "name" | "sku" | "costPrice" | "sellPrice" | "currentStock" | "potentialProfit">("none");
@@ -1254,6 +1267,54 @@ export default function ProductsPage() {
             <span>Novo Produto</span>
           </button>
         )}
+      </div>
+
+      {/* 1b. Painel Estatístico de Ofertas (Central Oficial de Ofertas) */}
+      {activeTab === "products" && (
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total de Ofertas</span>
+            <span className="text-xl font-bold font-mono text-foreground mt-1">{products.length}</span>
+            <span className="text-[10px] text-muted-foreground">Catálogo Cadastrado</span>
+          </div>
+
+          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Nunca Compartilhadas</span>
+            <span className="text-xl font-bold font-mono text-amber-500 mt-1">
+              {products.filter(p => !p.sharesCount || p.sharesCount === 0).length}
+            </span>
+            <span className="text-[10px] text-muted-foreground">Aguardando Divulgação</span>
+          </div>
+
+          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Compartilhadas Hoje</span>
+            <span className="text-xl font-bold font-mono text-emerald-500 mt-1">
+              {products.filter(p => p.lastSharedAt && p.lastSharedAt.startsWith(new Date().toISOString().split("T")[0])).length}
+            </span>
+            <span className="text-[10px] text-muted-foreground">Disparos Concluídos</span>
+          </div>
+
+          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Últimos 7 Dias</span>
+            <span className="text-xl font-bold font-mono text-blue-500 mt-1">
+              {products.reduce((acc, p) => acc + (p.sharesCount || 0), 0)}
+            </span>
+            <span className="text-[10px] text-muted-foreground">Total de Envios</span>
+          </div>
+
+          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between col-span-2 sm:col-span-1">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Oferta Campeã</span>
+            <span className="text-xs font-bold text-foreground truncate mt-1">
+              {[...products].sort((a, b) => (b.sharesCount || 0) - (a.sharesCount || 0))[0]?.name || "Nenhuma"}
+            </span>
+            <span className="text-[10px] text-emerald-500 font-semibold">
+              {[...products].sort((a, b) => (b.sharesCount || 0) - (a.sharesCount || 0))[0]?.sharesCount || 0} envios realizados
+            </span>
+          </div>
+        </div>
+      )}
+
 
         {activeTab === "kits" && (
           <button
@@ -1548,18 +1609,38 @@ export default function ProductsPage() {
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Botão Principal Compartilhar */}
+                              <button
+                                onClick={() => setSharingProduct(p)}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                                title="Compartilhar Oferta com IA"
+                              >
+                                <Share2 className="h-3.5 w-3.5" />
+                                <span>Compartilhar</span>
+                              </button>
+
+                              {/* Histórico de Envios */}
+                              <button
+                                onClick={() => setHistoryProduct(p)}
+                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-accent text-muted-foreground hover:text-foreground transition-all shrink-0"
+                                title="Ver Histórico de Compartilhamentos"
+                              >
+                                <History className="h-3.5 w-3.5" />
+                              </button>
+
                               <button
                                 onClick={() => {
                                   window.location.href = `/pricing?productId=${p.id}`;
                                 }}
-                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all shrink-0"
                                 title="Simular precificação e taxas de marketplace"
                               >
                                 <Calculator className="h-3.5 w-3.5" />
                               </button>
-                              <button onClick={() => handleEditProduct(p)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" title="Editar">
+                              <button onClick={() => handleEditProduct(p)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all shrink-0" title="Editar">
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
+
                               <button onClick={() => handleDeleteProduct(p.id, p.name)} className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" title="Excluir">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -2787,6 +2868,26 @@ export default function ProductsPage() {
         </div>
       )}
 
+      {/* Modal de Compartilhamento Inteligente */}
+      <ProductShareModal
+        product={sharingProduct}
+        isOpen={!!sharingProduct}
+        onClose={() => setSharingProduct(null)}
+        onShareComplete={() => {
+          setSharingProduct(null);
+          invalidateCache("products");
+          getDocs("products").then((prods) => setProducts((prods as Product[]) || []));
+        }}
+      />
+
+      {/* Modal de Histórico de Envios */}
+      <ProductShareHistoryModal
+        product={historyProduct}
+        isOpen={!!historyProduct}
+        onClose={() => setHistoryProduct(null)}
+      />
+
     </div>
   );
 }
+
