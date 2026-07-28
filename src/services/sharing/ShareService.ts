@@ -1,8 +1,9 @@
 import { ServiceResult } from "@/features/products/types";
 import { ShareTemplateService, SocialPlatform, TemplateData } from "./ShareTemplateService";
 import { ShareHistoryService } from "./ShareHistoryService";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebase/client";
 import { doc, updateDoc, increment } from "firebase/firestore";
+
 
 export class ShareService {
   /**
