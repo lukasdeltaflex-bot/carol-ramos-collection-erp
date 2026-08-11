@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useDb } from "@/hooks/useDb";
 import { Marketplace, ProductPricingData, DEFAULT_MARKETPLACES } from "../types";
-import { calculatePricing, calculateIdealPrice, DEFAULT_EXTRA_EXPENSES } from "../utils/calculator";
+import { calculatePricing, calculateIdealPrice, calculateEffectiveAcquisitionCost, DEFAULT_EXTRA_EXPENSES, roundMoney } from "../utils/calculator";
 import { formatCurrency, cn } from "@/lib/utils";
 import CurrencyInput from "@/components/ui/CurrencyInput";
 import {
@@ -23,11 +23,18 @@ import {
   Package,
   Layers,
   HelpCircle,
-  Check
+  Check,
+  ShieldCheck,
+  Scale
 } from "lucide-react";
 
 interface PricingSimulatorProps {
   initialCostPrice?: number;
+  initialFreightCost?: number;
+  initialFreightMode?: 'unit' | 'apportionment' | 'per_unit';
+  initialTotalFreightCost?: number;
+  initialTotalFreightUnits?: number;
+  initialTotalAcquisitionCost?: number;
   initialSellPrice?: number;
   initialPricingData?: ProductPricingData;
   onSaveToProduct?: (pricingData: ProductPricingData, calculatedSellPrice?: number) => void;
@@ -37,6 +44,11 @@ interface PricingSimulatorProps {
 
 export default function PricingSimulator({
   initialCostPrice = 0,
+  initialFreightCost = 0,
+  initialFreightMode = "unit",
+  initialTotalFreightCost = 0,
+  initialTotalFreightUnits = 1,
+  initialTotalAcquisitionCost,
   initialSellPrice = 0,
   initialPricingData,
   onSaveToProduct,
@@ -49,8 +61,15 @@ export default function PricingSimulator({
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [selectedMarketplaceId, setSelectedMarketplaceId] = useState<string>(initialPricingData?.marketplaceId || "");
 
-  // Form Fields
+  // Form Fields - Acquisition Cost & Pricing
   const [costPrice, setCostPrice] = useState<number>(initialCostPrice || 0);
+  const [acqFreightCost, setAcqFreightCost] = useState<number>(initialFreightCost || 0);
+  const [acqFreightMode, setAcqFreightMode] = useState<'unit' | 'apportionment'>(
+    initialFreightMode === 'apportionment' ? 'apportionment' : 'unit'
+  );
+  const [totalAcqFreightCost, setTotalAcqFreightCost] = useState<number>(initialTotalFreightCost || 0);
+  const [totalAcqFreightUnits, setTotalAcqFreightUnits] = useState<number>(initialTotalFreightUnits || 1);
+
   const [sellPrice, setSellPrice] = useState<number>(initialSellPrice || 0);
 
   const [percentFee, setPercentFee] = useState<number>(initialPricingData?.percentFee ?? 20);
@@ -66,15 +85,43 @@ export default function PricingSimulator({
   const [showExtraExpenses, setShowExtraExpenses] = useState<boolean>(false);
   const [targetMargin, setTargetMargin] = useState<number>(30);
 
+  // Calculate Effective Acquisition Cost with double counting prevention
+  const { effectiveAcquisitionCost, effectiveFreight, isAlreadyConsolidated } = useMemo(() => {
+    return calculateEffectiveAcquisitionCost({
+      baseCost: costPrice,
+      freightCost: acqFreightCost,
+      freightMode: acqFreightMode,
+      totalFreightCost: totalAcqFreightCost,
+      totalFreightUnits: totalAcqFreightUnits,
+      totalAcquisitionCost: initialTotalAcquisitionCost
+    });
+  }, [
+    costPrice,
+    acqFreightCost,
+    acqFreightMode,
+    totalAcqFreightCost,
+    totalAcqFreightUnits,
+    initialTotalAcquisitionCost
+  ]);
+
   // Sync props if cost/sell price changes initially
   useEffect(() => {
     if (initialCostPrice !== undefined && initialCostPrice > 0 && costPrice === 0) {
       setCostPrice(initialCostPrice);
     }
+    if (initialFreightCost !== undefined && initialFreightCost > 0 && acqFreightCost === 0) {
+      setAcqFreightCost(initialFreightCost);
+    }
+    if (initialTotalFreightCost !== undefined && initialTotalFreightCost > 0 && totalAcqFreightCost === 0) {
+      setTotalAcqFreightCost(initialTotalFreightCost);
+    }
+    if (initialTotalFreightUnits !== undefined && initialTotalFreightUnits > 1 && totalAcqFreightUnits === 1) {
+      setTotalAcqFreightUnits(initialTotalFreightUnits);
+    }
     if (initialSellPrice !== undefined && initialSellPrice > 0 && sellPrice === 0) {
       setSellPrice(initialSellPrice);
     }
-  }, [initialCostPrice, initialSellPrice]);
+  }, [initialCostPrice, initialFreightCost, initialTotalFreightCost, initialTotalFreightUnits, initialSellPrice]);
 
   // Load Marketplaces from Firestore
   useEffect(() => {
@@ -114,10 +161,10 @@ export default function PricingSimulator({
     }
   };
 
-  // Real-time calculations
+  // Real-time calculations using Effective Acquisition Cost
   const calc = useMemo(() => {
     return calculatePricing(
-      costPrice,
+      effectiveAcquisitionCost,
       sellPrice,
       percentFee,
       isPercentFeeActive,
@@ -125,12 +172,12 @@ export default function PricingSimulator({
       isFixedFeeActive,
       extraExpenses
     );
-  }, [costPrice, sellPrice, percentFee, isPercentFeeActive, fixedFee, isFixedFeeActive, extraExpenses]);
+  }, [effectiveAcquisitionCost, sellPrice, percentFee, isPercentFeeActive, fixedFee, isFixedFeeActive, extraExpenses]);
 
-  // Ideal Selling Price calculation
+  // Ideal Selling Price calculation using Effective Acquisition Cost
   const idealPrice = useMemo(() => {
     return calculateIdealPrice(
-      costPrice,
+      effectiveAcquisitionCost,
       targetMargin,
       percentFee,
       isPercentFeeActive,
@@ -138,7 +185,7 @@ export default function PricingSimulator({
       isFixedFeeActive,
       extraExpenses
     );
-  }, [costPrice, targetMargin, percentFee, isPercentFeeActive, fixedFee, isFixedFeeActive, extraExpenses]);
+  }, [effectiveAcquisitionCost, targetMargin, percentFee, isPercentFeeActive, fixedFee, isFixedFeeActive, extraExpenses]);
 
   const handleApplyIdealPrice = () => {
     if (idealPrice > 0) {
@@ -245,32 +292,136 @@ export default function PricingSimulator({
               </div>
             </div>
 
-            {/* Monetary Currency Inputs (Brazilian Real Standard) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
-              {/* Custo do Produto */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-foreground">
-                  Custo do Produto (R$)
-                </label>
-                <CurrencyInput
-                  value={costPrice}
-                  onChange={setCostPrice}
-                  placeholder="0,00"
-                />
+            {/* Monetary Inputs: Base Cost, Acquisition Freight & Sell Price */}
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                {/* Custo Base do Fornecedor */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-foreground">
+                    Custo Base do Produto (R$)
+                  </label>
+                  <CurrencyInput
+                    value={costPrice}
+                    onChange={setCostPrice}
+                    placeholder="0,00"
+                  />
+                  <span className="text-[10px] text-muted-foreground block">
+                    Valor unitário pago ao fornecedor (sem frete)
+                  </span>
+                </div>
+
+                {/* Preço de Venda Simulado */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-foreground">
+                    Preço de Venda Simulado (R$)
+                  </label>
+                  <CurrencyInput
+                    value={sellPrice}
+                    onChange={setSellPrice}
+                    placeholder="0,00"
+                    className="text-primary font-extrabold"
+                  />
+                  <span className="text-[10px] text-muted-foreground block">
+                    Preço bruto ofertado no marketplace
+                  </span>
+                </div>
               </div>
 
-              {/* Preço de Venda */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-foreground">
-                  Preço de Venda Simulado (R$)
-                </label>
-                <CurrencyInput
-                  value={sellPrice}
-                  onChange={setSellPrice}
-                  placeholder="0,00"
-                  className="text-primary font-extrabold"
-                />
-              </div>
+              {/* Frete de Aquisição / Compra (Se não pré-consolidado no produto) */}
+              {!isAlreadyConsolidated ? (
+                <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Truck className="h-4 w-4 text-blue-500" />
+                      Frete de Aquisição do Produto (Compra)
+                    </label>
+
+                    {/* Mode Selector: Unitario vs Rateio por Lote */}
+                    <div className="flex items-center gap-1 p-0.5 rounded-lg bg-background border border-border text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setAcqFreightMode("unit")}
+                        className={cn(
+                          "px-2.5 py-1 rounded-md font-semibold transition-all",
+                          acqFreightMode === "unit"
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        Unitário (R$)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAcqFreightMode("apportionment")}
+                        className={cn(
+                          "px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1",
+                          acqFreightMode === "apportionment"
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <Scale className="h-3 w-3" />
+                        Rateio por Compra
+                      </button>
+                    </div>
+                  </div>
+
+                  {acqFreightMode === "unit" ? (
+                    <div className="space-y-1">
+                      <CurrencyInput
+                        value={acqFreightCost}
+                        onChange={setAcqFreightCost}
+                        placeholder="0,00"
+                      />
+                      <span className="text-[10px] text-muted-foreground block">
+                        Valor exato de frete unitário alocado a este produto
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground">Frete Total da Compra (R$)</label>
+                        <CurrencyInput
+                          value={totalAcqFreightCost}
+                          onChange={setTotalAcqFreightCost}
+                          placeholder="0,00"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-semibold text-muted-foreground">Qtd Total de Unidades</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={totalAcqFreightUnits || ""}
+                          onChange={e => setTotalAcqFreightUnits(parseInt(e.target.value) || 1)}
+                          placeholder="1"
+                          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs font-bold font-mono text-right"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Banner of Effective Acquisition Cost */}
+                  <div className="p-2.5 rounded-lg bg-background/80 border border-blue-500/30 flex items-center justify-between text-xs font-mono">
+                    <span className="text-muted-foreground font-sans">Composição do Custo Efetivo:</span>
+                    <span className="font-bold text-foreground">
+                      {formatCurrency(costPrice)} + {formatCurrency(effectiveFreight)} ={" "}
+                      <strong className="text-blue-600 dark:text-blue-400 font-extrabold">{formatCurrency(effectiveAcquisitionCost)}</strong>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                /* Banner quando o produto possui Custo Consolidado já com frete */
+                <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 font-medium">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500" />
+                    <span>Custo Total de Aquisição Consolidado (Frete e Despesas Incluídos no Produto)</span>
+                  </div>
+                  <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-sm">
+                    {formatCurrency(effectiveAcquisitionCost)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -645,9 +796,14 @@ export default function PricingSimulator({
               </div>
 
               <div className="flex items-center justify-between py-1.5 border-b border-border/40">
-                <span className="text-muted-foreground font-medium">(-) Custo do Produto</span>
+                <span className="text-muted-foreground font-medium">(-) Custo Efetivo de Aquisição</span>
                 <span className="font-bold font-mono text-red-500">-{formatCurrency(calc.costPrice)}</span>
               </div>
+              {effectiveFreight > 0 && !isAlreadyConsolidated && (
+                <div className="flex items-center justify-between py-1 border-b border-border/30 pl-3 text-[11px]">
+                  <span className="text-muted-foreground">↳ Base: {formatCurrency(costPrice)} + Frete Aquisição: {formatCurrency(effectiveFreight)}</span>
+                </div>
+              )}
 
               <div className="flex items-center justify-between py-1.5 border-b border-border/40">
                 <span className="text-muted-foreground font-medium">

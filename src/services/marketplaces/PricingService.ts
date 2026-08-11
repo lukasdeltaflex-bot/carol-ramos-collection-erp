@@ -8,6 +8,11 @@ export interface CalculateSimulationInput {
   channel: MarketplaceChannel;
   productName: string;
   buyPrice: number;
+  acquisitionFreightCost?: number;
+  acquisitionFreightMode?: 'unit' | 'apportionment' | 'per_unit';
+  totalAcquisitionFreightCost?: number;
+  totalAcquisitionFreightUnits?: number;
+  totalAcquisitionCost?: number;
   sellPrice: number;
   freightCost?: number;
   taxPercentage?: number;
@@ -30,9 +35,19 @@ class PricingService {
    * Calcula a simulação de lucro em tempo real sem gravar no banco (ou salvando se solicitado).
    */
   public calculate(input: CalculateSimulationInput): ProfitSimulation {
-    const buyPrice = input.buyPrice || 0;
+    const rawBuyPrice = input.buyPrice || 0;
+    
+    // Effective Acquisition Freight & Double Counting Prevention
+    const effectiveAcqFreight = input.acquisitionFreightMode === 'apportionment'
+      ? (input.totalAcquisitionFreightUnits && input.totalAcquisitionFreightUnits > 0 ? (input.totalAcquisitionFreightCost || 0) / input.totalAcquisitionFreightUnits : 0)
+      : (input.acquisitionFreightCost || 0);
+
+    const effectiveBuyPrice = (input.totalAcquisitionCost && input.totalAcquisitionCost > 0)
+      ? input.totalAcquisitionCost
+      : (rawBuyPrice + effectiveAcqFreight);
+
     const sellPrice = input.sellPrice || 0;
-    const freightCost = input.freightCost || 0;
+    const freightCost = input.freightCost || 0; // Frete de Venda / Entrega
     const taxPercentage = input.taxPercentage ?? 8; // Default 8% Simples Nacional
     const commissionPercentage = input.commissionPercentage ?? (input.channel === "mercado_libre" ? 16 : 14);
     const commissionFixed = input.commissionFixed ?? (sellPrice < 79 ? 6 : 0); // Ex: R$ 6 fixos no ML abaixo de 79
@@ -45,8 +60,8 @@ class PricingService {
     const taxVal = (sellPrice * taxPercentage) / 100;
     const variableCost = commissionVal + commissionFixed + taxVal + freightCost;
 
-    // Custo Total
-    const totalCosts = buyPrice + variableCost + packagingCost + operationalCost;
+    // Custo Total (Baseado no Custo Efetivo de Aquisição)
+    const totalCosts = effectiveBuyPrice + variableCost + packagingCost + operationalCost;
     
     // Lucro Líquido
     const netProfit = sellPrice - totalCosts;
@@ -54,19 +69,16 @@ class PricingService {
     // Margem Real % = (Lucro / Preço de Venda) * 100
     const actualMarginPercentage = sellPrice > 0 ? (netProfit / sellPrice) * 100 : 0;
     
-    // ROI % = (Lucro / Custo de Aquisição e Operacional) * 100
-    const baseInvest = buyPrice + packagingCost + operationalCost;
+    // ROI % = (Lucro / Custo Efetivo de Aquisição e Operacional) * 100
+    const baseInvest = effectiveBuyPrice + packagingCost + operationalCost;
     const roiPercentage = baseInvest > 0 ? (netProfit / baseInvest) * 100 : 0;
 
     // Preço Mínimo (Breakeven / Zero a Zero): Preço onde Lucro Líquido = 0
-    // 0 = P - [CustoFixo + P*(Comissao% + Imposto%)/100 + ComissaoFixa + Frete]
-    // P * [1 - (Comissao% + Imposto%)/100] = CustoFixo + ComissaoFixa + Frete
-    const fixedAndOtherCosts = buyPrice + packagingCost + operationalCost + commissionFixed + freightCost;
+    const fixedAndOtherCosts = effectiveBuyPrice + packagingCost + operationalCost + commissionFixed + freightCost;
     const divisorBreakeven = 1 - (commissionPercentage + taxPercentage) / 100;
     const minSellPrice = divisorBreakeven > 0 ? fixedAndOtherCosts / divisorBreakeven : 0;
 
     // Preço Ideal para atingir Margem Desejada:
-    // P * [1 - (Comissao% + Imposto% + Margem%)/100] = CustoFixo + ComissaoFixa + Frete
     const divisorIdeal = 1 - (commissionPercentage + taxPercentage + desiredMarginPercentage) / 100;
     const idealSellPrice = divisorIdeal > 0 ? fixedAndOtherCosts / divisorIdeal : minSellPrice * 1.25;
     const recommendedSellPrice = Math.ceil(idealSellPrice) - 0.1; // Ex: 149.90
@@ -75,7 +87,7 @@ class PricingService {
       tenantId: input.tenantId,
       channel: input.channel,
       productName: input.productName || "Produto Simulação",
-      buyPrice,
+      buyPrice: effectiveBuyPrice,
       sellPrice,
       freightCost,
       taxPercentage,

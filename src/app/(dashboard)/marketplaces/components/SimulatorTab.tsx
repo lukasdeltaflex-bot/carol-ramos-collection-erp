@@ -44,15 +44,20 @@ interface CustomCost {
 interface SimulatorForm {
   productName: string;
   channel: MarketplaceChannel;
-  // Preços Base
+  // Preços Base & Frete de Aquisição
   sellPrice: number;
   buyPrice: number;
+  acqFreight: number;
+  acqFreightActive: boolean;
+  acqFreightMode: 'unit' | 'apportionment';
+  totalAcqFreight: number;
+  totalAcqUnits: number;
   // Taxas Marketplace
   commissionPercent: number;
   commissionPercentActive: boolean;
   commissionFixed: number;
   commissionFixedActive: boolean;
-  // Custos Adicionais Padrão
+  // Custos Adicionais Padrão (Frete de Venda)
   taxPercent: number;
   taxPercentActive: boolean;
   freight: number;
@@ -189,6 +194,11 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
     channel: "shopee",
     sellPrice: 0,
     buyPrice: 0,
+    acqFreight: 0,
+    acqFreightActive: false,
+    acqFreightMode: "unit",
+    totalAcqFreight: 0,
+    totalAcqUnits: 1,
     commissionPercent: 14,
     commissionPercentActive: true,
     commissionFixed: 0,
@@ -211,6 +221,19 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
   const set = useCallback(<K extends keyof SimulatorForm>(key: K, value: SimulatorForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  // Compute effective acquisition freight and effective buy price
+  const effectiveAcqFreight = useMemo(() => {
+    if (!form.acqFreightActive) return 0;
+    if (form.acqFreightMode === "apportionment") {
+      return form.totalAcqUnits > 0 ? form.totalAcqFreight / form.totalAcqUnits : 0;
+    }
+    return form.acqFreight || 0;
+  }, [form.acqFreightActive, form.acqFreightMode, form.totalAcqFreight, form.totalAcqUnits, form.acqFreight]);
+
+  const effectiveBuyPrice = useMemo(() => {
+    return Math.round(((form.buyPrice || 0) + effectiveAcqFreight + Number.EPSILON) * 100) / 100;
+  }, [form.buyPrice, effectiveAcqFreight]);
 
   // Canal padrão de comissão
   const CHANNEL_DEFAULTS: Record<MarketplaceChannel, { commission: number; fixed: number }> = {
@@ -247,14 +270,12 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
       .filter((c) => c.active && c.type === "fixed")
       .reduce((a, c) => a + c.value, 0);
 
-    // Custos percentuais customizados são somados ao freight via campo extra % (hack mínimo)
-    // Usamos o campo `extra` para os customizados fixos e `extraActive` = true
     return {
       freight: form.freightActive ? form.freight : 0,
       freightActive: form.freightActive,
       packaging: form.packagingActive ? form.packaging : 0,
       packagingActive: form.packagingActive,
-      commission: form.operationalActive ? form.operational : 0, // operacional no campo "commission" extra
+      commission: form.operationalActive ? form.operational : 0,
       commissionActive: form.operationalActive,
       taxesPercent: form.taxPercentActive ? form.taxPercent : 0,
       taxesActive: form.taxPercentActive,
@@ -269,11 +290,11 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
   const percentFee = form.commissionPercentActive ? form.commissionPercent : 0;
   const fixedFee = form.commissionFixedActive ? form.commissionFixed : 0;
 
-  // Cálculo em tempo real com a lógica já existente
+  // Cálculo em tempo real utilizando o Custo Efetivo de Aquisição (Custo Base + Frete de Compra)
   const calc = useMemo(
     () =>
       calculatePricing(
-        form.buyPrice,
+        effectiveBuyPrice,
         form.sellPrice,
         percentFee,
         form.commissionPercentActive,
@@ -281,14 +302,14 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
         form.commissionFixedActive,
         extraExpenses
       ),
-    [form, percentFee, fixedFee, extraExpenses]
+    [effectiveBuyPrice, form.sellPrice, percentFee, form.commissionPercentActive, fixedFee, form.commissionFixedActive, extraExpenses]
   );
 
   // Preço ideal baseado na margem desejada
   const idealPrice = useMemo(
     () =>
       calculateIdealPrice(
-        form.buyPrice,
+        effectiveBuyPrice,
         form.desiredMargin,
         percentFee,
         form.commissionPercentActive,
@@ -296,14 +317,14 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
         form.commissionFixedActive,
         extraExpenses
       ),
-    [form, percentFee, fixedFee, extraExpenses]
+    [effectiveBuyPrice, form.desiredMargin, percentFee, form.commissionPercentActive, fixedFee, form.commissionFixedActive, extraExpenses]
   );
 
   // Preço mínimo (breakeven)
   const breakeven = useMemo(
     () =>
       calculateIdealPrice(
-        form.buyPrice,
+        effectiveBuyPrice,
         0,
         percentFee,
         form.commissionPercentActive,
@@ -311,7 +332,7 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
         form.commissionFixedActive,
         extraExpenses
       ),
-    [form, percentFee, fixedFee, extraExpenses]
+    [effectiveBuyPrice, percentFee, form.commissionPercentActive, fixedFee, form.commissionFixedActive, extraExpenses]
   );
 
   // Preço sugerido (arredonda para .90)
@@ -322,9 +343,9 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
 
   // ROI
   const roi = useMemo(() => {
-    const invest = form.buyPrice + (form.packagingActive ? form.packaging : 0) + (form.operationalActive ? form.operational : 0);
+    const invest = effectiveBuyPrice + (form.packagingActive ? form.packaging : 0) + (form.operationalActive ? form.operational : 0);
     return invest > 0 ? (calc.netProfit / invest) * 100 : 0;
-  }, [calc.netProfit, form]);
+  }, [calc.netProfit, effectiveBuyPrice, form]);
 
   // ----- Custos Customizados -----
   const addCustomCost = () => {
@@ -508,7 +529,7 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
-                  Custo do Produto (R$)
+                  Custo Base do Produto (R$)
                 </label>
                 <NumberInput
                   value={form.buyPrice}
@@ -528,6 +549,91 @@ export default function SimulatorTab({ tenantId }: { tenantId: string }) {
                   placeholder="0,00"
                 />
               </div>
+            </div>
+
+            {/* Frete de Aquisição no Custo do Produto */}
+            <div className="p-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Toggle
+                    active={form.acqFreightActive}
+                    onToggle={() => set("acqFreightActive", !form.acqFreightActive)}
+                  />
+                  <span
+                    className="text-xs font-bold text-foreground cursor-pointer"
+                    onClick={() => set("acqFreightActive", !form.acqFreightActive)}
+                  >
+                    🚚 Frete de Aquisição (Compra)
+                  </span>
+                </div>
+
+                {form.acqFreightActive && (
+                  <div className="flex items-center gap-1 p-0.5 rounded-lg bg-background border border-border text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => set("acqFreightMode", "unit")}
+                      className={cn(
+                        "px-2 py-0.5 rounded font-semibold transition-all",
+                        form.acqFreightMode === "unit" ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground"
+                      )}
+                    >
+                      Unitário
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set("acqFreightMode", "apportionment")}
+                      className={cn(
+                        "px-2 py-0.5 rounded font-semibold transition-all",
+                        form.acqFreightMode === "apportionment" ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground"
+                      )}
+                    >
+                      Rateio por Compra
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {form.acqFreightActive && (
+                <div className="pt-1">
+                  {form.acqFreightMode === "unit" ? (
+                    <NumberInput
+                      value={form.acqFreight}
+                      onChange={(v) => set("acqFreight", v)}
+                      suffix="R$"
+                      placeholder="0,00"
+                    />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted-foreground block mb-1">Frete Total Compra (R$)</label>
+                        <NumberInput
+                          value={form.totalAcqFreight}
+                          onChange={(v) => set("totalAcqFreight", v)}
+                          suffix="R$"
+                          placeholder="0,00"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-muted-foreground block mb-1">Unidades no Lote</label>
+                        <NumberInput
+                          value={form.totalAcqUnits}
+                          onChange={(v) => set("totalAcqUnits", v)}
+                          placeholder="1"
+                          step="1"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-2 text-[11px] font-mono text-muted-foreground flex justify-between border-t border-blue-500/20 pt-1.5">
+                    <span>Custo Efetivo de Aquisição:</span>
+                    <span className="font-bold text-foreground">
+                      {formatCurrency(form.buyPrice)} + {formatCurrency(effectiveAcqFreight)} ={" "}
+                      <strong className="text-blue-600 dark:text-blue-400">{formatCurrency(effectiveBuyPrice)}</strong>
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

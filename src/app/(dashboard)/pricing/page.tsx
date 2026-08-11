@@ -141,11 +141,20 @@ export default function PricingPage() {
                   className="w-full max-w-md px-3 py-1.5 rounded-xl border border-border bg-background text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 truncate"
                 >
                   <option value="">-- Simulação Livre (Sem Produto Selecionado) --</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.sku}) - Custo: {formatCurrency(p.costPrice)} | Venda: {formatCurrency(p.sellPrice)}
-                    </option>
-                  ))}
+                  {products.map(p => {
+                    const effFreight = p.freightMode === "apportionment"
+                      ? (p.totalFreightUnits && p.totalFreightUnits > 0 ? (p.totalFreightCost || 0) / p.totalFreightUnits : 0)
+                      : (p.freightCost || 0);
+                    const effAcqCost = (p.totalAcquisitionCost && p.totalAcquisitionCost > 0)
+                      ? p.totalAcquisitionCost
+                      : ((p.costPrice || 0) + effFreight);
+
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.sku}) - Custo Efetivo: {formatCurrency(effAcqCost)} | Venda: {formatCurrency(p.sellPrice)}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -164,6 +173,11 @@ export default function PricingPage() {
           <PricingSimulator
             key={selectedProductId || "free"}
             initialCostPrice={selectedProductObj?.costPrice || 0}
+            initialFreightCost={selectedProductObj?.freightCost || 0}
+            initialFreightMode={selectedProductObj?.freightMode}
+            initialTotalFreightCost={selectedProductObj?.totalFreightCost || 0}
+            initialTotalFreightUnits={selectedProductObj?.totalFreightUnits || 1}
+            initialTotalAcquisitionCost={selectedProductObj?.totalAcquisitionCost}
             initialSellPrice={selectedProductObj?.sellPrice || 0}
             initialPricingData={selectedProductObj?.pricingData}
             productName={selectedProductObj?.name}
