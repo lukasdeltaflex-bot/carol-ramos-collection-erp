@@ -1279,50 +1279,7 @@ export default function ProductsPage() {
         )}
       </div>
 
-      {/* 1b. Painel Estatístico de Ofertas (Central Oficial de Ofertas) */}
-      {activeTab === "products" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total de Ofertas</span>
-            <span className="text-xl font-bold font-mono text-foreground mt-1">{products.length}</span>
-            <span className="text-[10px] text-muted-foreground">Catálogo Cadastrado</span>
-          </div>
 
-          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Nunca Compartilhadas</span>
-            <span className="text-xl font-bold font-mono text-amber-500 mt-1">
-              {products.filter(p => !p.sharesCount || p.sharesCount === 0).length}
-            </span>
-            <span className="text-[10px] text-muted-foreground">Aguardando Divulgação</span>
-          </div>
-
-          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Compartilhadas Hoje</span>
-            <span className="text-xl font-bold font-mono text-emerald-500 mt-1">
-              {products.filter(p => p.lastSharedAt && p.lastSharedAt.startsWith(new Date().toISOString().split("T")[0])).length}
-            </span>
-            <span className="text-[10px] text-muted-foreground">Disparos Concluídos</span>
-          </div>
-
-          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Últimos 7 Dias</span>
-            <span className="text-xl font-bold font-mono text-blue-500 mt-1">
-              {products.reduce((acc, p) => acc + (p.sharesCount || 0), 0)}
-            </span>
-            <span className="text-[10px] text-muted-foreground">Total de Envios</span>
-          </div>
-
-          <div className="p-4 rounded-xl border border-border bg-card/50 flex flex-col justify-between col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Oferta Campeã</span>
-            <span className="text-xs font-bold text-foreground truncate mt-1">
-              {[...products].sort((a, b) => (b.sharesCount || 0) - (a.sharesCount || 0))[0]?.name || "Nenhuma"}
-            </span>
-            <span className="text-[10px] text-emerald-500 font-semibold">
-              {[...products].sort((a, b) => (b.sharesCount || 0) - (a.sharesCount || 0))[0]?.sharesCount || 0} envios realizados
-            </span>
-          </div>
-        </div>
-      )}
 
 
       {/* 2. Seleção de Abas & Filtros */}
