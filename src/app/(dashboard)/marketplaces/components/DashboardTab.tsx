@@ -5,7 +5,7 @@ import { getExecutiveReportAction, listOrdersAction, listAccountsAction, listIte
 import { TrendingUp, Package, CheckCircle, XCircle, DollarSign, Clock, Store, RefreshCw, AlertCircle, ShoppingCart } from "lucide-react";
 import { MarketplaceOrder, MarketplaceAccount } from "@/features/integrations/types/marketplaces";
 import { useToast } from "@/context/ToastContext";
-import { cn } from "@/lib/utils";
+import { cn, isToday } from "@/lib/utils";
 
 export default function DashboardTab({ tenantId }: { tenantId: string }) {
   const [loading, setLoading] = useState(true);
@@ -50,13 +50,13 @@ export default function DashboardTab({ tenantId }: { tenantId: string }) {
   }
 
   // Estatísticas calculadas
-  const hoje = new Date().toISOString().split("T")[0];
-  const pedidosHoje = orders.filter((o) => o.createdAt.startsWith(hoje));
-  const pendentes = orders.filter((o) => o.orderStatus === "pending" || o.orderStatus === "paid");
-  const enviados = orders.filter((o) => o.orderStatus === "shipped" || o.orderStatus === "delivered");
-  const cancelados = orders.filter((o) => o.orderStatus === "cancelled");
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  const pedidosHoje = safeOrders.filter((o) => o && isToday(o.createdAt));
+  const pendentes = safeOrders.filter((o) => o && (o.orderStatus === "pending" || o.orderStatus === "paid"));
+  const enviados = safeOrders.filter((o) => o && (o.orderStatus === "shipped" || o.orderStatus === "delivered"));
+  const cancelados = safeOrders.filter((o) => o && o.orderStatus === "cancelled");
 
-  const valorHoje = pedidosHoje.reduce((acc, curr) => acc + curr.totalAmount, 0);
+  const valorHoje = pedidosHoje.reduce((acc, curr) => acc + (Number(curr.totalAmount) || 0), 0);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 

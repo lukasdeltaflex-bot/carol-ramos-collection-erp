@@ -69,6 +69,70 @@ export function sanitizeFirestoreData<T>(data: T): T {
   return cleaned as T;
 }
 
+// Helper para normalizar recursivamente dados vindos do Firestore para o modelo previsível da aplicação
+export function normalizeFirestoreData<T>(data: T): T {
+  if (data === null || data === undefined || typeof data !== "object") {
+    return data;
+  }
+
+  // 1. Instância de Date -> ISO string
+  if (data instanceof Date) {
+    return (isNaN(data.getTime()) ? null : data.toISOString()) as unknown as T;
+  }
+
+  // 2. Instância ou objeto Firestore Timestamp com método toDate()
+  if ("toDate" in (data as any) && typeof (data as any).toDate === "function") {
+    try {
+      const date = (data as any).toDate();
+      if (date instanceof Date && !isNaN(date.getTime())) {
+        return date.toISOString() as unknown as T;
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  // 3. Array recursivo
+  if (Array.isArray(data)) {
+    return data.map((item) => normalizeFirestoreData(item)) as unknown as T;
+  }
+
+  // 4. Objeto serializado Timestamp com seconds e nanoseconds típicos
+  const keys = Object.keys(data as Record<string, any>);
+  if (
+    (keys.length === 2 || keys.length === 1) &&
+    "seconds" in (data as any) &&
+    typeof (data as any).seconds === "number" &&
+    ((data as any).seconds > 100000000)
+  ) {
+    const sec = (data as any).seconds;
+    const date = new Date(sec * 1000);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString() as unknown as T;
+    }
+  }
+
+  if (
+    (keys.length === 2 || keys.length === 1) &&
+    "_seconds" in (data as any) &&
+    typeof (data as any)._seconds === "number" &&
+    ((data as any)._seconds > 100000000)
+  ) {
+    const sec = (data as any)._seconds;
+    const date = new Date(sec * 1000);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString() as unknown as T;
+    }
+  }
+
+  // 5. Objeto comum: percorrer propriedades
+  const normalized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data as Record<string, any>)) {
+    normalized[key] = normalizeFirestoreData(value);
+  }
+  return normalized as T;
+}
+
 export function useDb() {
   const { user, profile, tenantId, isMock } = useAuth();
 
@@ -498,7 +562,8 @@ export function useDb() {
           `Erro ao buscar lista de ${collectionName}`
         );
         
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const rawDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const docs = rawDocs.map(d => normalizeFirestoreData(d));
         if (!includeDeleted) {
           return docs.filter((item: any) => item.deleted !== true);
         }
@@ -556,7 +621,7 @@ export function useDb() {
         }
         return null;
       }
-      return { id: snap.id, ...snap.data() };
+      return normalizeFirestoreData({ id: snap.id, ...snap.data() });
     } catch (err) {
       console.warn(`[useDb] Falha ao carregar documento ${collectionName}/${docId}:`, err);
       if (collectionName === "companies" && typeof window !== "undefined") {

@@ -42,7 +42,7 @@ import {
   CartesianGrid
 } from "recharts";
 import Link from "next/link";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, isToday, isSameDay } from "@/lib/utils";
 const getStoreStatus = (company: any) => {
   if (!company || !company.hours) return { isOpen: false, text: "Horários não configurados" };
   
@@ -147,10 +147,10 @@ export default function Dashboard() {
 
   // 1. Cálculos de Vendas de Hoje
   const getTodayStats = () => {
-    const today = new Date().toISOString().split("T")[0];
-    const todaySales = sales.filter(s => s.createdAt && s.createdAt.startsWith(today));
+    const safeSales = Array.isArray(sales) ? sales : [];
+    const todaySales = safeSales.filter(s => s && isToday(s.createdAt));
     
-    const revenueToday = todaySales.reduce((sum, s) => sum + s.total, 0);
+    const revenueToday = todaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
     const countToday = todaySales.length;
 
     return {
@@ -192,24 +192,28 @@ export default function Dashboard() {
   }, [products]);
 
   // 3. Contas a Receber Pendentes
-  const totalReceivables = React.useMemo(() => receivables
-    .filter(r => r.status === "pending")
-    .reduce((sum, r) => sum + r.amount, 0), [receivables]);
+  const totalReceivables = React.useMemo(() => {
+    const safeReceivables = Array.isArray(receivables) ? receivables : [];
+    return safeReceivables
+      .filter(r => r && r.status === "pending")
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  }, [receivables]);
 
   // 4. Montar Gráfico de Evolução (Últimos 7 dias)
   const getChartData = () => {
     const data: Array<{ name: string; vendas: number }> = [];
     const daysOfWeek = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const safeSales = Array.isArray(sales) ? sales : [];
 
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
-      const daySales = sales.filter(s => s.createdAt && s.createdAt.startsWith(dateStr));
-      const totalDay = daySales.reduce((sum, s) => sum + s.total, 0);
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() - i);
+      
+      const daySales = safeSales.filter(s => s && isSameDay(s.createdAt, targetDate));
+      const totalDay = daySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
 
       data.push({
-        name: daysOfWeek[d.getDay()],
+        name: daysOfWeek[targetDate.getDay()],
         vendas: parseFloat(totalDay.toFixed(2))
       });
     }
@@ -221,20 +225,26 @@ export default function Dashboard() {
 
   // 5. Top 5 Produtos Mais Vendidos
   const getTopProducts = () => {
+    const safeSales = Array.isArray(sales) ? sales : [];
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
-    sales.forEach(s => {
-      if (s.items) {
+    safeSales.forEach(s => {
+      if (s && s.items && Array.isArray(s.items)) {
         s.items.forEach((item: any) => {
-          if (!productSales[item.productId]) {
-            productSales[item.productId] = { name: item.name || item.productId, qty: 0, revenue: 0 };
+          if (item && item.productId) {
+            if (!productSales[item.productId]) {
+              productSales[item.productId] = { name: item.name || item.productId, qty: 0, revenue: 0 };
+            }
+            const qty = Number(item.qty || item.quantity) || 1;
+            const price = Number(item.unitPrice || item.price) || 0;
+            productSales[item.productId].qty += qty;
+            productSales[item.productId].revenue += price * qty;
           }
-          productSales[item.productId].qty += item.qty || 1;
-          productSales[item.productId].revenue += (item.unitPrice || 0) * (item.qty || 1);
         });
       }
     });
+
     return Object.values(productSales)
-      .sort((a, b) => b.qty - a.qty)
+      .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
   };
   
@@ -677,7 +687,7 @@ export default function Dashboard() {
               <div className="p-3.5 rounded-xl border border-border bg-background/50 flex flex-col justify-between">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase">Excluídos Hoje</span>
                 <span className="text-xl font-extrabold font-mono text-red-500 mt-1">
-                  {recycleBinItems.filter(i => i.deletedAt && i.deletedAt.startsWith(new Date().toISOString().split("T")[0])).length}
+                  {(Array.isArray(recycleBinItems) ? recycleBinItems : []).filter(i => i && isToday(i.deletedAt)).length}
                 </span>
               </div>
               <div className="p-3.5 rounded-xl border border-border bg-background/50 flex flex-col justify-between">

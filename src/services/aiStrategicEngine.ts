@@ -3,6 +3,7 @@ import { Sale } from "@/features/sales/types";
 import { Customer } from "@/features/customers/types";
 import { AccountsReceivable, AccountsPayable } from "@/features/finance/types";
 import { MarketplaceAccount } from "@/features/integrations/types/marketplaces";
+import { isToday } from "@/lib/utils";
 
 export interface BusinessHealthMetrics {
   healthScore: number;          // 0 - 100
@@ -171,9 +172,9 @@ export function generateDailyExecutiveSummary(context: {
   marketplaces: MarketplaceAccount[];
 }): string {
   const { metrics, recommendations } = calculateStrategicMetrics(context);
-  const todayStr = new Date().toISOString().split("T")[0];
-  const todaySales = context.sales.filter((s) => s.createdAt && s.createdAt.startsWith(todayStr));
-  const todayRevenue = todaySales.reduce((a, s) => a + (s.total || 0), 0);
+  const safeSales = Array.isArray(context?.sales) ? context.sales : [];
+  const todaySales = safeSales.filter((s) => s && isToday(s.createdAt));
+  const todayRevenue = todaySales.reduce((a, s) => a + (Number(s.total) || 0), 0);
 
   return `### ☀️ Resumo Inteligente do Dia — ${new Date().toLocaleDateString("pt-BR")}
 **Empresa:** ${context.companyName} | **Saúde do Negócio:** ${metrics.healthScore}/100 🟢

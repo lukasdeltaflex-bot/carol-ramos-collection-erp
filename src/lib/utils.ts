@@ -1,5 +1,22 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { 
+  normalizeDate, 
+  isSameDay, 
+  isToday, 
+  toISODateString, 
+  toSafeISOString, 
+  formatSafeDate 
+} from "./date";
+
+export { 
+  normalizeDate, 
+  isSameDay, 
+  isToday, 
+  toISODateString, 
+  toSafeISOString, 
+  formatSafeDate 
+};
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -26,52 +43,7 @@ export function formatCurrency(value: number | undefined | null): string {
 
 // 2. Formata data padrão brasileiro: DD/MM/AAAA
 export function formatDate(dateInput: any): string {
-  if (!dateInput) return "";
-
-  let date: Date;
-
-  try {
-    if (typeof dateInput === "object" && typeof dateInput.toDate === "function") {
-      date = dateInput.toDate();
-    } else if (typeof dateInput === "object" && typeof dateInput.seconds === "number") {
-      date = new Date(dateInput.seconds * 1000);
-    } else if (typeof dateInput === "object" && typeof dateInput._seconds === "number") {
-      date = new Date(dateInput._seconds * 1000);
-    } else if (dateInput instanceof Date) {
-      date = dateInput;
-    } else if (typeof dateInput === "number") {
-      date = new Date(dateInput);
-    } else if (typeof dateInput === "string") {
-      const trimmed = dateInput.trim();
-      if (!trimmed) return "";
-      if (trimmed.includes("/")) return trimmed;
-      if (trimmed.includes("-")) {
-        const parts = trimmed.split("-");
-        if (parts[0].length === 4 && parts.length >= 3) {
-          const dayPart = parts[2].substring(0, 2);
-          date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(dayPart));
-        } else {
-          date = new Date(trimmed);
-        }
-      } else {
-        date = new Date(trimmed);
-      }
-    } else {
-      date = new Date(dateInput);
-    }
-
-    if (!date || typeof date.getTime !== "function" || isNaN(date.getTime())) {
-      return String(dateInput?.toString ? dateInput.toString() : "");
-    }
-
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  } catch (err) {
-    console.error("Erro ao formatar data em formatDate:", err, dateInput);
-    return String(dateInput || "");
-  }
+  return formatSafeDate(dateInput, "");
 }
 
 // 3. Calcula idade dinamicamente baseado em DD/MM/AAAA ou YYYY-MM-DD
