@@ -62,51 +62,6 @@ import { KNOWN_CARD_FLAGS, generateOnlineFlagCandidates, findKnownCardFlag } fro
 
 export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
-// Mock Inicial de Contas Bancárias
-const INITIAL_BANK_ACCOUNTS = [
-  { name: "Caixa Físico / Gaveta", bankName: "Caixa Interno", type: "cash_register" as const, balance: 350.00, currency: "BRL", status: "active" as const },
-  { name: "Banco Itaú PJ", bankName: "Itaú Unibanco", bankCode: "341", agency: "1234", accountNumber: "56789", accountDigit: "0", type: "checking" as const, balance: 8450.00, currency: "BRL", status: "active" as const },
-  { name: "Carteira Digital Shopee", bankName: "Shopee Pay", type: "wallet" as const, balance: 1290.00, currency: "BRL", status: "active" as const }
-];
-
-// Mock Inicial de Cartões Corporativos
-const INITIAL_COMPANY_CARDS = [
-  {
-    name: "Cartão Corporativo Itaú Black",
-    issuerBank: "Itaú Unibanco",
-    flag: "visa" as const,
-    lastFourDigits: "4589",
-    nameOnCard: "CAROL RAMOS",
-    totalLimit: 25000.00,
-    availableLimit: 19850.00,
-    closingDay: 25,
-    dueDay: 5,
-    responsiblePerson: "Carol Ramos",
-    status: "active" as const,
-    notes: "Cartão principal para compras de estoque importado"
-  }
-];
-
-// Mock Inicial de Lançamentos Financeiros (Fluxo de Caixa)
-const INITIAL_TRANSACTIONS = (bankIds: string[]) => [
-  { type: "revenue" as const, category: "sale" as const, amount: 249.90, description: "Venda PDV - Cliente: Mariana Silva", paymentDate: new Date().toISOString().split("T")[0], status: "paid" as const, bankAccountId: bankIds[0] || "gaveta" },
-  { type: "revenue" as const, category: "sale" as const, amount: 158.00, description: "Venda Shopee - Cliente: Juliana Costa", paymentDate: new Date().toISOString().split("T")[0], status: "paid" as const, bankAccountId: bankIds[2] || "shopee" },
-  { type: "expense" as const, category: "rent" as const, amount: 1500.00, description: "Aluguel Comercial - Sala 52", paymentDate: new Date().toISOString().split("T")[0], status: "paid" as const, bankAccountId: bankIds[1] || "itau" },
-  { type: "expense" as const, category: "marketing" as const, amount: 350.00, description: "Anúncios Meta (Instagram/Facebook Ads)", paymentDate: new Date().toISOString().split("T")[0], status: "paid" as const, bankAccountId: bankIds[1] || "itau" },
-  { type: "expense" as const, category: "salary" as const, amount: 1200.00, description: "Pró-Labore Sócio Carol Ramos", paymentDate: new Date().toISOString().split("T")[0], status: "paid" as const, bankAccountId: bankIds[1] || "itau" }
-];
-
-// Mock Inicial de Contas a Pagar
-const INITIAL_PAYABLES = (supplierIds: string[]) => [
-  { supplierId: supplierIds[0] || "natura", description: "Compra Reposição Cosméticos Natura", amount: 850.00, dueDate: new Date(Date.now() + 86400000).toISOString().split("T")[0], status: "pending" as const, paymentMethod: "bank_slip" as const },
-  { supplierId: "", description: "Energia Elétrica Enel", amount: 180.00, dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split("T")[0], status: "pending" as const, paymentMethod: "bank_slip" as const }
-];
-
-// Mock Inicial de Contas a Receber
-const INITIAL_RECEIVABLES = [
-  { customerId: "", description: "Repasse de Vendas Shopee", amount: 950.00, dueDate: new Date(Date.now() + 86400000 * 2).toISOString().split("T")[0], status: "pending" as const, paymentMethod: "credit_card" as const, installments: 1 }
-];
-
 export default function FinancePage() {
   const { user, profile, tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
@@ -363,66 +318,6 @@ export default function FinancePage() {
       prods = (prods as Product[]) || [];
       supps = (supps as Supplier[]) || [];
 
-      const isFinSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_financial_v1") === "true";
-
-      // Pre-seed bank accounts
-      let needsRefetchBank = false;
-      if (bAccounts.length === 0 && !isFinSeeded) {
-        await Promise.all(INITIAL_BANK_ACCOUNTS.map(ba => createDoc("bank_accounts", ba)));
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
-        needsRefetchBank = true;
-      }
-      if (needsRefetchBank) {
-        bAccounts = (await getDocs("bank_accounts") as BankAccount[]) || [];
-      }
-
-      // Pre-seed credit cards
-      let needsRefetchCards = false;
-      if (cCards.length === 0 && !isFinSeeded) {
-        await Promise.all(INITIAL_COMPANY_CARDS.map(cc => createDoc("company_credit_cards", cc)));
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
-        needsRefetchCards = true;
-      }
-      if (needsRefetchCards) {
-        cCards = (await getDocs("company_credit_cards") as CompanyCreditCard[]) || [];
-      }
-
-      const bankIds = (bAccounts as any[]).map((b: any) => b.id);
-      const supplierIds = (supps as any[]).map((s: any) => s.id);
-
-      // Pre-seed other entities in parallel
-      let needsRefetchOthers = false;
-      const seedPromises = [];
-
-      if (trans.length === 0 && !isFinSeeded) {
-        seedPromises.push(Promise.all(INITIAL_TRANSACTIONS(bankIds).map(t => createDoc("financial_transactions", t))));
-        needsRefetchOthers = true;
-      }
-      if (pays.length === 0 && !isFinSeeded) {
-        seedPromises.push(Promise.all(INITIAL_PAYABLES(supplierIds).map(p => createDoc("accounts_payable", p))));
-        needsRefetchOthers = true;
-      }
-      if (recs.length === 0 && !isFinSeeded) {
-        seedPromises.push(Promise.all(INITIAL_RECEIVABLES.map(r => createDoc("accounts_receivable", r))));
-        needsRefetchOthers = true;
-      }
-
-      if (seedPromises.length > 0) {
-        await Promise.all(seedPromises);
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
-      }
-
-      if (needsRefetchOthers) {
-        const [freshTrans, freshPays, freshRecs] = await Promise.all([
-          getDocs("financial_transactions"),
-          getDocs("accounts_payable"),
-          getDocs("accounts_receivable")
-        ]);
-        trans = (freshTrans as FinancialTransaction[]) || [];
-        pays = (freshPays as AccountsPayable[]) || [];
-        recs = (freshRecs as AccountsReceivable[]) || [];
-      }
-
       setBankAccounts(bAccounts);
       setCompanyCards(cCards);
       setTransactions(trans);
@@ -582,7 +477,6 @@ export default function FinancePage() {
   const handleDeleteBankAccount = async (id: string, name: string) => {
     if (!confirm(`Deseja mover a conta "${name}" para a Lixeira Inteligente?`)) return;
     try {
-      if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
       await softDeleteDoc("bank_accounts", id, "Contas Bancárias", name);
       invalidateCache("bank_accounts");
       setBankAccounts(prev => prev.filter(b => b.id !== id));
@@ -622,7 +516,6 @@ export default function FinancePage() {
   const handleDeleteCompanyCard = async (id: string, name: string) => {
     if (!confirm(`Deseja mover o cartão "${name}" para a Lixeira Inteligente?`)) return;
     try {
-      if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
       await softDeleteDoc("company_credit_cards", id, "Cartões Corporativos", name);
       invalidateCache("company_credit_cards");
       setCompanyCards(prev => prev.filter(c => c.id !== id));
@@ -1127,7 +1020,6 @@ export default function FinancePage() {
   const handleDeleteItem = async (collection: string, id: string, desc: string) => {
     if (confirm(`Deseja mover "${desc}" para a Lixeira Inteligente?`)) {
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         const moduleLabel = collection === "financial_transactions" ? "Fluxo de Caixa"
           : collection === "accounts_payable" ? "Contas a Pagar"
           : collection === "accounts_receivable" ? "Contas a Receber"
@@ -1161,7 +1053,6 @@ export default function FinancePage() {
     if (selectedIds.length === 0) return;
     if (confirm(`Deseja mover os ${selectedIds.length} registros selecionados para a Lixeira Inteligente?`)) {
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         const moduleLabel = collection === "financial_transactions" ? "Fluxo de Caixa"
           : collection === "accounts_payable" ? "Contas a Pagar"
           : collection === "accounts_receivable" ? "Contas a Receber"

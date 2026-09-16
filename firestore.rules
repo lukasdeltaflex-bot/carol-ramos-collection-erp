@@ -49,6 +49,73 @@ service cloud.firestore {
       allow read, create, update, delete: if isAuthenticated();
     }
 
+    // Coleções de Vendas, Clientes e Compras
+    match /customers/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /sales/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /purchases/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // Financeiro
+    match /accounts_payable/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /accounts_receivable/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /financial_transactions/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /bank_accounts/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /company_credit_cards/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // Estoque Auxiliar e Movimentações
+    match /brands/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /stock_locations/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /inventory_transactions/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /unified_stock_movements/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /unified_stock_configs/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // Lembretes & Notificações
+    match /reminders/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /notifications/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // Configurações, Automações e Logs
+    match /integration_configs/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /integration_logs/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /automations/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+    match /ai_logs/{document=**} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
     // Coleções de Integrações & Marketplaces (Shopee & Mercado Livre)
     match /marketplace_accounts/{document=**} {
       allow read, create, update, delete: if isAuthenticated();

@@ -16,16 +16,18 @@ export async function POST(req: Request) {
     }
 
     const signature = req.headers.get("authorization") || req.headers.get("x-shopee-signature") || "";
-    const partnerKey = process.env.SHOPEE_PARTNER_KEY || "shopee_partner_key_secret_2026";
+    const partnerKey = process.env.SHOPEE_PARTNER_KEY || "";
     const requestUrl = req.url;
 
     // Se estiver em ambiente real com assinatura configurada, valida HMAC
-    if (signature && partnerKey && process.env.NODE_ENV === "production") {
+    if (signature && partnerKey) {
       const isValid = verifyShopeeWebhookSign(requestUrl, rawBody, partnerKey, signature);
       if (!isValid) {
         console.warn("[Shopee Webhook] Assinatura HMAC inválida recusada.");
         return NextResponse.json({ error: "Assinatura HMAC inválida" }, { status: 401 });
       }
+    } else if (signature && !partnerKey) {
+      console.warn("[Shopee Webhook] Assinatura recebida mas SHOPEE_PARTNER_KEY não configurada no ambiente.");
     }
 
     const shopId = body.shop_id || body.data?.shop_id || "default_shop";

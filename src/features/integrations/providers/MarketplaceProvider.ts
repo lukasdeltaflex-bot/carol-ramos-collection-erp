@@ -41,7 +41,7 @@ export interface MarketplaceProvider {
   getAuthUrl(tenantId: string): Promise<string>;
 
   /** Processa o código de autorização OAuth retornado pelo callback */
-  handleAuthCallback(code: string, tenantId: string): Promise<MarketplaceAccount>;
+  handleAuthCallback(code: string, tenantId: string, extra?: any): Promise<MarketplaceAccount>;
 
   /** Renova os Access Tokens usando o Refresh Token (com criptografia AES-256-GCM) */
   refreshTokens(account: MarketplaceAccount): Promise<MarketplaceAccount>;

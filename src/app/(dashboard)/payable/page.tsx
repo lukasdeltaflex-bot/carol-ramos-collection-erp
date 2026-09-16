@@ -213,7 +213,6 @@ export default function AccountsPayablePage() {
     if (confirm(`Deseja mover "${description}" para a Lixeira Inteligente?`)) {
       setLoading(true);
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         await softDeleteDoc("accounts_payable", id, "Contas a Pagar", description);
         invalidateCache("accounts_payable");
         setPayables(prev => prev.filter(p => p.id !== id));
@@ -246,7 +245,6 @@ export default function AccountsPayablePage() {
     if (confirm(`Deseja mover as ${selectedIds.length} contas a pagar selecionadas para a Lixeira Inteligente?`)) {
       setLoading(true);
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         for (const id of selectedIds) {
           const pay = payables.find(p => p.id === id);
           await softDeleteDoc("accounts_payable", id, "Contas a Pagar", pay?.description || "Conta a Pagar");

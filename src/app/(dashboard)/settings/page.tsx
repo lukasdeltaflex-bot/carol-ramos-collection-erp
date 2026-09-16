@@ -85,11 +85,7 @@ const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 // Initial Mock Automations
-const INITIAL_AUTOMATIONS = [
-  { name: "Boas-vindas ao Cliente", trigger: "customer_created" as const, actionType: "whatsapp_message" as const, template: "Olá {name}, seja muito bem-vinda à Carol Ramos Collection! ✨ Use o cupom CR10 para obter 10% de desconto na sua primeira compra. Aproveite! 💖", status: "active" as const },
-  { name: "Confirmação de Venda", trigger: "sale_completed" as const, actionType: "whatsapp_message" as const, template: "Olá {name}! Seu pedido de R$ {total} foi confirmado e já está na esteira de separação. Código do pedido: #{id}. Agradecemos a preferência! 🛍️", status: "active" as const },
-  { name: "Lembrete de Atendimento", trigger: "appointment_confirmed" as const, actionType: "whatsapp_message" as const, template: "Olá {name}! Confirmamos seu agendamento de {service} para o dia {date} às {time}. Profissional: {professional}. Esperamos você! ✨", status: "inactive" as const }
-];
+
 
 interface TimePeriod {
   open: string;
@@ -681,12 +677,7 @@ export default function SettingsPage() {
   };
 
 
-  // Webhook Simulator State
-  const [simChannel, setSimChannel] = useState<'shopee' | 'mercado_libre'>("shopee");
-  const [simProductId, setSimProductId] = useState("");
-  const [simQuantity, setSimQuantity] = useState(1);
-  const [simCustomerName, setSimCustomerName] = useState("Juliana de Souza");
-  const [simSuccessMsg, setSimSuccessMsg] = useState("");
+
 
   const tenantNameMap: Record<string, string> = {
     "carol-ramos-collection": "Carol Ramos Collection",
@@ -712,66 +703,11 @@ export default function SettingsPage() {
       setLogs(dbLogs as IntegrationLog[]);
       setAuditLogs(dbAudits || []);
 
-      // Seed mock integrations if empty
-      let currentConfigs = dbConfigs as IntegrationConfig[];
-      if (currentConfigs.length === 0) {
-        const shopeeSeed = {
-          channel: "shopee" as const,
-          status: "connected" as const,
-          credentials: { shopId: "9912034", apiKey: "shopee_key_prod_abc123" },
-          lastSyncAt: new Date().toISOString()
-        };
-        const mlSeed = {
-          channel: "mercado_libre" as const,
-          status: "disconnected" as const,
-          credentials: {}
-        };
-        const waSeed = {
-          channel: "whatsapp" as const,
-          status: "connected" as const,
-          credentials: { phoneId: "10920491823901", wabaId: "2094812049" },
-          lastSyncAt: new Date().toISOString()
-        };
+      setConfigs(dbConfigs as IntegrationConfig[]);
+      setAutomations(dbAutos as Automation[]);
+      setAiLogs(dbAis as any[]);
 
-        await createDoc("integration_configs", shopeeSeed);
-        await createDoc("integration_configs", mlSeed);
-        await createDoc("integration_configs", waSeed);
 
-        const freshConfigs = await getDocs("integration_configs");
-        setConfigs(freshConfigs as IntegrationConfig[]);
-      } else {
-        setConfigs(currentConfigs);
-      }
-
-      // Seed mock automations
-      let currentAutos = dbAutos as Automation[];
-      if (currentAutos.length === 0) {
-        for (const aut of INITIAL_AUTOMATIONS) {
-          await createDoc("automations", aut);
-        }
-        const freshAutos = await getDocs("automations");
-        setAutomations(freshAutos as Automation[]);
-      } else {
-        setAutomations(currentAutos);
-      }
-
-      // Seed mock AI Logs
-      let currentAis = dbAis as any[];
-      if (currentAis.length === 0) {
-        const seedAis = [
-          { user: "admin@carolramos.com.br", prompt: "Qual foi o faturamento total da Shopee esta semana?", model: "gemini-2.5-flash", tokensUsed: 1240, responseSummary: "Faturamento gerado com sucesso.", createdAt: new Date().toISOString() },
-          { user: "admin@carolramos.com.br", prompt: "Quais produtos estão com estoque crítico?", model: "gemini-2.5-flash", tokensUsed: 980, responseSummary: "Identificados 3 produtos críticos de estoque.", createdAt: new Date().toISOString() }
-        ];
-        for (const ai of seedAis) {
-          await createDoc("ai_logs", ai);
-        }
-        currentAis = await getDocs("ai_logs");
-      }
-      setAiLogs(currentAis);
-
-      if (dbProds.length > 0) {
-        setSimProductId(dbProds[0].id);
-      }
     } catch (e) {
       console.error("Erro ao sincronizar integrações:", e);
     } finally {
@@ -860,103 +796,6 @@ export default function SettingsPage() {
     }
   };
 
-  // 3. Simular Recebimento de Webhook (Venda de Marketplace)
-  const handleSimulateWebhook = async () => {
-    const prod = products.find(p => p.id === simProductId);
-    if (!prod) return;
-
-    if (prod.currentStock < simQuantity) {
-      alert("Estoque insuficiente para esta simulação.");
-      return;
-    }
-
-    setLoading(true);
-    setSimSuccessMsg("");
-
-    try {
-      const saleVal = prod.sellPrice * simQuantity;
-
-      // 1. Criar Venda correspondente
-      const newSale = await createDoc("sales", {
-        customerId: "marketplace-buyer",
-        items: [{
-          productId: prod.id,
-          name: prod.name,
-          quantity: simQuantity,
-          unitPrice: prod.sellPrice,
-          costPrice: prod.costPrice,
-          discount: 0
-        }],
-        subtotal: saleVal,
-        discount: 0,
-        total: saleVal,
-        paymentMethod: "pix" as const, // Marketplace repassa pix/dinheiro
-        status: "completed" as const,
-        channel: simChannel
-      });
-
-      // 2. Registrar Log da Integração
-      await createDoc("integration_logs", {
-        channel: simChannel,
-        type: "webhook",
-        status: "success",
-        message: `Webhook recebido: Pedido #${newSale.id} importado com sucesso. Comprador: ${simCustomerName}`,
-        payload: { buyer: simCustomerName, item: prod.name, quantity: simQuantity, total: saleVal }
-      });
-
-      // 3. Abater Estoque Físico
-      await updateDoc("products", prod.id, {
-        currentStock: prod.currentStock - simQuantity,
-        availableStock: prod.availableStock - simQuantity,
-        lastSaleDate: new Date().toISOString()
-      });
-
-      // Registrar transação de inventário
-      await createDoc("inventory_transactions", {
-        productId: prod.id,
-        locationId: "deposito-central",
-        type: "out" as const,
-        quantity: simQuantity,
-        costPriceAtTime: prod.costPrice,
-        reason: `Venda via Webhook ${simChannel.toUpperCase()} - Pedido #${newSale.id}`
-      });
-
-      // 4. Criar Receita no Caixa/Banco PJ
-      await createDoc("financial_transactions", {
-        type: "revenue" as const,
-        category: "sale" as const,
-        amount: saleVal,
-        description: `Importação: Venda ${simChannel.toUpperCase()} - Pedido #${newSale.id}`,
-        paymentDate: new Date().toISOString().split("T")[0],
-        status: "paid" as const,
-        bankAccountId: "itau-pj", // Banco Itaú PJ
-        referenceId: newSale.id
-      });
-
-      // 5. Executar automações se houver regra correspondente a venda
-      const saleCompletedAutos = automations.filter(a => a.trigger === "sale_completed" && a.status === "active");
-      for (const auto of saleCompletedAutos) {
-        const formattedMsg = auto.template
-          .replace("{name}", simCustomerName)
-          .replace("{total}", saleVal.toFixed(2))
-          .replace("{id}", newSale.id);
-
-        await createDoc("notifications", {
-          type: "automation_notification",
-          customerId: "marketplace-buyer",
-          message: `[WhatsApp Automático]: ${formattedMsg}`,
-          sentAt: new Date().toISOString()
-        });
-      }
-
-      setSimSuccessMsg(`WebHook Sucedido! Pedido faturado. R$ ${saleVal.toFixed(2)} inserido nas receitas bancárias, estoque do produto decrementado de ${prod.currentStock} para ${prod.currentStock - simQuantity}.`);
-      await loadIntegrationsData();
-    } catch (err: any) {
-      alert(err.message || "Erro na simulação do webhook.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // 4. Automations CRUD
   const handleOpenAuto = (id?: string) => {
@@ -2247,82 +2086,6 @@ export default function SettingsPage() {
                       </div>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* Simulador de Webhook de Entrada */}
-              <div className="p-5 rounded-2xl border border-border bg-card/50 space-y-4">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Code className="h-4.5 w-4.5 text-rosegold-500" />
-                  <span>Simulador de Webhook de Marketplace (Entrada)</span>
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Utilize este painel para simular o recebimento de webhooks e testar a automatização integrada de estoque, contabilidade (caixa) e mensagens instantâneas pós-venda.
-                </p>
-
-                <div className="p-4 rounded-xl border border-border bg-card space-y-3.5 text-xs">
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Canal de Origem</label>
-                      <select
-                        value={simChannel}
-                        onChange={(e) => setSimChannel(e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground"
-                      >
-                        <option value="shopee">Shopee Webhook</option>
-                        <option value="mercado_libre">Mercado Livre Webhook</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Nome do Comprador</label>
-                      <input
-                        type="text"
-                        value={simCustomerName}
-                        onChange={(e) => setSimCustomerName(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-card"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3.5">
-                    <div className="col-span-2 space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Produto Vendido</label>
-                      <select
-                        value={simProductId}
-                        onChange={(e) => setSimProductId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground truncate"
-                      >
-                        {products.map(p => <option key={p.id} value={p.id}>{p.name} (R$ {p.sellPrice.toFixed(2)})</option>)}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Quantidade</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={simQuantity}
-                        onChange={(e) => setSimQuantity(parseInt(e.target.value) || 1)}
-                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-center"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleSimulateWebhook}
-                    disabled={products.length === 0}
-                    className="w-full py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/10 flex items-center justify-center gap-1.5"
-                  >
-                    <Zap className="h-4 w-4" />
-                    <span>Disparar Webhook Simulado</span>
-                  </button>
-
-                  {simSuccessMsg && (
-                    <div className="p-3.5 rounded-xl border border-green-200 bg-green-50 text-green-800 dark:border-green-950/20 dark:bg-green-950/20 dark:text-green-400 font-mono text-[10px] leading-relaxed">
-                      {simSuccessMsg}
-                    </div>
-                  )}
                 </div>
               </div>
 

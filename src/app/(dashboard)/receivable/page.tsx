@@ -217,7 +217,6 @@ export default function AccountsReceivablePage() {
     if (confirm(`Deseja mover "${description}" para a Lixeira Inteligente?`)) {
       setLoading(true);
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         await softDeleteDoc("accounts_receivable", id, "Contas a Receber", description);
         invalidateCache("accounts_receivable");
         setReceivables(prev => prev.filter(r => r.id !== id));
@@ -250,7 +249,6 @@ export default function AccountsReceivablePage() {
     if (confirm(`Deseja mover as ${selectedIds.length} contas a receber selecionadas para a Lixeira Inteligente?`)) {
       setLoading(true);
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_financial_v1", "true");
         for (const id of selectedIds) {
           const rec = receivables.find(r => r.id === id);
           await softDeleteDoc("accounts_receivable", id, "Contas a Receber", rec?.description || "Conta a Receber");

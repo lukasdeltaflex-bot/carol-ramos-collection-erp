@@ -60,9 +60,12 @@ export class ShopeeProvider implements MarketplaceProvider {
     }
   }
 
-  async handleAuthCallback(code: string, tenantId: string): Promise<MarketplaceAccount> {
+  async handleAuthCallback(code: string, tenantId: string, extra?: { shopId?: number } | number): Promise<MarketplaceAccount> {
     const { partnerId, partnerKey } = this.getPartnerCredentials();
-    const shopId = 123456789; // Exemplo de shopId extraído da query ou token
+    const shopId = typeof extra === "number" ? extra : extra?.shopId ? Number(extra.shopId) : 0;
+    if (!shopId) {
+      throw new Error("Parâmetro 'shop_id' obrigatório não foi fornecido pelo callback da Shopee.");
+    }
 
     const tokens = await exchangeShopeeCode(partnerId, partnerKey, code, shopId);
     

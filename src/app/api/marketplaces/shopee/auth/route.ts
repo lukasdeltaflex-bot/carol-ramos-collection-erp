@@ -30,8 +30,18 @@ export async function GET(req: NextRequest) {
 
     // Se for o callback de retorno do vendedor contendo o authorization 'code'
     if (code) {
-      console.log("[OAUTH] [SHOPEE] Recebido código de autorização (callback). Processando auth...");
-      const accountData = await provider.handleAuthCallback(code, tenantId);
+      const shopIdParam = searchParams.get("shop_id");
+      const shopId = shopIdParam ? Number(shopIdParam) : 0;
+      if (!shopId) {
+        console.error("[OAUTH] [SHOPEE] Parâmetro 'shop_id' ausente ou inválido no retorno da Shopee:", shopIdParam);
+        return NextResponse.json({ 
+          error: "Parâmetro 'shop_id' ausente ou inválido retornado pela Shopee.",
+          hint: "O redirect da Shopee deve conter code e shop_id."
+        }, { status: 400 });
+      }
+
+      console.log(`[OAUTH] [SHOPEE] Recebido código de autorização (callback) para shopId=${shopId}. Processando auth...`);
+      const accountData = await provider.handleAuthCallback(code, tenantId, { shopId });
       
       console.log("[OAUTH] [SHOPEE] Autorização concluída. Salvando credenciais no Firebase...");
       await saveMarketplaceAccount(accountData);

@@ -38,12 +38,6 @@ const Instagram = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-const INITIAL_CUSTOMERS = [
-  { name: "Mariana Silva", email: "mariana.silva@gmail.com", phone: "+5511999998888", instagram: "@marianasilva", birthday: "1995-04-12", tags: ["VIP", "Perfumes"], source: "instagram", notes: "Prefere fragrâncias florais doces.", metrics: { totalOrders: 5, totalSpent: 750.00 } },
-  { name: "Juliana Costa", email: "juliana.costa@hotmail.com", phone: "+5521988887777", instagram: "@jucosta", birthday: "1990-09-22", tags: ["Skincare"], source: "shopee", notes: "Pele sensível.", metrics: { totalOrders: 3, totalSpent: 350.00 } },
-  { name: "Ana Beatriz", email: "ana.beatriz@outlook.com", phone: "+5511977776666", instagram: "@anabea_beauty", birthday: "1988-12-05", tags: ["Maquiagem", "VIP"], source: "walk-in", notes: "Sempre compra lançamentos de batons.", metrics: { totalOrders: 12, totalSpent: 1890.00 } }
-];
-
 import { getCustomerVipTier, VIP_TIERS, VipTier } from "@/features/customers/utils";
 
 export default function ContactsPage() {
@@ -97,18 +91,7 @@ export default function ContactsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      let custs = await getDocs("customers");
-      const safeCusts = (custs as Customer[]) || [];
-      const isSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_customers_v1") === "true";
-
-      if (safeCusts.length === 0 && !isSeeded) {
-        for (const c of INITIAL_CUSTOMERS) {
-          await createDoc("customers", c);
-        }
-        if (typeof window !== "undefined") localStorage.setItem("seeded_customers_v1", "true");
-        custs = await getDocs("customers");
-      }
-
+      const custs = await getDocs("customers");
       setCustomers((custs as Customer[]) || []);
     } catch (e) {
       console.error("Erro ao carregar clientes:", e);
@@ -190,7 +173,6 @@ export default function ContactsPage() {
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`Deseja mover o cliente "${name}" para a Lixeira Inteligente?`)) {
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_customers_v1", "true");
         await softDeleteDoc("customers", id, "Clientes", name);
         invalidateCache("customers");
         setCustomers(prev => prev.filter(c => c.id !== id));
@@ -219,7 +201,6 @@ export default function ContactsPage() {
     if (selectedIds.length === 0) return;
     if (confirm(`Deseja mover os ${selectedIds.length} clientes selecionados para a Lixeira Inteligente?`)) {
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_customers_v1", "true");
         for (const id of selectedIds) {
           const cust = customers.find(c => c.id === id);
           await softDeleteDoc("customers", id, "Clientes", cust?.name || "Cliente");

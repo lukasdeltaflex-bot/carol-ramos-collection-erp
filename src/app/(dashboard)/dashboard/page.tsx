@@ -97,11 +97,12 @@ export default function Dashboard() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [recycleBinItems, setRecycleBinItems] = useState<any[]>([]);
   const [configs, setConfigs] = useState<IntegrationConfig[]>([]);
+  const [mktAccounts, setMktAccounts] = useState<any[]>([]);
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [prods, sls, custs, recs, pays, rems, rbs, confs] = await Promise.all([
+      const [prods, sls, custs, recs, pays, rems, rbs, confs, mktAccs] = await Promise.all([
         getDocs("products"),
         getDocs("sales"),
         getDocs("customers"),
@@ -109,7 +110,8 @@ export default function Dashboard() {
         getDocs("accounts_payable"),
         getDocs("reminders"),
         getDocs("recycle_bin", true),
-        getDocs("integration_configs")
+        getDocs("integration_configs"),
+        getDocs("marketplace_accounts")
       ]);
 
       setProducts((prods as Product[]) || []);
@@ -120,6 +122,7 @@ export default function Dashboard() {
       setReminders((rems as Reminder[]) || []);
       setRecycleBinItems((rbs as any[]) || []);
       setConfigs((confs as IntegrationConfig[]) || []);
+      setMktAccounts((mktAccs as any[]) || []);
     } catch (e) {
       console.error("Erro ao carregar dados do dashboard:", e);
       setProducts([]);
@@ -786,11 +789,11 @@ export default function Dashboard() {
               
               {[
                 { name: "Loja Física", status: "connected", badge: "PDV" },
-                { name: "E-Commerce", status: "connected", badge: "Site" },
-                { name: "Shopee", status: configs.find(c => c.channel === "shopee")?.status || "disconnected", badge: "API" },
-                { name: "Mercado Livre", status: configs.find(c => c.channel === "mercado_libre")?.status || "disconnected", badge: "API" },
+                { name: "Shopee", status: mktAccounts.some(a => a.channel === "shopee" && a.status === "connected") || configs.find(c => c.channel === "shopee")?.status === "connected" ? "connected" : "disconnected", badge: "API" },
+                { name: "Mercado Livre", status: mktAccounts.some(a => a.channel === "mercado_libre" && a.status === "connected") || configs.find(c => c.channel === "mercado_libre")?.status === "connected" ? "connected" : "disconnected", badge: "API" },
                 { name: "WhatsApp Cloud", status: configs.find(c => c.channel === "whatsapp")?.status || "disconnected", badge: "Meta" },
-                { name: "Instagram Shop", status: "connected", badge: "Meta" }
+                { name: "E-Commerce", status: (configs.find(c => (c as any).channel === "ecommerce")?.status || "disconnected") as "connected" | "disconnected", badge: "Site" },
+                { name: "Instagram Shop", status: (configs.find(c => (c as any).channel === "instagram")?.status || "disconnected") as "connected" | "disconnected", badge: "Meta" }
               ].map((channel, idx) => {
                 const isConnected = channel.status === "connected";
                 return (

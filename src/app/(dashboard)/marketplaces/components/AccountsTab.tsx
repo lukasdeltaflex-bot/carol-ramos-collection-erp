@@ -51,11 +51,10 @@ export default function AccountsTab({ tenantId }: { tenantId: string }) {
   }, [loadAccounts]);
 
   const handleTestConnection = (channelName: string) => {
-    setTestingChannel(channelName);
-    setTimeout(() => {
-      setTestingChannel(null);
-      success(`Teste de Conexão: ${channelName} ✅`, "Conector respondendo com sucesso (LK-1000 OK). Latência: 145ms.");
-    }, 1000);
+    info(
+      `Verificar conexão: ${channelName}`,
+      "Acesse a aba de Logs da Integração para verificar eventos recentes, ou desconecte e reconecte a conta para testar o fluxo OAuth."
+    );
   };
 
   const isSyncing = (channel: MarketplaceChannel, type: SyncType) =>

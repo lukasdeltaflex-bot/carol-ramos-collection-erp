@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node scripts/test-date-dashboard.mjs"
+    "test": "node scripts/test-date-dashboard.mjs && node scripts/test-forensic-audit.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

@@ -19,6 +19,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/context/ToastContext";
 
+import { listAccountsAction } from "../actions";
+
 interface SetupWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -32,7 +34,7 @@ export default function SetupWizardModal({
 }: SetupWizardModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isTesting, setIsTesting] = useState(false);
-  const [testSuccess, setTestSuccess] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const { success, info } = useToast();
 
   if (!isOpen) return null;
@@ -48,14 +50,29 @@ export default function SetupWizardModal({
     if (currentStep > 1) setCurrentStep(currentStep - 1);
   };
 
-  const handleRunAllTests = () => {
+  const handleRunAllTests = async () => {
     setIsTesting(true);
-    setTestSuccess(false);
-    setTimeout(() => {
+    setTestResult(null);
+    try {
+      const res = await listAccountsAction(tenantId);
+      if (!res.success) {
+        setTestResult({ success: false, message: res.error || "Falha ao consultar status de conexão." });
+        return;
+      }
+      const connected = (res.data || []).filter((a: any) => a.status === "connected");
+      if (connected.length > 0) {
+        const names = connected.map((a: any) => a.channel.toUpperCase()).join(", ");
+        setTestResult({ success: true, message: `Conexões ativas detectadas: ${names}. Banco de dados operacional.` });
+        success("Diagnóstico Concluído", `${connected.length} canal(is) conectado(s).`);
+      } else {
+        setTestResult({ success: false, message: "Nenhum marketplace conectado no momento. Conecte pelo menos um canal nos passos anteriores." });
+        info("Diagnóstico", "Nenhuma conta de marketplace conectada.");
+      }
+    } catch (err: any) {
+      setTestResult({ success: false, message: err.message || "Erro durante o teste de conectividade." });
+    } finally {
       setIsTesting(false);
-      setTestSuccess(true);
-      success("Integrações Validadas! ⚡", "Mercado Livre, Shopee e banco de dados estão 100% operacionais.");
-    }, 1800);
+    }
   };
 
   return (
@@ -238,9 +255,15 @@ export default function SetupWizardModal({
                 {isTesting ? "Testando Conexões..." : "Executar Teste Geral"}
               </button>
 
-              {testSuccess && (
-                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-bold flex items-center justify-center gap-2 max-w-sm mx-auto animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4" /> Sistema Pronto para Uso Comercial!
+              {testResult && (
+                <div className={cn(
+                  "p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 max-w-md mx-auto animate-in fade-in",
+                  testResult.success
+                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                    : "bg-amber-500/10 border-amber-500/20 text-amber-500"
+                )}>
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{testResult.message}</span>
                 </div>
               )}
             </div>

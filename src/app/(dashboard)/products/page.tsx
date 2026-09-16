@@ -45,100 +45,6 @@ import { processImageUpload, MAX_IMAGE_SIZE_MB, safeLocalStorageSetItem } from "
 import ProductShareModal from "./components/ProductShareModal";
 import ProductShareHistoryModal from "./components/ProductShareHistoryModal";
 
-
-// Mock Inicial de Categorias
-const INITIAL_CATEGORIES = [
-  { name: "Perfumes", description: "Linha de perfumes importados e nacionais", slug: "perfumes" },
-  { name: "Body Splash", description: "Fragrâncias leves para o dia a dia", slug: "body-splash" },
-  { name: "Skincare", description: "Produtos para hidratação e cuidado facial", slug: "skincare" },
-  { name: "Maquiagem", description: "Batons, bases, blushes e delineadores", slug: "maquiagem" }
-];
-
-// Mock Inicial de Marcas
-const INITIAL_BRANDS = [
-  { name: "Carol Ramos Collection", description: "Marca autoral premium" },
-  { name: "Natura", description: "Linha oficial Natura Brasil" },
-  { name: "Eudora", description: "Linha oficial Grupo Boticário" }
-];
-
-// Mock Inicial de Locais de Estoque
-const INITIAL_LOCATIONS = [
-  { name: "Loja Física", description: "Gôndolas e mostruário central", isVirtual: false, status: "active" },
-  { name: "Depósito Central", description: "Estoque de retaguarda em caixas", isVirtual: false, status: "active" },
-  { name: "Estoque Shopee", description: "Reservado para canal virtual Shopee", isVirtual: true, status: "active" }
-];
-
-// Mock Inicial de Produtos
-const INITIAL_PRODUCTS = (catIds: string[], brandIds: string[], supplierIds: string[]) => [
-  {
-    sku: "PE-CR-SIGN",
-    name: "Perfume Carol Ramos Signature 100ml",
-    description: "Nossa fragrância assinatura com notas florais e baunilha premium.",
-    categoryId: catIds[0] || "shared",
-    brandId: brandIds[0] || "shared",
-    supplierId: supplierIds[0] || "",
-    costPrice: 85.00,
-    sellPrice: 189.90,
-    promoPrice: 179.90,
-    averageCost: 85.00,
-    lastPurchasePrice: 85.00,
-    profitMargin: 55.2, // ((189.9 - 85) / 189.9) * 100
-    currentStock: 15,
-    reservedStock: 2,
-    availableStock: 13,
-    minStock: 5,
-    weightGrams: 300,
-    dimensions: { width: 10, height: 15, depth: 8 },
-    images: [{ url: "https://images.unsplash.com/photo-1541643600914-78b084683601?w=300", path: "mock", isPrimary: true }],
-    channels: { ecommerce: { id: "1", active: true } },
-    status: "active"
-  },
-  {
-    sku: "BS-CR-ROSE",
-    name: "Body Splash Gold Rose 200ml",
-    description: "Névoa perfumada refrescante com toque de glitter ouro rosé.",
-    categoryId: catIds[1] || "shared",
-    brandId: brandIds[0] || "shared",
-    supplierId: supplierIds[0] || "",
-    costPrice: 32.00,
-    sellPrice: 79.90,
-    averageCost: 32.00,
-    lastPurchasePrice: 32.00,
-    profitMargin: 59.9,
-    currentStock: 8,
-    reservedStock: 0,
-    availableStock: 8,
-    minStock: 10, // Alerta: abaixo do estoque mínimo
-    weightGrams: 220,
-    dimensions: { width: 6, height: 18, depth: 6 },
-    images: [{ url: "https://images.unsplash.com/photo-1594035910387-fea47794261f?w=300", path: "mock", isPrimary: true }],
-    channels: {},
-    status: "active"
-  },
-  {
-    sku: "SK-NT-HYDRA",
-    name: "Sérum Hidratante Hidra Chronos",
-    description: "Preenchedor de rugas finas com ácido hialurônico duplo.",
-    categoryId: catIds[2] || "shared",
-    brandId: brandIds[1] || "shared",
-    supplierId: supplierIds[0] || "",
-    costPrice: 58.00,
-    sellPrice: 129.00,
-    averageCost: 58.00,
-    lastPurchasePrice: 58.00,
-    profitMargin: 55.0,
-    currentStock: 3,
-    reservedStock: 1,
-    availableStock: 2,
-    minStock: 2,
-    weightGrams: 90,
-    dimensions: { width: 5, height: 10, depth: 5 },
-    images: [{ url: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=300", path: "mock", isPrimary: true }],
-    channels: {},
-    status: "active"
-  }
-];
-
 export default function ProductsPage() {
   const { tenantId, isMock } = useAuth();
   const { createDoc, getDocs, updateDoc, deleteDoc, softDeleteDoc, invalidateCache } = useDb();
@@ -329,51 +235,6 @@ export default function ProductsPage() {
       supps = (supps as any[]) || [];
       prods = (prods as Product[]) || [];
       setKits((fetchedKits as ProductKit[]) || []);
-
-      // Pre-seed se o mock ou banco estiver zerado (Apenas na primeira vez)
-      const isCatsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_categories_v2") === "true";
-      const isProdsSeeded = typeof window !== "undefined" && localStorage.getItem("seeded_products_v2") === "true";
-
-      let needsRefetch = false;
-      if (cats.length === 0 && !isCatsSeeded) {
-        console.log("⏱️ [DEBUG ProductsPage] 5. Categorias zeradas. Criando categorias iniciais no Firestore...");
-        await Promise.all(INITIAL_CATEGORIES.map(c => createDoc("categories", c)));
-        if (typeof window !== "undefined") localStorage.setItem("seeded_categories_v2", "true");
-        needsRefetch = true;
-      }
-      if (brs.length === 0) {
-        console.log("⏱️ [DEBUG ProductsPage] 6. Marcas zeradas. Criando marcas iniciais no Firestore...");
-        await Promise.all(INITIAL_BRANDS.map(b => createDoc("brands", b)));
-        needsRefetch = true;
-      }
-      if (locs.length === 0) {
-        console.log("⏱️ [DEBUG ProductsPage] 7. Locais zerados. Criando locais iniciais no Firestore...");
-        await Promise.all(INITIAL_LOCATIONS.map(l => createDoc("stock_locations", l)));
-        needsRefetch = true;
-      }
-
-      if (needsRefetch) {
-        console.log("⏱️ [DEBUG ProductsPage] 8. Recarregando categorias/marcas/locais recém-criados...");
-        const [freshCats, freshBrs, freshLocs] = await Promise.all([
-          getDocs("categories"),
-          getDocs("brands"),
-          getDocs("stock_locations")
-        ]);
-        cats = (freshCats as Category[]) || [];
-        brs = (freshBrs as Brand[]) || [];
-        locs = (freshLocs as StockLocation[]) || [];
-      }
-
-      const catIds = (cats as any[]).filter(Boolean).map((c: any) => c.id || "");
-      const brandIds = (brs as any[]).filter(Boolean).map((b: any) => b.id || "");
-      const suppIds = (supps as any[]).filter(Boolean).map((s: any) => s.id || "");
-
-      if (prods.length === 0 && !isProdsSeeded) {
-        console.log("⏱️ [DEBUG ProductsPage] 9. Produtos zerados. Criando produtos iniciais no Firestore...");
-        await Promise.all(INITIAL_PRODUCTS(catIds, brandIds, suppIds).map(p => createDoc("products", p)));
-        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
-        prods = (await getDocs("products") as Product[]) || [];
-      }
 
       // 1. Deduplicação em product_kits (Purga documentos duplicados com mesmo SKU ou ID)
       const rawKits = (fetchedKits as ProductKit[]) || [];
@@ -616,7 +477,6 @@ export default function ProductsPage() {
   const handleDeleteProduct = async (id: string, name: string) => {
     if (confirm(`Deseja mover o produto "${name}" para a Lixeira Inteligente?`)) {
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
         await softDeleteDoc("products", id, "Produtos", name);
         invalidateCache("products");
         setProducts(prev => prev.filter(p => p.id !== id));
@@ -645,7 +505,6 @@ export default function ProductsPage() {
     if (selectedIds.length === 0) return;
     if (confirm(`Deseja mover os ${selectedIds.length} produtos selecionados para a Lixeira Inteligente?`)) {
       try {
-        if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
         for (const id of selectedIds) {
           const prod = products.find(p => p.id === id);
           await softDeleteDoc("products", id, "Produtos", prod?.name || "Produto");
@@ -757,7 +616,6 @@ export default function ProductsPage() {
     }
 
     try {
-      if (typeof window !== "undefined") localStorage.setItem("seeded_products_v2", "true");
       let savedProdId = editingId;
       if (editingId) {
         await updateDoc("products", editingId, payload);
@@ -822,9 +680,6 @@ export default function ProductsPage() {
 
     try {
       const colName = activeTab === "locations" ? "stock_locations" : activeTab;
-      if (typeof window !== "undefined") {
-        if (activeTab === "categories") localStorage.setItem("seeded_categories_v2", "true");
-      }
 
       if (activeTab === "categories") {
         const slug = auxName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-");
@@ -873,9 +728,6 @@ export default function ProductsPage() {
     if (confirm(`Deseja realmente excluir "${name}"?`)) {
       try {
         const colName = activeTab === "locations" ? "stock_locations" : activeTab;
-        if (typeof window !== "undefined" && activeTab === "categories") {
-          localStorage.setItem("seeded_categories_v2", "true");
-        }
         await deleteDoc(colName, id);
         invalidateCache(colName);
         if (activeTab === "categories") {

@@ -41,49 +41,7 @@ const COLOR_OPTIONS = [
   { name: "Cinza Neutro", value: "bg-card border-border text-foreground" },
 ];
 
-const INITIAL_REMINDERS = [
-  {
-    title: "Planejar Coleção Verão 2027",
-    description: "Reunir com a equipe de estilistas para selecionar tecidos de linho e estampas florais exclusivas.",
-    category: "idea" as const,
-    priority: "high" as const,
-    creationDate: new Date().toISOString().split("T")[0],
-    dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split("T")[0],
-    color: "bg-rose-100 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200",
-    tags: ["Estilo", "Coleção", "Design"],
-    responsiblePerson: "Carol Ramos",
-    status: "in_progress" as const,
-    isFavorite: true,
-    isPinned: true
-  },
-  {
-    title: "Renovar Certificado Digital e-CNPJ",
-    description: "Solicitar renovação do A1 com a contabilidade antes do vencimento no fim do mês.",
-    category: "task" as const,
-    priority: "urgent" as const,
-    creationDate: new Date().toISOString().split("T")[0],
-    dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
-    color: "bg-amber-100 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200",
-    tags: ["Fiscal", "Contabilidade"],
-    responsiblePerson: "Financeiro",
-    status: "pending" as const,
-    isFavorite: false,
-    isPinned: true
-  },
-  {
-    title: "Ideia: Programa de Fidelidade VIP",
-    description: "Oferecer cashback em pontos para clientes que comprarem acima de R$ 500 no trimestre.",
-    category: "idea" as const,
-    priority: "medium" as const,
-    creationDate: new Date().toISOString().split("T")[0],
-    color: "bg-purple-100 dark:bg-purple-950/40 border-purple-300 dark:border-purple-800 text-purple-900 dark:text-purple-200",
-    tags: ["Marketing", "Fidelização"],
-    responsiblePerson: "Comercial",
-    status: "pending" as const,
-    isFavorite: true,
-    isPinned: false
-  }
-];
+
 
 export default function RemindersPage() {
   const { tenantId, user, activeCompany } = useAuth();
@@ -124,12 +82,6 @@ export default function RemindersPage() {
     try {
       let data = (await getDocs("reminders")) as Reminder[];
       data = data || [];
-
-      if (data.length === 0) {
-        // Pre-seed demo reminders
-        await Promise.all(INITIAL_REMINDERS.map(r => createDoc("reminders", r)));
-        data = (await getDocs("reminders")) as Reminder[] || [];
-      }
 
       setReminders(data);
     } catch (e: any) {
