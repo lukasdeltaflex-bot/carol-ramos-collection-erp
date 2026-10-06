@@ -140,27 +140,34 @@ export interface CancelSaleParams {
   sale: Sale;
   reason?: string;
   userId: string;
+  tenantId?: string;
   db: DbInterface;
 }
 
 /**
  * Executa o cancelamento seguro e atômico de uma venda:
  * 1. Valida se a venda já não foi cancelada previamente (idempotência).
- * 2. Estorna as quantidades ao estoque físico dos produtos (ou componentes de kits).
- * 3. Registra movimentações de estoque (inventory_transactions) com type: 'return'.
- * 4. Cancela transações financeiras vinculadas (financial_transactions -> status: 'cancelled').
- * 5. Cancela parcelas a receber vinculadas (accounts_receivable -> status: 'cancelled').
- * 6. Abate métricas do cliente vinculado (totalSpent, totalOrders) e recalcula VIP tier.
- * 7. Atualiza o status da venda para 'cancelled' com carimbo de data, motivo e operador.
+ * 2. Valida o isolamento de tenant.
+ * 3. Estorna as quantidades ao estoque físico dos produtos (ou componentes de kits).
+ * 4. Registra movimentações de estoque (inventory_transactions) com type: 'return'.
+ * 5. Cancela transações financeiras vinculadas (financial_transactions -> status: 'cancelled').
+ * 6. Cancela parcelas a receber vinculadas (accounts_receivable -> status: 'cancelled').
+ * 7. Abate métricas do cliente vinculado (totalSpent, totalOrders) e recalcula VIP tier.
+ * 8. Atualiza o status da venda para 'cancelled' com carimbo de data, motivo e operador.
  */
 export async function executeCancelSale({
   sale,
   reason,
   userId,
+  tenantId,
   db
 }: CancelSaleParams): Promise<{ success: boolean; message?: string }> {
   if (sale.status === "cancelled") {
     throw new Error("Esta venda já se encontra cancelada.");
+  }
+
+  if (tenantId && sale.tenantId && sale.tenantId !== "shared" && sale.tenantId !== tenantId) {
+    throw new Error("Acesso negado: você não tem permissão para cancelar vendas de outro inquilino.");
   }
 
   const [prods, kits, finTransactions, receivables, customers] = await Promise.all([
@@ -265,25 +272,32 @@ export interface EditSaleParams {
     notes?: string;
   };
   userId: string;
+  tenantId?: string;
   db: DbInterface;
 }
 
 /**
  * Executa a edição segura e atômica de uma venda existente:
- * 1. Calcula os deltas de estoque por produto (respeitando kits e produtos individuais).
- * 2. Aplica apenas a diferença (baixa ou estorno proporcional).
- * 3. Reconcilia o financeiro (atualiza receita ou recria parcelas a receber).
- * 4. Reconcilia métricas do cliente anterior e novo cliente se houver troca.
- * 5. Registra o histórico de alterações (editHistory) e atualiza o documento da venda.
+ * 1. Valida se a venda não está cancelada e se o usuário pertence ao mesmo tenant.
+ * 2. Calcula os deltas de estoque por produto (respeitando kits e produtos individuais).
+ * 3. Aplica apenas a diferença (baixa ou estorno proporcional).
+ * 4. Reconcilia o financeiro (atualiza receita ou recria parcelas a receber).
+ * 5. Reconcilia métricas do cliente anterior e novo cliente se houver troca.
+ * 6. Registra o histórico de alterações (editHistory) e atualiza o documento da venda.
  */
 export async function executeEditSale({
   oldSale,
   newData,
   userId,
+  tenantId,
   db
 }: EditSaleParams): Promise<{ success: boolean; message?: string }> {
   if (oldSale.status === "cancelled") {
     throw new Error("Não é possível editar uma venda que já foi cancelada.");
+  }
+
+  if (tenantId && oldSale.tenantId && oldSale.tenantId !== "shared" && oldSale.tenantId !== tenantId) {
+    throw new Error("Acesso negado: você não tem permissão para editar vendas de outro inquilino.");
   }
 
   const [prods, kits, finTransactions, receivables, customers] = await Promise.all([
@@ -386,33 +400,42 @@ export async function executeEditSale({
     }
   } else {
     // Pagamento imediato (à vista, PIX, débito, crédito 1x, split)
-    // Cancela qualquer parcela a receber anterior
-    for (const ar of existingReceivables) {
-      await db.updateDoc("accounts_receivable", ar.id, { status: "cancelled" });
+    // Se o valor, forma de pagamento ou cliente mudaram:
+    const financialChanged = 
+      newData.total !== oldSale.total || 
+      newData.paymentMethod !== oldSale.paymentMethod || 
+      newData.customerId !== oldSale.customerId;
+
+    if (existingReceivables.length > 0) {
+      for (const ar of existingReceivables) {
+        await db.updateDoc("accounts_receivable", ar.id, { status: "cancelled" });
+      }
     }
 
-    if (existingFin.length > 0) {
-      const mainFt = existingFin[0];
-      await db.updateDoc("financial_transactions", mainFt.id, {
-        amount: newData.total,
-        description: `Venda PDV Ref #${oldSale.id} (Editada) - Cliente: ${customerName}`,
-        paymentDate: new Date().toISOString()
-      });
-      for (let i = 1; i < existingFin.length; i++) {
-        await db.updateDoc("financial_transactions", existingFin[i].id, { status: "cancelled" });
+    if (financialChanged) {
+      if (existingFin.length > 0) {
+        const mainFt = existingFin[0];
+        await db.updateDoc("financial_transactions", mainFt.id, {
+          amount: newData.total,
+          description: `Venda PDV Ref #${oldSale.id} (Editada) - Cliente: ${customerName}`,
+          paymentDate: new Date().toISOString()
+        });
+        for (let i = 1; i < existingFin.length; i++) {
+          await db.updateDoc("financial_transactions", existingFin[i].id, { status: "cancelled" });
+        }
+      } else {
+        await db.createDoc("financial_transactions", {
+          type: "revenue",
+          category: "sale",
+          amount: newData.total,
+          description: `Venda PDV Ref #${oldSale.id} (Editada) - Cliente: ${customerName}`,
+          paymentDate: new Date().toISOString(),
+          status: "paid",
+          bankAccountId: "caixa-geral",
+          referenceId: oldSale.id,
+          cashRegisterId: oldSale.cashRegisterId
+        });
       }
-    } else {
-      await db.createDoc("financial_transactions", {
-        type: "revenue",
-        category: "sale",
-        amount: newData.total,
-        description: `Venda PDV Ref #${oldSale.id} (Editada) - Cliente: ${customerName}`,
-        paymentDate: new Date().toISOString(),
-        status: "paid",
-        bankAccountId: "caixa-geral",
-        referenceId: oldSale.id,
-        cashRegisterId: oldSale.cashRegisterId
-      });
     }
   }
 
@@ -422,20 +445,22 @@ export async function executeEditSale({
 
   if (oldCustomerId === newCustomerId) {
     if (newCustomerId) {
-      const client = (customers || []).find((c: any) => c.id === newCustomerId);
-      if (client) {
-        const deltaSpent = newData.total - oldSale.total;
-        const newSpent = Math.max(0, (client.metrics?.totalSpent || 0) + deltaSpent);
-        const orderCount = client.metrics?.totalOrders || 1;
-        const newVipTier = calculateVipTier(newSpent, orderCount);
+      const deltaSpent = newData.total - oldSale.total;
+      if (deltaSpent !== 0) {
+        const client = (customers || []).find((c: any) => c.id === newCustomerId);
+        if (client) {
+          const newSpent = Math.max(0, (client.metrics?.totalSpent || 0) + deltaSpent);
+          const orderCount = client.metrics?.totalOrders || 1;
+          const newVipTier = calculateVipTier(newSpent, orderCount);
 
-        await db.updateDoc("customers", client.id, {
-          metrics: {
-            ...(client.metrics || {}),
-            totalSpent: newSpent
-          },
-          vipTier: newVipTier
-        });
+          await db.updateDoc("customers", client.id, {
+            metrics: {
+              ...(client.metrics || {}),
+              totalSpent: newSpent
+            },
+            vipTier: newVipTier
+          });
+        }
       }
     }
   } else {

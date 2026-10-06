@@ -47,7 +47,7 @@ import { CancelSaleModal } from "@/features/sales/components/CancelSaleModal";
 
 export default function SalesPOSPage() {
   const { createDoc, getDocs, updateDoc, getDocById } = useDb();
-  const { user } = useAuth();
+  const { user, tenantId } = useAuth();
 
   // State Lists
   const [products, setProducts] = useState<Product[]>([]);
@@ -628,6 +628,7 @@ export default function SalesPOSPage() {
           notes: "Edição de itens/valores pelo operador no PDV"
         },
         userId: user?.uid || "unknown",
+        tenantId: tenantId || "carol-ramos-collection",
         db: { getDocs, updateDoc, createDoc }
       });
 
@@ -651,6 +652,7 @@ export default function SalesPOSPage() {
         sale: saleToCancel,
         reason: reason || "Cancelamento efetuado pelo operador",
         userId: user?.uid || "unknown",
+        tenantId: tenantId || "carol-ramos-collection",
         db: { getDocs, updateDoc, createDoc }
       });
 
