@@ -32,6 +32,11 @@ import {
   X
 } from "lucide-react";
 import { cn, formatDate, formatCurrency } from "@/lib/utils";
+import {
+  getRecycleBinSettings,
+  saveRecycleBinSettings,
+  executeAutoPurge
+} from "@/features/recycle-bin/services/recycleBinService";
 
 // Map collection key to human-readable label and icon
 const MODULE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
@@ -72,20 +77,91 @@ export default function RecycleBinPage() {
 
   const isAdmin = role === "owner" || role === "admin" || !role;
 
-  // Load Recycle Bin Data
+  // Load Recycle Bin Data and Execute Auto-Purge
   const loadRecycleBin = async () => {
     setLoading(true);
     try {
+      const currentTenant = tenantId || "carol-ramos-collection";
+
+      // 1. Carregar configurações de retenção salvas no Firestore
+      const settings = await getRecycleBinSettings(currentTenant, { getDocs });
+      setAutoPurgeDays(settings.autoPurgeDays);
+      setRestrictAdmin(settings.restrictPermanentDeletionToAdmin);
+
+      // 2. Buscar itens atuais da lixeira
       const docs = await getDocs("recycle_bin", true);
       const list = (docs as RecycleBinItem[]) || [];
-      // Sort newest deleted first
-      list.sort((a, b) => new Date(b.deletedAt || 0).getTime() - new Date(a.deletedAt || 0).getTime());
-      setItems(list);
+
+      // 3. Executar limpeza automática de registros expirados no Firestore
+      const purgeResult = await executeAutoPurge({
+        tenantId: currentTenant,
+        items: list,
+        settings,
+        db: { permanentlyDeleteDoc }
+      });
+
+      // 4. Filtrar registros deletados da visualização
+      const activeList = purgeResult.deletedIds.length > 0
+        ? list.filter(item => !purgeResult.deletedIds.includes(item.id!))
+        : list;
+
+      // Ordenar mais recentes primeiro
+      activeList.sort((a, b) => new Date(b.deletedAt || 0).getTime() - new Date(a.deletedAt || 0).getTime());
+      setItems(activeList);
+
+      if (purgeResult.deletedCount > 0) {
+        success(
+          "Limpeza Automática Concluída",
+          `${purgeResult.deletedCount} ${purgeResult.deletedCount === 1 ? "item com retenção expirada foi excluído" : "itens com retenção expirada foram excluídos"} permanentemente do Firestore.`
+        );
+      }
     } catch (e: any) {
       console.error("Erro ao carregar lixeira:", e);
       toastError("Erro ao carregar lixeira", e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Salvar Configurações no Firestore e Reconciliar Retenção
+  const handleSaveSettings = async () => {
+    setActionLoading(true);
+    try {
+      const currentTenant = tenantId || "carol-ramos-collection";
+      const saved = await saveRecycleBinSettings(
+        currentTenant,
+        {
+          autoPurgeDays,
+          restrictPermanentDeletionToAdmin: restrictAdmin
+        },
+        { getDocs, updateDoc, createDoc }
+      );
+
+      // Executa o auto-purge com as novas configurações imediatamente
+      const purgeResult = await executeAutoPurge({
+        tenantId: currentTenant,
+        items,
+        settings: saved,
+        db: { permanentlyDeleteDoc }
+      });
+
+      setSettingsOpen(false);
+
+      if (purgeResult.deletedCount > 0) {
+        success(
+          "Configurações Salvas",
+          `Configurações salvas e ${purgeResult.deletedCount} ${purgeResult.deletedCount === 1 ? "item com retenção expirada foi excluído" : "itens com retenção expirada foram excluídos"} permanentemente.`
+        );
+      } else {
+        success("Configurações Salvas", "As preferências da Lixeira Inteligente foram salvas no Firestore com sucesso.");
+      }
+
+      await loadRecycleBin();
+    } catch (err: any) {
+      console.error("Erro ao salvar configurações da lixeira:", err);
+      toastError("Erro ao salvar", err.message || "Não foi possível salvar as configurações no banco de dados.");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -516,13 +592,11 @@ export default function RecycleBinPage() {
 
           <ModalFooter>
             <button
-              onClick={() => {
-                setSettingsOpen(false);
-                success("Configurações Salvas", "As preferências da Lixeira Inteligente foram salvas.");
-              }}
-              className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/95"
+              onClick={handleSaveSettings}
+              disabled={actionLoading}
+              className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/95 disabled:opacity-50"
             >
-              Salvar Configurações
+              {actionLoading ? "Salvando..." : "Salvar Configurações"}
             </button>
           </ModalFooter>
         </Modal>

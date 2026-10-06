@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node scripts/test-date-dashboard.mjs && node scripts/test-forensic-audit.mjs && npx tsx scripts/test-sales-reconciliation.ts"
+    "test": "node scripts/test-date-dashboard.mjs && node scripts/test-forensic-audit.mjs && npx tsx scripts/test-sales-reconciliation.ts && npx tsx scripts/test-recycle-bin-auto-purge.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

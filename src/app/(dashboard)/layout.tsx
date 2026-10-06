@@ -13,7 +13,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, tenantId } = useAuth();
   const router = useRouter();
   
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -25,6 +25,31 @@ export default function DashboardLayout({
       router.replace("/");
     }
   }, [user, loading, router]);
+
+  // Rotina de limpeza automática da lixeira em segundo plano (executada no máximo a cada 30 minutos por sessão)
+  useEffect(() => {
+    if (!user || loading) return;
+
+    try {
+      const STORAGE_KEY = "last_recycle_bin_auto_purge";
+      const lastRun = sessionStorage.getItem(STORAGE_KEY);
+      const now = Date.now();
+      const THIRTY_MINUTES = 30 * 60 * 1000;
+
+      if (!lastRun || now - parseInt(lastRun, 10) > THIRTY_MINUTES) {
+        sessionStorage.setItem(STORAGE_KEY, now.toString());
+        const targetTenant = tenantId || "carol-ramos-collection";
+        fetch(`/api/recycle-bin/auto-purge?tenantId=${encodeURIComponent(targetTenant)}`, {
+          method: "POST"
+        }).catch(err => {
+          // Falha silenciosa para não impactar a experiência do usuário
+          console.debug("[DashboardLayout] Auto-purge background check deferred:", err);
+        });
+      }
+    } catch {
+      // Ignora erros de sessionStorage em ambientes restritos
+    }
+  }, [user, loading, tenantId]);
 
   // Loading Screen Premium
   if (loading || !user) {
