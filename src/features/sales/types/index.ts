@@ -26,6 +26,16 @@ export interface Sale extends BaseDocument {
   channel: 'pos' | 'whatsapp' | 'instagram' | 'shopee' | 'mercadolivre' | 'website';
   channelOrderId?: string;
   cashRegisterId?: string; // Reference to the active cash register session
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: string;
+  editHistory?: Array<{
+    editedAt: string;
+    editedBy: string;
+    previousTotal: number;
+    newTotal: number;
+    reason?: string;
+  }>;
 }
 
 export interface CashRegister extends BaseDocument {

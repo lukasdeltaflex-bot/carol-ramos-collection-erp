@@ -142,6 +142,279 @@ class ProductSyncService {
   }
 
   /**
+   * Importa anúncios de um canal de marketplace e pareia com produtos do ERP pelo SKU.
+   * Se o SKU não corresponder a nenhum produto do ERP, marca como 'unpaired' (Sem Vínculo).
+   */
+  public async importAdsFromChannel(
+    tenantId: string,
+    channel: MarketplaceChannel
+  ): Promise<{ importedCount: number; pairedCount: number; unpairedCount: number; errors: string[] }> {
+    const { getMarketplaceAccount } = await import("../marketplaceDbService");
+    const account = await getMarketplaceAccount(tenantId, channel);
+
+    if (!account || account.status !== "connected") {
+      throw new Error(`Canal ${channel} não está conectado ou configurado para este tenant.`);
+    }
+
+    const errors: string[] = [];
+    let importedCount = 0;
+    let pairedCount = 0;
+    let unpairedCount = 0;
+
+    // Busca todos os produtos do ERP para pareamento pelo SKU
+    const erpProductsSnap = await adminDb
+      .collection("products")
+      .where("tenantId", "==", tenantId)
+      .get();
+
+    const erpProducts = erpProductsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const erpSkuMap = new Map<string, any>();
+    for (const p of erpProducts) {
+      if (p.sku) erpSkuMap.set(p.sku.trim().toLowerCase(), p);
+    }
+
+    interface RawAd {
+      externalItemId: string;
+      externalSku: string;
+      title: string;
+      price: number;
+      stock: number;
+      status: "active" | "paused" | "error";
+      permalink?: string;
+    }
+
+    const rawAds: RawAd[] = [];
+
+    if (channel === "mercado_libre") {
+      const { fetchMeliSellerItems, fetchMeliItemDetail } = await import("@/lib/marketplaces/mercadolibre");
+      const sellerId = Number(account.sellerId);
+      const token = account.encryptedAccessToken; // getMarketplaceAccount decrypts it
+
+      const itemIds = await fetchMeliSellerItems(sellerId, token);
+      for (const itemId of itemIds.slice(0, 50)) {
+        try {
+          const detail = await fetchMeliItemDetail(itemId, token);
+          if (detail && detail.id) {
+            const externalSku = (detail.seller_custom_field || "").trim();
+            rawAds.push({
+              externalItemId: detail.id,
+              externalSku,
+              title: detail.title || "Anúncio Mercado Livre",
+              price: detail.price || 0,
+              stock: detail.available_quantity || 0,
+              status: detail.status === "active" ? "active" : "paused",
+              permalink: detail.permalink || ""
+            });
+          }
+        } catch (e: any) {
+          errors.push(`Falha ao obter anúncio ${itemId}: ${e.message}`);
+        }
+      }
+    } else if (channel === "shopee") {
+      const { fetchShopeeItemList, fetchShopeeItemBaseInfo } = await import("@/lib/marketplaces/shopee");
+      const partnerId = process.env.SHOPEE_PARTNER_ID || "";
+      const partnerKey = process.env.SHOPEE_PARTNER_KEY || "";
+      const shopId = Number(account.sellerId);
+      const token = account.encryptedAccessToken;
+
+      if (!partnerId || !partnerKey) {
+        throw new Error("Credenciais da Shopee não configuradas no ambiente do servidor.");
+      }
+
+      const itemIds = await fetchShopeeItemList(partnerId, partnerKey, token, shopId);
+      if (itemIds.length > 0) {
+        const details = await fetchShopeeItemBaseInfo(partnerId, partnerKey, token, shopId, itemIds);
+        for (const item of details) {
+          const externalSku = (item.item_sku || "").trim();
+          const price = item.price_info?.[0]?.current_price || item.price_info?.[0]?.original_price || 0;
+          const stock = item.stock_info_v2?.summary_info?.total_available_stock ?? item.stock_info?.[0]?.normal_stock ?? 0;
+          rawAds.push({
+            externalItemId: String(item.item_id),
+            externalSku,
+            title: item.item_name || "Anúncio Shopee",
+            price,
+            stock,
+            status: item.item_status === "NORMAL" ? "active" : "paused"
+          });
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    const collectionRef = adminDb.collection(this.collectionName);
+
+    for (const ad of rawAds) {
+      importedCount++;
+      const matchedErpProd = ad.externalSku ? erpSkuMap.get(ad.externalSku.toLowerCase()) : null;
+
+      const isPaired = Boolean(matchedErpProd);
+      if (isPaired) pairedCount++;
+      else unpairedCount++;
+
+      const existingSnap = await collectionRef
+        .where("tenantId", "==", tenantId)
+        .where("channel", "==", channel)
+        .where("externalItemId", "==", ad.externalItemId)
+        .limit(1)
+        .get();
+
+      const itemPayload: Omit<MarketplaceItem, "id"> = {
+        tenantId,
+        channel,
+        sellerId: account.sellerId,
+        productId: matchedErpProd ? matchedErpProd.id : "",
+        erpItemId: matchedErpProd ? matchedErpProd.id : "",
+        productSku: matchedErpProd ? matchedErpProd.sku : (ad.externalSku || ""),
+        productName: matchedErpProd ? matchedErpProd.name : ad.title,
+        externalItemId: ad.externalItemId,
+        externalSku: ad.externalSku || "",
+        title: ad.title,
+        syncedPrice: ad.price,
+        price: ad.price,
+        syncedStock: matchedErpProd ? (matchedErpProd.currentStock || 0) : ad.stock,
+        stock: ad.stock,
+        status: ad.status,
+        syncStatusMessage: isPaired ? "Vinculado automaticamente por SKU" : "Aguardando vinculação com produto ERP",
+        lastSyncAt: now,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      if (!existingSnap.empty) {
+        await collectionRef.doc(existingSnap.docs[0].id).update(itemPayload);
+      } else {
+        await collectionRef.add(itemPayload);
+      }
+    }
+
+    Cache.invalidateByEntity(tenantId, "products");
+    Cache.invalidateByEntity(tenantId, "dashboard");
+
+    await logMarketplaceEvent({
+      tenantId,
+      channel,
+      severity: "INFO",
+      operation: "import_ads",
+      resource: "products",
+      message: `Importação concluída: ${importedCount} anúncios obtidos (${pairedCount} vinculados por SKU, ${unpairedCount} sem vínculo).`
+    });
+
+    return { importedCount, pairedCount, unpairedCount, errors };
+  }
+
+  /**
+   * Vincula manualmente um anúncio de marketplace a um produto físico do ERP.
+   */
+  public async pairMarketplaceItem(
+    tenantId: string,
+    marketplaceItemId: string,
+    erpProductId: string
+  ): Promise<boolean> {
+    const prodDoc = await adminDb.collection("products").doc(erpProductId).get();
+    if (!prodDoc.exists) {
+      throw new Error(`Produto ERP ${erpProductId} não foi encontrado.`);
+    }
+
+    const prod = prodDoc.data() as any;
+    if (prod.tenantId !== tenantId) {
+      throw new Error("Acesso negado: Produto não pertence a este tenant.");
+    }
+
+    const itemRef = adminDb.collection(this.collectionName).doc(marketplaceItemId);
+    const itemDoc = await itemRef.get();
+    if (!itemDoc.exists) {
+      throw new Error(`Anúncio ${marketplaceItemId} não encontrado.`);
+    }
+
+    const item = itemDoc.data() as MarketplaceItem;
+    const now = new Date().toISOString();
+    const currentStock = prod.currentStock || 0;
+
+    await itemRef.update({
+      productId: erpProductId,
+      erpItemId: erpProductId,
+      productSku: prod.sku || item.externalSku || "",
+      productName: prod.name,
+      syncedStock: currentStock,
+      syncStatusMessage: "Vinculado manualmente ao ERP",
+      lastSyncAt: now,
+      updatedAt: now
+    });
+
+    // Enfileira sincronização do estoque físico do ERP para o canal
+    const { default: Queue } = await import("./QueueService");
+    await Queue.enqueue(
+      tenantId,
+      item.channel,
+      "sync_stock",
+      {
+        marketplaceItemId,
+        productId: erpProductId,
+        externalItemId: item.externalItemId,
+        newStock: currentStock
+      },
+      `pair_sync_${marketplaceItemId}_${Date.now()}`,
+      "high"
+    );
+
+    Cache.invalidateByEntity(tenantId, "products");
+    Cache.invalidateByEntity(tenantId, "dashboard");
+
+    await logMarketplaceEvent({
+      tenantId,
+      channel: item.channel,
+      severity: "INFO",
+      operation: "pair_item",
+      resource: "products",
+      message: `Anúncio [${item.title}] vinculado com sucesso ao produto [${prod.name}] (SKU: ${prod.sku}). Estoque de ${currentStock} propagado.`
+    });
+
+    return true;
+  }
+
+  /**
+   * Atualiza o preço específico de um anúncio em um marketplace sem quebrar o preço base do ERP.
+   */
+  public async updateChannelPrice(
+    tenantId: string,
+    marketplaceItemId: string,
+    newPrice: number
+  ): Promise<boolean> {
+    if (newPrice <= 0) throw new Error("Preço deve ser maior que zero.");
+
+    const itemRef = adminDb.collection(this.collectionName).doc(marketplaceItemId);
+    const itemDoc = await itemRef.get();
+    if (!itemDoc.exists) throw new Error("Anúncio não encontrado.");
+
+    const item = itemDoc.data() as MarketplaceItem;
+    const now = new Date().toISOString();
+
+    await itemRef.update({
+      syncedPrice: newPrice,
+      price: newPrice,
+      lastSyncAt: now,
+      updatedAt: now
+    });
+
+    const { default: Queue } = await import("./QueueService");
+    await Queue.enqueue(
+      tenantId,
+      item.channel,
+      "sync_price",
+      {
+        marketplaceItemId,
+        externalItemId: item.externalItemId,
+        newPrice
+      },
+      `price_${marketplaceItemId}_${Date.now()}`,
+      "normal"
+    );
+
+    Cache.invalidateByEntity(tenantId, "products");
+    return true;
+  }
+
+  /**
    * Lista os itens/anúncios vinculados do Tenant (com cache de 5 min).
    */
   public async listItems(tenantId: string, channel?: MarketplaceChannel): Promise<MarketplaceItem[]> {

@@ -16,7 +16,9 @@ import {
   refreshMeliAccessToken,
   fetchMeliSellerItems,
   updateMeliItemStock,
-  updateMeliItemPrice
+  updateMeliItemPrice,
+  fetchMeliOrders,
+  fetchMeliShipment
 } from "@/lib/marketplaces/mercadolibre";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { logMarketplaceEvent } from "@/services/marketplaceLogService";
@@ -247,16 +249,80 @@ export class MercadoLivreProvider implements MarketplaceProvider {
   }
 
   async fetchOrders(account: MarketplaceAccount, sinceDate?: Date): Promise<MarketplaceOrder[]> {
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "mercado_libre",
-      severity: "INFO",
-      operation: "fetch_orders",
-      resource: "orders",
-      message: `Buscando pedidos recentes do Mercado Livre.`
-    });
+    try {
+      const rawToken = decrypt(account.encryptedAccessToken);
+      const sellerId = Number(account.sellerId);
+      if (!sellerId || !rawToken) return [];
 
-    return [];
+      const meliOrders = await fetchMeliOrders(sellerId, rawToken, { sinceDate, limit: 50 });
+      const orders: MarketplaceOrder[] = [];
+
+      for (const mOrder of meliOrders) {
+        const orderId = String(mOrder.id);
+        const buyer = mOrder.buyer || {};
+        const customerName = `${buyer.first_name || ""} ${buyer.last_name || ""}`.trim() || buyer.nickname || "Comprador Mercado Livre";
+        const document = buyer.billing_info?.doc_number || "";
+
+        let trackingCode = "";
+        if (mOrder.shipping?.id) {
+          try {
+            const ship = await fetchMeliShipment(mOrder.shipping.id, rawToken);
+            if (ship) {
+              trackingCode = ship.tracking_number || ship.substatus || ship.status || "";
+            }
+          } catch {
+            // non-fatal
+          }
+        }
+
+        const items = (mOrder.order_items || []).map((it: any) => ({
+          externalItemId: it.item?.id || "",
+          productSku: it.item?.seller_custom_field || it.item?.seller_sku || "",
+          name: it.item?.title || "Item Mercado Livre",
+          quantity: it.quantity || 1,
+          unitPrice: it.unit_price || 0
+        }));
+
+        let orderStatus: MarketplaceOrder["orderStatus"] = "pending";
+        if (mOrder.status === "paid") orderStatus = "paid";
+        else if (mOrder.status === "cancelled") orderStatus = "cancelled";
+        else if (mOrder.shipping?.status === "shipped") orderStatus = "shipped";
+        else if (mOrder.shipping?.status === "delivered") orderStatus = "delivered";
+
+        orders.push({
+          id: `meli_order_${orderId}`,
+          tenantId: account.tenantId,
+          channel: "mercado_libre",
+          sellerId: account.sellerId,
+          externalOrderId: orderId,
+          customerName,
+          customerDocument: document,
+          items,
+          totalAmount: mOrder.total_amount || 0,
+          shippingFee: mOrder.shipping_cost || 0,
+          paymentMethod: mOrder.payments?.[0]?.payment_method_id || "mercadopago",
+          orderStatus,
+          trackingCode: trackingCode || undefined,
+          idempotencyKey: `meli_${account.tenantId}_${orderId}`,
+          createdAt: mOrder.date_created || new Date().toISOString(),
+          updatedAt: mOrder.last_updated || new Date().toISOString()
+        });
+      }
+
+      await logMarketplaceEvent({
+        tenantId: account.tenantId,
+        channel: "mercado_libre",
+        severity: "INFO",
+        operation: "fetch_orders",
+        resource: "orders",
+        message: `${orders.length} pedidos obtidos do Mercado Livre.`
+      });
+
+      return orders;
+    } catch (err: any) {
+      console.error("[MercadoLivreProvider fetchOrders error]", err);
+      return [];
+    }
   }
 
   async handleWebhook(payload: any, headers: Record<string, string>): Promise<WebhookProcessResult> {

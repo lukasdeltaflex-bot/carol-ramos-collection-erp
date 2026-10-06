@@ -127,3 +127,184 @@ export function verifyShopeeWebhookSign(
   const calculatedSign = crypto.createHmac("sha256", partnerKey).update(baseString).digest("hex");
   return calculatedSign === signatureHeader;
 }
+
+/**
+ * Busca lista de item_id de produtos na Shopee v2.
+ */
+export async function fetchShopeeItemList(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  options?: { offset?: number; pageSize?: number }
+): Promise<number[]> {
+  const path = "/api/v2/product/get_item_list";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+  const offset = options?.offset || 0;
+  const pageSize = options?.pageSize || 50;
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}&offset=${offset}&page_size=${pageSize}&item_status=NORMAL`;
+
+  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  const items = data.response?.item || [];
+  return items.map((i: any) => i.item_id);
+}
+
+/**
+ * Busca detalhes básicos de produtos na Shopee v2 (nome, SKU, preço, estoque).
+ */
+export async function fetchShopeeItemBaseInfo(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  itemIds: number[]
+): Promise<any[]> {
+  if (itemIds.length === 0) return [];
+  const path = "/api/v2/product/get_item_base_info";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}&item_id_list=${itemIds.slice(0, 50).join(",")}`;
+
+  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return data.response?.item_list || [];
+}
+
+/**
+ * Atualiza estoque de um produto na Shopee v2.
+ */
+export async function updateShopeeStock(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  itemId: number,
+  stock: number
+): Promise<boolean> {
+  const path = "/api/v2/product/update_stock";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      item_id: Number(itemId),
+      stock_list: [{ normal_stock: Math.max(0, stock) }]
+    })
+  });
+
+  return response.ok;
+}
+
+/**
+ * Atualiza preço de um produto na Shopee v2.
+ */
+export async function updateShopeePrice(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  itemId: number,
+  price: number
+): Promise<boolean> {
+  const path = "/api/v2/product/update_price";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      item_id: Number(itemId),
+      price_list: [{ original_price: price }]
+    })
+  });
+
+  return response.ok;
+}
+
+/**
+ * Busca lista de pedidos da Shopee v2.
+ */
+export async function fetchShopeeOrderList(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  options?: { timeFrom?: number; timeTo?: number }
+): Promise<string[]> {
+  const path = "/api/v2/order/get_order_list";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+  const timeFrom = options?.timeFrom || Math.floor((Date.now() - 15 * 86400000) / 1000); // 15 dias
+  const timeTo = options?.timeTo || timestamp;
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}&time_range_field=create_time&time_from=${timeFrom}&time_to=${timeTo}&page_size=50`;
+
+  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  const orderList = data.response?.order_list || [];
+  return orderList.map((o: any) => o.order_sn);
+}
+
+/**
+ * Busca detalhes completos de pedidos na Shopee v2.
+ */
+export async function fetchShopeeOrderDetail(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  orderSnList: string[]
+): Promise<any[]> {
+  if (orderSnList.length === 0) return [];
+  const path = "/api/v2/order/get_order_detail";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}&order_sn_list=${orderSnList.slice(0, 50).join(",")}&response_optional_fields=item_list,buyer_user_id,buyer_username,recipient_address,estimated_shipping_fee`;
+
+  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return data.response?.order_list || [];
+}
+
+/**
+ * Busca informações de rastreamento logístico de um pedido na Shopee v2.
+ */
+export async function fetchShopeeTrackingInfo(
+  partnerId: string,
+  partnerKey: string,
+  accessToken: string,
+  shopId: number,
+  orderSn: string
+): Promise<any | null> {
+  const path = "/api/v2/logistics/get_tracking_info";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = signShopeeRequest(partnerId, partnerKey, path, timestamp, accessToken, String(shopId));
+
+  const url = `${SHOPEE_HOST}${path}?partner_id=${partnerId}&timestamp=${timestamp}&access_token=${accessToken}&shop_id=${shopId}&sign=${sign}&order_sn=${orderSn}`;
+
+  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  return data.response || null;
+}

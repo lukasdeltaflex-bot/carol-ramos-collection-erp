@@ -10,7 +10,16 @@ import {
   MarketplaceItem,
   MarketplaceOrder
 } from "../types/marketplaces";
-import { getShopeeAuthUrl, exchangeShopeeCode, refreshShopeeAccessToken } from "@/lib/marketplaces/shopee";
+import {
+  getShopeeAuthUrl,
+  exchangeShopeeCode,
+  refreshShopeeAccessToken,
+  updateShopeeStock,
+  updateShopeePrice,
+  fetchShopeeOrderList,
+  fetchShopeeOrderDetail,
+  fetchShopeeTrackingInfo
+} from "@/lib/marketplaces/shopee";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { logMarketplaceEvent } from "@/services/marketplaceLogService";
 import { enqueueMarketplaceTask } from "@/services/marketplaceQueueService";
@@ -176,54 +185,168 @@ export class ShopeeProvider implements MarketplaceProvider {
   }
 
   async syncStock(account: MarketplaceAccount, items: MarketplaceItem[]): Promise<SyncResult> {
+    const rawToken = decrypt(account.encryptedAccessToken);
+    const shopId = Number(account.sellerId);
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    if (rawToken && shopId) {
+      try {
+        const { partnerId, partnerKey } = this.getPartnerCredentials();
+        for (const item of items) {
+          try {
+            const ok = await updateShopeeStock(partnerId, partnerKey, rawToken, shopId, Number(item.externalItemId), item.syncedStock);
+            if (ok) successCount++;
+            else failCount++;
+          } catch (err: any) {
+            failCount++;
+            errors.push(`Item ${item.externalItemId}: ${err.message}`);
+          }
+        }
+      } catch (err: any) {
+        errors.push(`Erro de credenciais Shopee: ${err.message}`);
+      }
+    }
+
     await enqueueMarketplaceTask({
       tenantId: account.tenantId,
       channel: "shopee",
       taskType: "sync_stock",
       priority: "high",
-      payload: { itemsCount: items.length },
+      payload: { itemsCount: items.length, successCount },
       idempotencyKey: `shopee_sync_stock_${account.tenantId}_${Date.now()}`
     });
 
     return {
-      success: true,
+      success: failCount === 0,
       processedCount: items.length,
-      updatedCount: items.length,
-      failedCount: 0,
-      errors: []
+      updatedCount: successCount,
+      failedCount: failCount,
+      errors
     };
   }
 
   async syncPrices(account: MarketplaceAccount, items: MarketplaceItem[]): Promise<SyncResult> {
+    const rawToken = decrypt(account.encryptedAccessToken);
+    const shopId = Number(account.sellerId);
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    if (rawToken && shopId) {
+      try {
+        const { partnerId, partnerKey } = this.getPartnerCredentials();
+        for (const item of items) {
+          try {
+            const ok = await updateShopeePrice(partnerId, partnerKey, rawToken, shopId, Number(item.externalItemId), item.syncedPrice);
+            if (ok) successCount++;
+            else failCount++;
+          } catch (err: any) {
+            failCount++;
+            errors.push(`Item ${item.externalItemId}: ${err.message}`);
+          }
+        }
+      } catch (err: any) {
+        errors.push(`Erro de credenciais Shopee: ${err.message}`);
+      }
+    }
+
     await enqueueMarketplaceTask({
       tenantId: account.tenantId,
       channel: "shopee",
       taskType: "sync_price",
       priority: "normal",
-      payload: { itemsCount: items.length },
+      payload: { itemsCount: items.length, successCount },
       idempotencyKey: `shopee_sync_price_${account.tenantId}_${Date.now()}`
     });
 
     return {
-      success: true,
+      success: failCount === 0,
       processedCount: items.length,
-      updatedCount: items.length,
-      failedCount: 0,
-      errors: []
+      updatedCount: successCount,
+      failedCount: failCount,
+      errors
     };
   }
 
   async fetchOrders(account: MarketplaceAccount, sinceDate?: Date): Promise<MarketplaceOrder[]> {
-    await logMarketplaceEvent({
-      tenantId: account.tenantId,
-      channel: "shopee",
-      severity: "INFO",
-      operation: "fetch_orders",
-      resource: "orders",
-      message: `Buscando pedidos recentes da Shopee desde ${sinceDate ? sinceDate.toISOString() : "início"}.`
-    });
+    try {
+      const rawToken = decrypt(account.encryptedAccessToken);
+      const shopId = Number(account.sellerId);
+      if (!shopId || !rawToken) return [];
 
-    return [];
+      const { partnerId, partnerKey } = this.getPartnerCredentials();
+      const timeFrom = sinceDate ? Math.floor(sinceDate.getTime() / 1000) : undefined;
+      const orderSnList = await fetchShopeeOrderList(partnerId, partnerKey, rawToken, shopId, { timeFrom });
+
+      if (orderSnList.length === 0) return [];
+
+      const shopeeOrders = await fetchShopeeOrderDetail(partnerId, partnerKey, rawToken, shopId, orderSnList);
+      const orders: MarketplaceOrder[] = [];
+
+      for (const sOrder of shopeeOrders) {
+        const orderSn = String(sOrder.order_sn);
+
+        let trackingCode = "";
+        try {
+          const track = await fetchShopeeTrackingInfo(partnerId, partnerKey, rawToken, shopId, orderSn);
+          if (track && track.tracking_number) {
+            trackingCode = track.tracking_number;
+          }
+        } catch {
+          // non-fatal
+        }
+
+        const items = (sOrder.item_list || []).map((it: any) => ({
+          externalItemId: String(it.item_id || ""),
+          productSku: it.item_sku || it.model_sku || "",
+          name: it.item_name || "Item Shopee",
+          quantity: it.model_quantity_purchased || 1,
+          unitPrice: it.model_discounted_price || 0
+        }));
+
+        let orderStatus: MarketplaceOrder["orderStatus"] = "pending";
+        const statusStr = (sOrder.order_status || "").toUpperCase();
+        if (statusStr === "READY_TO_SHIP" || statusStr === "PROCESSED") orderStatus = "paid";
+        else if (statusStr === "SHIPPED") orderStatus = "shipped";
+        else if (statusStr === "COMPLETED") orderStatus = "delivered";
+        else if (statusStr === "CANCELLED") orderStatus = "cancelled";
+
+        orders.push({
+          id: `shopee_order_${orderSn}`,
+          tenantId: account.tenantId,
+          channel: "shopee",
+          sellerId: account.sellerId,
+          externalOrderId: orderSn,
+          customerName: sOrder.buyer_username || sOrder.recipient_address?.name || "Comprador Shopee",
+          customerDocument: "",
+          items,
+          totalAmount: sOrder.total_amount || 0,
+          shippingFee: sOrder.estimated_shipping_fee || 0,
+          paymentMethod: sOrder.payment_method || "shopee_pay",
+          orderStatus,
+          trackingCode: trackingCode || undefined,
+          idempotencyKey: `shopee_${account.tenantId}_${orderSn}`,
+          createdAt: sOrder.create_time ? new Date(sOrder.create_time * 1000).toISOString() : new Date().toISOString(),
+          updatedAt: sOrder.update_time ? new Date(sOrder.update_time * 1000).toISOString() : new Date().toISOString()
+        });
+      }
+
+      await logMarketplaceEvent({
+        tenantId: account.tenantId,
+        channel: "shopee",
+        severity: "INFO",
+        operation: "fetch_orders",
+        resource: "orders",
+        message: `${orders.length} pedidos obtidos da Shopee.`
+      });
+
+      return orders;
+    } catch (err: any) {
+      console.error("[ShopeeProvider fetchOrders error]", err);
+      return [];
+    }
   }
 
   async handleWebhook(payload: any, headers: Record<string, string>): Promise<WebhookProcessResult> {

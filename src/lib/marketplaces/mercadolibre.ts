@@ -168,3 +168,52 @@ export async function updateMeliItemPrice(
 
   return response.ok;
 }
+
+/**
+ * Busca pedidos recentes de um vendedor no Mercado Livre.
+ */
+export async function fetchMeliOrders(
+  sellerId: number,
+  accessToken: string,
+  options?: { sinceDate?: Date; limit?: number }
+): Promise<any[]> {
+  const limit = options?.limit || 50;
+  let url = `${MELI_API_HOST}/orders/search?seller=${sellerId}&sort=date_desc&limit=${limit}`;
+
+  if (options?.sinceDate) {
+    url += `&order.date_created.from=${encodeURIComponent(options.sinceDate.toISOString())}`;
+  }
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error("[Meli Orders Error]", response.status, errorData);
+    return [];
+  }
+
+  const data = await response.json();
+  return data.results || [];
+}
+
+/**
+ * Busca detalhes de envio e rastreamento de um pedido no Mercado Livre.
+ */
+export async function fetchMeliShipment(
+  shipmentId: number | string,
+  accessToken: string
+): Promise<any | null> {
+  const url = `${MELI_API_HOST}/shipments/${shipmentId}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return await response.json();
+}

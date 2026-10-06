@@ -33,9 +33,17 @@ import {
   RefreshCw,
   Coins,
   Package,
-  Calendar
+  Calendar,
+  History,
+  Edit2,
+  RotateCcw,
+  Eye
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
+import { executeCancelSale, executeEditSale } from "@/features/sales/services/salesReconciliation";
+import { SalesHistoryView } from "@/features/sales/components/SalesHistoryView";
+import { SaleDetailsModal } from "@/features/sales/components/SaleDetailsModal";
+import { CancelSaleModal } from "@/features/sales/components/CancelSaleModal";
 
 export default function SalesPOSPage() {
   const { createDoc, getDocs, updateDoc, getDocById } = useDb();
@@ -78,20 +86,30 @@ export default function SalesPOSPage() {
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
+  // View Mode & History State
+  const [viewMode, setViewMode] = useState<"pos" | "history">("pos");
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
+  const [selectedSaleDetails, setSelectedSaleDetails] = useState<Sale | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+
   // Load Initial Data
   const loadPOSData = async () => {
     setLoading(true);
     try {
-      const [prods, cats, custs, registers] = await Promise.all([
+      const [prods, cats, custs, registers, salesDocs] = await Promise.all([
         getDocs("products"),
         getDocs("categories"),
         getDocs("customers"),
-        getDocs("cash_registers") // Fetch register sessions
+        getDocs("cash_registers"), // Fetch register sessions
+        getDocs("sales")
       ]);
 
       setProducts((prods as Product[]).filter(p => p.status === "active"));
       setCategories(cats as Category[]);
       setCustomers(custs as Customer[]);
+      setSales((salesDocs as Sale[]) || []);
 
       // Find open register for this user/tenant
       const openReg = (registers as CashRegister[]).find(r => r.status === "open");
@@ -203,7 +221,10 @@ export default function SalesPOSPage() {
 
   // 3. Adicionar Produto ao Carrinho
   const addToCart = (product: Product) => {
-    if (product.availableStock <= 0) {
+    const existingInSale = editingSale?.items.find(i => i.productId === product.id)?.quantity || 0;
+    const effectiveStock = (product.availableStock || 0) + existingInSale;
+
+    if (effectiveStock <= 0) {
       alert("Produto esgotado no estoque!");
       return;
     }
@@ -211,7 +232,7 @@ export default function SalesPOSPage() {
     const existingIndex = cart.findIndex(item => item.product.id === product.id);
     if (existingIndex > -1) {
       const currentQty = cart[existingIndex].quantity;
-      if (currentQty >= product.availableStock) {
+      if (currentQty >= effectiveStock) {
         alert("Quantidade máxima disponível atingida!");
         return;
       }
@@ -234,7 +255,8 @@ export default function SalesPOSPage() {
     if (newQty <= 0) {
       newCart.splice(idx, 1);
     } else {
-      const maxStock = newCart[idx].product.availableStock;
+      const existingInSale = editingSale?.items.find(i => i.productId === productId)?.quantity || 0;
+      const maxStock = (newCart[idx].product.availableStock || 0) + existingInSale;
       if (newQty > maxStock) {
         alert("Quantidade máxima disponível atingida!");
         return;
@@ -500,6 +522,148 @@ export default function SalesPOSPage() {
     }
   };
 
+  // Iniciar Edição de Venda
+  const handleStartEditSale = (sale: Sale) => {
+    if (sale.status === "cancelled") {
+      alert("Não é possível editar uma venda cancelada.");
+      return;
+    }
+    setEditingSale(sale);
+    setViewMode("pos");
+
+    // Reconstruir o carrinho com base nos itens da venda
+    const reconstructedCart = sale.items.map(item => {
+      const prod = products.find(p => p.id === item.productId) || ({
+        id: item.productId,
+        sku: "PROD",
+        name: item.name,
+        costPrice: item.costPrice,
+        sellPrice: item.unitPrice,
+        salePrice: item.unitPrice,
+        currentStock: 0,
+        availableStock: 0,
+        status: "active"
+      } as unknown as Product);
+
+      return {
+        product: prod,
+        quantity: item.quantity,
+        discount: item.discount || 0
+      };
+    });
+
+    setCart(reconstructedCart);
+    setSelectedCustomerId(sale.customerId || "");
+    setGlobalDiscount(sale.discount || 0);
+    setPaymentMethod(sale.paymentMethod || "pix");
+    setInstallments(sale.paymentDetails?.installments || 1);
+
+    if (sale.paymentDetails?.splitDetails) {
+      const pix = sale.paymentDetails.splitDetails.find(s => s.method === "pix")?.amount || 0;
+      const card = sale.paymentDetails.splitDetails.find(s => s.method === "credit_card" || s.method === "debit_card")?.amount || 0;
+      const cash = sale.paymentDetails.splitDetails.find(s => s.method === "cash")?.amount || 0;
+      setPixAmount(pix);
+      setCardAmount(card);
+      setCashAmount(cash);
+    }
+  };
+
+  // Cancelar Edição
+  const handleCancelEdit = () => {
+    setEditingSale(null);
+    setCart([]);
+    setSelectedCustomerId("");
+    setGlobalDiscount(0);
+    setPaymentMethod("pix");
+    setInstallments(1);
+    setIsCustomInstallments(false);
+    setPixAmount(0);
+    setCardAmount(0);
+    setCashAmount(0);
+  };
+
+  // Salvar Venda Editada
+  const handleSaveEditedSale = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingSale) return;
+    if (cart.length === 0) {
+      alert("A venda deve conter pelo menos um produto.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const itemsPayload = cart.map(item => ({
+        productId: item.product.id,
+        name: item.product.name,
+        quantity: item.quantity,
+        unitPrice: item.product.sellPrice ?? (item.product as any).salePrice ?? 0,
+        costPrice: item.product.costPrice ?? 0,
+        discount: item.discount || 0
+      }));
+
+      const paymentDetailsPayload: any = {};
+      if (paymentMethod === "credit_card" && installments > 1) {
+        paymentDetailsPayload.installments = installments;
+      }
+      if (paymentMethod === "split") {
+        paymentDetailsPayload.splitDetails = [
+          { method: "pix", amount: pixAmount },
+          { method: "credit_card", amount: cardAmount },
+          { method: "cash", amount: cashAmount }
+        ].filter(s => s.amount > 0);
+      }
+
+      await executeEditSale({
+        oldSale: editingSale,
+        newData: {
+          customerId: selectedCustomerId || undefined,
+          items: itemsPayload,
+          subtotal,
+          discount: globalDiscount,
+          total,
+          paymentMethod,
+          paymentDetails: Object.keys(paymentDetailsPayload).length > 0 ? paymentDetailsPayload : undefined,
+          generatedInstallments: (paymentMethod === "term" || (paymentMethod === "credit_card" && installments > 1)) ? generatedInstallments : undefined,
+          notes: "Edição de itens/valores pelo operador no PDV"
+        },
+        userId: user?.uid || "unknown",
+        db: { getDocs, updateDoc, createDoc }
+      });
+
+      alert(`Venda #${editingSale.id.slice(0, 8)} editada e reconciliada com sucesso!`);
+      handleCancelEdit();
+      await loadPOSData();
+      setViewMode("history");
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar alterações da venda.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Confirmar Cancelamento da Venda
+  const handleConfirmCancelSale = async (reason: string) => {
+    if (!saleToCancel) return;
+    setIsCancelling(true);
+    try {
+      await executeCancelSale({
+        sale: saleToCancel,
+        reason: reason || "Cancelamento efetuado pelo operador",
+        userId: user?.uid || "unknown",
+        db: { getDocs, updateDoc, createDoc }
+      });
+
+      alert(`Venda #${saleToCancel.id.slice(0, 8)} cancelada com sucesso! O estoque foi estornado.`);
+      setSaleToCancel(null);
+      await loadPOSData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao cancelar venda.");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   // Filtragem local de produtos para busca rápida
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
@@ -508,85 +672,181 @@ export default function SalesPOSPage() {
   });
 
   return (
-    <div className="h-[calc(100vh-6.5rem)] flex flex-col justify-between">
+    <div className="h-[calc(100vh-6.5rem)] flex flex-col justify-between space-y-3">
       
-      {/* 1. SE NÃO HOUVER CAIXA ABERTO */}
-      {!activeRegister && (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-md p-6 rounded-2xl border border-border bg-card shadow-lg space-y-6 text-center select-none">
-            <div className="mx-auto h-14 w-14 rounded-full bg-rosegold-100 dark:bg-rosegold-950/30 text-rosegold-500 flex items-center justify-center">
-              <Coins className="h-7 w-7" />
+      {/* 0. CABEÇALHO / ALTERNADOR DE VISÃO */}
+      <div className="flex items-center justify-between shrink-0 pb-2 border-b border-border">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode("pos")}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all",
+              viewMode === "pos"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
+            )}
+          >
+            <ShoppingCart className="h-3.5 w-3.5" />
+            <span>{editingSale ? `Editando Venda #${editingSale.id.slice(0, 8)}` : "PDV / Nova Venda"}</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode("history")}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all",
+              viewMode === "history"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
+            )}
+          >
+            <History className="h-3.5 w-3.5" />
+            <span>Histórico de Vendas</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-card/60 text-foreground border border-border">
+              {sales.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Status do Caixa */}
+        <div className="flex items-center gap-2">
+          {activeRegister ? (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Caixa Aberto (Fundo: R$ {activeRegister.openingBalance.toFixed(2)})</span>
             </div>
-            <div className="space-y-1.5">
-              <h2 className="text-xl font-display font-light">Caixa Fechado</h2>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Para começar a registrar vendas no PDV, abra uma sessão de caixa inserindo o fundo de troco inicial.
-              </p>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-muted/40 border border-border text-muted-foreground text-xs font-medium">
+              <span className="h-2 w-2 rounded-full bg-zinc-400" />
+              <span>Caixa Fechado</span>
             </div>
+          )}
+        </div>
+      </div>
 
-            <form onSubmit={handleOpenRegister} className="space-y-4 text-left text-xs">
-              <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Saldo Inicial (Fundo de Troco BRL)</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
-                    <DollarSign className="h-4 w-4" />
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={openingBalance}
-                    onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
-                    placeholder="0,00"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-card"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações</label>
-                <textarea
-                  value={registerNotes}
-                  onChange={(e) => setRegisterNotes(e.target.value)}
-                  placeholder="Ex: Abertura turno da tarde, gaveta sem moedas..."
-                  rows={2}
-                  className="w-full p-3 rounded-xl border border-border bg-card/50 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/10 hover:scale-[1.01] active:scale-[0.99]"
-              >
-                {loading ? "Abrindo..." : "Abrir Caixa Operador"}
-              </button>
-            </form>
-          </div>
+      {/* 1. VISÃO: HISTÓRICO DE VENDAS */}
+      {viewMode === "history" && (
+        <div className="flex-1 min-h-0">
+          <SalesHistoryView
+            sales={sales}
+            customers={customers}
+            onViewDetails={(sale) => setSelectedSaleDetails(sale)}
+            onEditSale={handleStartEditSale}
+            onCancelSale={(sale) => setSaleToCancel(sale)}
+            onNewSale={() => {
+              handleCancelEdit();
+              setViewMode("pos");
+            }}
+          />
         </div>
       )}
 
-      {/* 2. SE HOUVER CAIXA ABERTO (TELA DO PDV) */}
-      {activeRegister && (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
-          
-          {/* Coluna Esquerda: Catálogo Rápido (70%) */}
-          <div className="lg:col-span-2 flex flex-col justify-between h-full min-h-0 bg-card/30 border border-border rounded-2xl p-4">
-            
-            {/* Cabeçalho do Catálogo */}
-            <div className="space-y-3 shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-xs font-semibold text-foreground">Caixa Aberto (Fundo: R$ {activeRegister.openingBalance.toFixed(2)})</span>
+      {/* 2. VISÃO: PDV */}
+      {viewMode === "pos" && (
+        <>
+          {/* SE NÃO HOUVER CAIXA ABERTO E NÃO ESTIVER EDITANDO */}
+          {!activeRegister && !editingSale && (
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="w-full max-w-md p-6 rounded-2xl border border-border bg-card shadow-lg space-y-6 text-center select-none">
+                <div className="mx-auto h-14 w-14 rounded-full bg-rosegold-100 dark:bg-rosegold-950/30 text-rosegold-500 flex items-center justify-center">
+                  <Coins className="h-7 w-7" />
                 </div>
-                <button
-                  onClick={() => setIsClosingRegister(true)}
-                  className="px-3 py-1.5 rounded-lg border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:border-red-950/30 text-red-600 dark:text-red-400 text-[10px] font-bold tracking-wider uppercase transition-colors"
-                >
-                  Fechar Caixa
-                </button>
+                <div className="space-y-1.5">
+                  <h2 className="text-xl font-display font-light">Caixa Fechado</h2>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Para começar a registrar vendas no PDV, abra uma sessão de caixa inserindo o fundo de troco inicial.
+                  </p>
+                </div>
+
+                <form onSubmit={handleOpenRegister} className="space-y-4 text-left text-xs">
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Saldo Inicial (Fundo de Troco BRL)</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
+                        <DollarSign className="h-4 w-4" />
+                      </span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={openingBalance}
+                        onChange={(e) => setOpeningBalance(parseFloat(e.target.value) || 0)}
+                        placeholder="0,00"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-card"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Observações</label>
+                    <textarea
+                      value={registerNotes}
+                      onChange={(e) => setRegisterNotes(e.target.value)}
+                      placeholder="Ex: Abertura turno da tarde, gaveta sem moedas..."
+                      rows={2}
+                      className="w-full p-3 rounded-xl border border-border bg-card/50 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/10 hover:scale-[1.01] active:scale-[0.99]"
+                  >
+                    {loading ? "Abrindo..." : "Abrir Caixa Operador"}
+                  </button>
+                </form>
               </div>
+            </div>
+          )}
+
+          {/* SE HOUVER CAIXA ABERTO OU ESTIVER EDITANDO */}
+          {(activeRegister || editingSale) && (
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
+              
+              {/* Coluna Esquerda: Catálogo Rápido (70%) */}
+              <div className="lg:col-span-2 flex flex-col justify-between h-full min-h-0 bg-card/30 border border-border rounded-2xl p-4">
+                
+                {/* Banner de Edição */}
+                {editingSale && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-amber-700 dark:text-amber-400 mb-3 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Edit2 className="h-4 w-4 shrink-0" />
+                      <div>
+                        <span className="font-bold text-xs">Modo de Edição: Venda #{editingSale.id.slice(0, 8)}</span>
+                        <p className="text-[11px] text-muted-foreground">
+                          Altere os produtos, quantidades, cliente ou pagamento. As diferenças de estoque e financeiro serão reconciliadas proporcionalmente.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-2.5 py-1 rounded-lg border border-amber-500/40 hover:bg-amber-500/20 text-[11px] font-semibold transition-colors"
+                    >
+                      Cancelar Edição
+                    </button>
+                  </div>
+                )}
+
+                {/* Cabeçalho do Catálogo */}
+                <div className="space-y-3 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-xs font-semibold text-foreground">
+                        {activeRegister
+                          ? `Caixa Aberto (Fundo: R$ ${activeRegister.openingBalance.toFixed(2)})`
+                          : `Sessão Original: #${editingSale?.cashRegisterId?.slice(0, 8) || "N/A"}`}
+                      </span>
+                    </div>
+                    {activeRegister && (
+                      <button
+                        onClick={() => setIsClosingRegister(true)}
+                        className="px-3 py-1.5 rounded-lg border border-red-200 hover:border-red-300 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:border-red-950/30 text-red-600 dark:text-red-400 text-[10px] font-bold tracking-wider uppercase transition-colors"
+                      >
+                        Fechar Caixa
+                      </button>
+                    )}
+                  </div>
 
               {/* Filtro Categorias & Pesquisa */}
               <div className="flex flex-col sm:flex-row gap-3">
@@ -1038,11 +1298,20 @@ export default function SalesPOSPage() {
                   (paymentMethod === "split" && Math.abs((pixAmount + cardAmount + cashAmount) - total) > 0.05) ||
                   (paymentMethod === "term" && Math.abs(generatedInstallments.reduce((sum, item) => sum + item.amount, 0) - total) > 0.02)
                 }
-                onClick={handleCheckout}
-                className="w-full py-3.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/95 transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+                onClick={editingSale ? handleSaveEditedSale : handleCheckout}
+                className={cn(
+                  "w-full py-3.5 font-semibold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50",
+                  editingSale
+                    ? "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20"
+                    : "bg-primary text-primary-foreground hover:bg-primary/95 shadow-primary/20"
+                )}
               >
                 <CheckCircle2 className="h-4.5 w-4.5" />
-                <span>Concluir Venda (R$ {total.toFixed(2)})</span>
+                <span>
+                  {editingSale 
+                    ? `Salvar Alterações (R$ ${total.toFixed(2)})` 
+                    : `Concluir Venda (R$ ${total.toFixed(2)})`}
+                </span>
               </button>
 
             </div>
@@ -1050,6 +1319,31 @@ export default function SalesPOSPage() {
           </div>
 
         </div>
+      )}
+      </>
+      )}
+
+      {/* 5. MODAL: DETALHES DA VENDA */}
+      {selectedSaleDetails && (
+        <SaleDetailsModal
+          sale={selectedSaleDetails}
+          customers={customers}
+          onClose={() => setSelectedSaleDetails(null)}
+          onEdit={(sale) => {
+            setSelectedSaleDetails(null);
+            handleStartEditSale(sale);
+          }}
+        />
+      )}
+
+      {/* 6. MODAL: CANCELAR VENDA */}
+      {saleToCancel && (
+        <CancelSaleModal
+          sale={saleToCancel}
+          onClose={() => setSaleToCancel(null)}
+          onConfirm={handleConfirmCancelSale}
+          loading={isCancelling}
+        />
       )}
 
       {/* 3. MODAL: CHECHOUT SUCESSO */}
