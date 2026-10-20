@@ -29,6 +29,11 @@ import {
 import { AccountsPayable, BankAccount } from "@/features/finance/types";
 import { Supplier } from "@/features/suppliers/types";
 import { AccountsPayableSchema } from "@/features/finance/schemas";
+import { ColumnDefinition } from "@/features/finance/types/filters";
+import { useCustomTableFilters } from "@/features/finance/hooks/useCustomTableFilters";
+import CustomFilterToolbar from "@/features/finance/components/CustomFilterToolbar";
+import CustomFilterModal from "@/features/finance/components/CustomFilterModal";
+import CustomizeColumnsModal from "@/features/finance/components/CustomizeColumnsModal";
 
 export default function AccountsPayablePage() {
   const { user, role, tenantId } = useAuth();
@@ -385,33 +390,150 @@ export default function AccountsPayablePage() {
   const now = new Date();
   now.setHours(0,0,0,0);
 
-  const filteredPayables = payables.filter(p => {
-    const pDate = getNormalizeDate(p.dueDate);
-    pDate.setHours(0,0,0,0);
-    
-    // Status Logic
-    const isOverdue = p.status === "pending" && pDate < now;
-    
-    const matchesSearch = p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      suppliers.find(s => s.id === p.supplierId)?.name.toLowerCase().includes(searchQuery.toLowerCase());
-      
-    if (statusFilter === "pending") {
-      return p.status === "pending" && !isOverdue && matchesSearch;
-    }
-    if (statusFilter === "overdue") {
-      return isOverdue && matchesSearch;
-    }
-    if (statusFilter === "paid") {
-      return p.status === "paid" && matchesSearch;
-    }
-    return matchesSearch;
+  // 1. Definição das Colunas Disponíveis para Filtros e Visualização
+  const payableColumns: ColumnDefinition<AccountsPayable>[] = React.useMemo(() => [
+    {
+      id: "dueDate",
+      label: "Vencimento",
+      type: "date",
+      getValue: (p) => p.dueDate,
+    },
+    {
+      id: "description",
+      label: "Descrição",
+      type: "text",
+      getValue: (p) => p.description,
+    },
+    {
+      id: "supplier",
+      label: "Fornecedor",
+      type: "select",
+      getValue: (p) => suppliers.find((s) => s.id === p.supplierId)?.name || "Geral / Avulso",
+      options: suppliers.map((s) => ({ value: s.name, label: s.name })),
+    },
+    {
+      id: "amount",
+      label: "Valor Original",
+      type: "number",
+      getValue: (p) => p.amount,
+      align: "right",
+    },
+    {
+      id: "paidAmount",
+      label: "Valor Pago",
+      type: "number",
+      getValue: (p) => p.paidAmount || (p.status === "paid" ? p.amount : 0),
+      align: "right",
+      defaultVisible: false,
+    },
+    {
+      id: "pendingAmount",
+      label: "Saldo Pendente",
+      type: "number",
+      getValue: (p) => (p.status === "paid" ? 0 : p.amount - (p.paidAmount || 0)),
+      align: "right",
+      defaultVisible: false,
+    },
+    {
+      id: "status",
+      label: "Status",
+      type: "status",
+      getValue: (p) => {
+        const sDate = getNormalizeDate(p.dueDate);
+        sDate.setHours(0, 0, 0, 0);
+        if (p.status === "pending" && sDate < now) return "Vencida";
+        if (p.status === "paid") return "Pago";
+        if (p.status === "partially_paid") return "Parcialmente Pago";
+        if (p.status === "cancelled") return "Cancelada";
+        return "Pendente";
+      },
+      options: [
+        { value: "Pendente", label: "Pendente" },
+        { value: "Vencida", label: "Vencida / Atrasada" },
+        { value: "Pago", label: "Pago" },
+        { value: "Parcialmente Pago", label: "Parcialmente Pago" },
+        { value: "Cancelada", label: "Cancelada" },
+      ],
+    },
+    {
+      id: "paymentMethod",
+      label: "Forma de Pagamento",
+      type: "select",
+      getValue: (p) => p.paymentMethod || "pix",
+      options: [
+        { value: "pix", label: "PIX" },
+        { value: "bank_slip", label: "Boleto Bancário" },
+        { value: "credit_card", label: "Cartão de Crédito" },
+        { value: "company_credit_card", label: "Cartão Corporativo" },
+        { value: "transfer", label: "Transferência" },
+        { value: "cash", label: "Dinheiro" },
+      ],
+      defaultVisible: false,
+    },
+    {
+      id: "paidDate",
+      label: "Data de Pagamento",
+      type: "date",
+      getValue: (p) => p.paidDate,
+      defaultVisible: false,
+    },
+  ], [suppliers, now]);
+
+  // Filtro básico inicial (busca e abas de status rápidas)
+  const baseFilteredPayables = React.useMemo(() => {
+    return payables.filter((p) => {
+      const pDate = getNormalizeDate(p.dueDate);
+      pDate.setHours(0, 0, 0, 0);
+      const isOverdue = p.status === "pending" && pDate < now;
+      const supplierName = suppliers.find((s) => s.id === p.supplierId)?.name || "";
+
+      const matchesSearch =
+        p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        supplierName.toLowerCase().includes(searchQuery.toLowerCase());
+
+      if (statusFilter === "pending") {
+        return p.status === "pending" && !isOverdue && matchesSearch;
+      }
+      if (statusFilter === "overdue") {
+        return isOverdue && matchesSearch;
+      }
+      if (statusFilter === "paid") {
+        return p.status === "paid" && matchesSearch;
+      }
+      return matchesSearch;
+    });
+  }, [payables, searchQuery, statusFilter, suppliers, now]);
+
+  // Hook de Filtros Personalizados e Colunas
+  const {
+    filterGroup,
+    filteredItems: finalPayables,
+    visibleColumnIds,
+    columnOrder,
+    isFilterModalOpen,
+    isCustomizeColumnsModalOpen,
+    setIsFilterModalOpen,
+    setIsCustomizeColumnsModalOpen,
+    applyFilters,
+    removeCondition,
+    clearFilters,
+    toggleColumn,
+    moveColumn,
+    resetColumnDefaults,
+    filteredTotalAmount,
+  } = useCustomTableFilters<AccountsPayable>({
+    storageKey: `payable_${tenantId || "default"}`,
+    columns: payableColumns,
+    items: baseFilteredPayables,
+    onPageReset: () => setCurrentPage(1),
+    getAmountFn: (p) => (p.status === "paid" ? p.amount : p.amount - (p.paidAmount || 0)),
   });
 
-  const totalPages = Math.ceil(filteredPayables.length / itemsPerPage);
+  const totalPages = Math.ceil(finalPayables.length / itemsPerPage);
   const paginatedPayables = React.useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredPayables.slice(start, start + itemsPerPage);
-  }, [filteredPayables, currentPage, itemsPerPage]);
+    return finalPayables.slice(start, start + itemsPerPage);
+  }, [finalPayables, currentPage, itemsPerPage]);
 
   const totalPayables = payables.reduce((acc, p) => p.status === "pending" ? acc + p.amount : acc, 0);
   const totalPaid = payables.reduce((acc, p) => p.status === "paid" ? acc + (p.paidAmount || p.amount) : acc, 0);
@@ -420,6 +542,19 @@ export default function AccountsPayablePage() {
     pDate.setHours(0,0,0,0);
     return p.status === "pending" && pDate < now ? acc + p.amount : acc;
   }, 0);
+
+  // Ordenação das colunas ativas para a tabela
+  const orderedVisibleColumns = React.useMemo(() => {
+    const map = new Map(payableColumns.map((c) => [c.id, c]));
+    const result: ColumnDefinition<AccountsPayable>[] = [];
+    columnOrder.forEach((id) => {
+      if (visibleColumnIds.includes(id)) {
+        const col = map.get(id);
+        if (col) result.push(col);
+      }
+    });
+    return result;
+  }, [payableColumns, columnOrder, visibleColumnIds]);
 
   return (
     <div className="space-y-6">
@@ -444,7 +579,7 @@ export default function AccountsPayablePage() {
         {/* Card 1: Pendentes */}
         <div className="p-4 rounded-xl border border-border bg-card/30 backdrop-blur-sm flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">A Vencer (Pendentes)</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">A Vencer (Pendentes Gerais)</span>
             <span className="text-lg font-mono font-bold text-amber-500">{formatCurrency(totalPayables - totalOverdue)}</span>
           </div>
           <Calendar className="h-8 w-8 text-amber-500/20" />
@@ -453,7 +588,7 @@ export default function AccountsPayablePage() {
         {/* Card 2: Vencidos */}
         <div className="p-4 rounded-xl border border-border bg-card/30 backdrop-blur-sm flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Atrasadas / Vencidas</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Atrasadas / Vencidas Gerais</span>
             <span className="text-lg font-mono font-bold text-red-500">{formatCurrency(totalOverdue)}</span>
           </div>
           <AlertCircle className="h-8 w-8 text-red-500/20 animate-pulse" />
@@ -462,7 +597,7 @@ export default function AccountsPayablePage() {
         {/* Card 3: Liquidado */}
         <div className="p-4 rounded-xl border border-border bg-card/30 backdrop-blur-sm flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Total Pago / Liquidado</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Total Pago Geral</span>
             <span className="text-lg font-mono font-bold text-emerald-500">{formatCurrency(totalPaid)}</span>
           </div>
           <CheckCircle className="h-8 w-8 text-emerald-500/20" />
@@ -470,41 +605,57 @@ export default function AccountsPayablePage() {
       </div>
 
       {/* 2. Filters & Searches */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card/25 backdrop-blur-sm">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Filtrar por descrição ou fornecedor..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-border bg-card/50 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:bg-card"
-          />
+      <div className="space-y-3 p-4 rounded-xl border border-border bg-card/25 backdrop-blur-sm">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Busca rápida por descrição ou fornecedor..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-border bg-card/50 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:bg-card"
+            />
+          </div>
+
+          {/* Tabs rápidas de status */}
+          <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
+            {[
+              { id: "all", label: "Todas" },
+              { id: "pending", label: "A Vencer" },
+              { id: "overdue", label: "Vencidas" },
+              { id: "paid", label: "Pagas" }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id as any)}
+                className={cn(
+                  "px-3 py-1.5 text-[10px] font-semibold rounded-md transition-all whitespace-nowrap",
+                  statusFilter === tab.id
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
-          {[
-            { id: "all", label: "Todas" },
-            { id: "pending", label: "A Vencer" },
-            { id: "overdue", label: "Vencidas" },
-            { id: "paid", label: "Pagas" }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setStatusFilter(tab.id as any)}
-              className={cn(
-                "px-3 py-1.5 text-[10px] font-semibold rounded-md transition-all whitespace-nowrap",
-                statusFilter === tab.id
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* Toolbar de Filtros Avançados e Personalização de Colunas */}
+        <CustomFilterToolbar
+          columns={payableColumns}
+          filterGroup={filterGroup}
+          onOpenFilterModal={() => setIsFilterModalOpen(true)}
+          onOpenCustomizeColumnsModal={() => setIsCustomizeColumnsModalOpen(true)}
+          onRemoveCondition={removeCondition}
+          onClearFilters={clearFilters}
+          totalOriginalCount={payables.length}
+          totalFilteredCount={finalPayables.length}
+          filteredTotalAmount={filteredTotalAmount}
+          currencyLabel="Total Filtrado (Pendente/Pago)"
+        />
       </div>
 
       {/* 3. Table/List */}
@@ -517,8 +668,23 @@ export default function AccountsPayablePage() {
       ) : paginatedPayables.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-border bg-card/20 space-y-3">
           <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm font-medium text-muted-foreground">Nenhuma conta a pagar encontrada.</p>
-          <p className="text-xs text-muted-foreground/75">Crie um lançamento manual ou importe compras de estoque.</p>
+          <p className="text-sm font-medium text-muted-foreground">
+            {filterGroup.conditions.length > 0 || searchQuery || statusFilter !== "all"
+              ? "Nenhum lançamento encontrado para os filtros selecionados."
+              : "Nenhuma conta a pagar encontrada."}
+          </p>
+          <p className="text-xs text-muted-foreground/75">
+            {filterGroup.conditions.length > 0 ? (
+              <button
+                onClick={clearFilters}
+                className="text-primary hover:underline font-semibold"
+              >
+                Limpar filtros avançados
+              </button>
+            ) : (
+              "Crie um lançamento manual ou importe compras de estoque."
+            )}
+          </p>
         </div>
       ) : (
         <div className="border border-border rounded-xl bg-card/30 overflow-hidden shadow-lg">
@@ -534,11 +700,16 @@ export default function AccountsPayablePage() {
                       className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                     />
                   </th>
-                  <th className="p-4">Vencimento</th>
-                  <th className="p-4">Descrição</th>
-                  <th className="p-4">Fornecedor</th>
-                  <th className="p-4 text-right">Valor</th>
-                  <th className="p-4">Status</th>
+
+                  {orderedVisibleColumns.map((col) => (
+                    <th
+                      key={col.id}
+                      className={cn("p-4", col.align === "right" && "text-right", col.align === "center" && "text-center")}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+
                   <th className="p-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -560,30 +731,90 @@ export default function AccountsPayablePage() {
                           className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                         />
                       </td>
-                      <td className="p-4 font-mono font-semibold">
-                        {getNormalizedDateStr(pay.dueDate)}
-                      </td>
-                      <td className="p-4">
-                        <div className="font-medium text-foreground">{pay.description}</div>
-                        {pay.purchaseId && (
-                          <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded mt-1 inline-block">Compra #{pay.purchaseId.slice(-6)}</span>
-                        )}
-                      </td>
-                      <td className="p-4 font-medium text-muted-foreground">
-                        {supplierName}
-                      </td>
-                      <td className="p-4 text-right font-mono font-bold text-foreground">
-                        {formatCurrency(pay.amount)}
-                      </td>
-                      <td className="p-4">
-                        {pay.status === "paid" ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold">Pago</span>
-                        ) : isOverdue ? (
-                          <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-bold animate-pulse">Vencida</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-bold">Pendente</span>
-                        )}
-                      </td>
+
+                      {orderedVisibleColumns.map((col) => {
+                        if (col.id === "dueDate") {
+                          return (
+                            <td key={col.id} className="p-4 font-mono font-semibold">
+                              {getNormalizedDateStr(pay.dueDate)}
+                            </td>
+                          );
+                        }
+                        if (col.id === "description") {
+                          return (
+                            <td key={col.id} className="p-4">
+                              <div className="font-medium text-foreground">{pay.description}</div>
+                              {pay.purchaseId && (
+                                <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded mt-1 inline-block">
+                                  Compra #{pay.purchaseId.slice(-6)}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        }
+                        if (col.id === "supplier") {
+                          return (
+                            <td key={col.id} className="p-4 font-medium text-muted-foreground">
+                              {supplierName}
+                            </td>
+                          );
+                        }
+                        if (col.id === "amount") {
+                          return (
+                            <td key={col.id} className="p-4 text-right font-mono font-bold text-foreground">
+                              {formatCurrency(pay.amount)}
+                            </td>
+                          );
+                        }
+                        if (col.id === "paidAmount") {
+                          return (
+                            <td key={col.id} className="p-4 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                              {formatCurrency(pay.paidAmount || (pay.status === "paid" ? pay.amount : 0))}
+                            </td>
+                          );
+                        }
+                        if (col.id === "pendingAmount") {
+                          const pendVal = pay.status === "paid" ? 0 : pay.amount - (pay.paidAmount || 0);
+                          return (
+                            <td key={col.id} className="p-4 text-right font-mono font-bold text-amber-500">
+                              {formatCurrency(pendVal)}
+                            </td>
+                          );
+                        }
+                        if (col.id === "status") {
+                          return (
+                            <td key={col.id} className="p-4">
+                              {pay.status === "paid" ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold">Pago</span>
+                              ) : isOverdue ? (
+                                <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-bold animate-pulse">Vencida</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-bold">Pendente</span>
+                              )}
+                            </td>
+                          );
+                        }
+                        if (col.id === "paymentMethod") {
+                          return (
+                            <td key={col.id} className="p-4 uppercase text-[10px] text-muted-foreground">
+                              {pay.paymentMethod === "company_credit_card" ? "Cartão Corporativo" : pay.paymentMethod === "bank_slip" ? "Boleto" : pay.paymentMethod || "PIX"}
+                            </td>
+                          );
+                        }
+                        if (col.id === "paidDate") {
+                          return (
+                            <td key={col.id} className="p-4 font-mono text-muted-foreground">
+                              {pay.paidDate ? getNormalizedDateStr(pay.paidDate) : "-"}
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={col.id} className="p-4">
+                            {String(col.getValue(pay) || "-")}
+                          </td>
+                        );
+                      })}
+
                       <td className="p-4 flex items-center justify-center gap-1">
                         {pay.status === "pending" && (
                           <button
@@ -620,7 +851,7 @@ export default function AccountsPayablePage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
               <span className="text-xs text-muted-foreground">
-                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredPayables.length} itens)
+                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({finalPayables.length} itens)
               </span>
               <div className="flex items-center gap-1.5">
                 <button
@@ -642,6 +873,28 @@ export default function AccountsPayablePage() {
           )}
         </div>
       )}
+
+      {/* Modais de Filtros Personalizados e Colunas */}
+      <CustomFilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        columns={payableColumns}
+        filterGroup={filterGroup}
+        onApplyFilters={applyFilters}
+        onClearFilters={clearFilters}
+      />
+
+      <CustomizeColumnsModal
+        isOpen={isCustomizeColumnsModalOpen}
+        onClose={() => setIsCustomizeColumnsModalOpen(false)}
+        columns={payableColumns}
+        visibleColumnIds={visibleColumnIds}
+        columnOrder={columnOrder}
+        onToggleColumn={toggleColumn}
+        onMoveColumn={moveColumn}
+        onResetDefaults={resetColumnDefaults}
+      />
+
 
       {/* 4. MODAL: CADASTRAR / EDITAR CONTA A PAGAR */}
       <Modal

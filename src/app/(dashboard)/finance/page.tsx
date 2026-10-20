@@ -59,6 +59,11 @@ import { BankLogo } from "@/components/ui/BankLogo";
 import { CardFlagLogo } from "@/components/ui/CardFlagLogo";
 import { KNOWN_BANKS, generateOnlineLogoCandidates, findKnownBank } from "@/lib/bankLogos";
 import { KNOWN_CARD_FLAGS, generateOnlineFlagCandidates, findKnownCardFlag } from "@/lib/cardFlags";
+import { ColumnDefinition } from "@/features/finance/types/filters";
+import { useCustomTableFilters } from "@/features/finance/hooks/useCustomTableFilters";
+import CustomFilterToolbar from "@/features/finance/components/CustomFilterToolbar";
+import CustomFilterModal from "@/features/finance/components/CustomFilterModal";
+import CustomizeColumnsModal from "@/features/finance/components/CustomizeColumnsModal";
 
 export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
@@ -1124,13 +1129,118 @@ export default function FinancePage() {
 
   const dre = React.useMemo(() => getDREData(), [transactions]);
 
-  // Filtragem local por busca
+  const getCategoryLabel = (cat: string) => {
+    switch (cat) {
+      case "sale": return "Venda Mercadoria";
+      case "rent": return "Aluguel Sala";
+      case "marketing": return "Marketing & Anúncios";
+      case "salary": return "Pró-Labore / Salários";
+      case "stock_purchase": return "Reposição Estoque";
+      case "cash_register_adjustment": return "Ajuste Caixa";
+      case "card_invoice_payment": return "Fatura de Cartão";
+      default: return "Outras Despesas";
+    }
+  };
+
+  // 1. Colunas de Lançamentos Financeiros (Fluxo de Caixa)
+  const transactionColumns: ColumnDefinition<FinancialTransaction>[] = React.useMemo(() => [
+    {
+      id: "description",
+      label: "Descrição",
+      type: "text",
+      getValue: (t) => t.description,
+    },
+    {
+      id: "category",
+      label: "Categoria",
+      type: "category",
+      getValue: (t) => getCategoryLabel(t.category),
+      options: [
+        { value: "Venda Mercadoria", label: "Venda Mercadoria" },
+        { value: "Aluguel Sala", label: "Aluguel Sala" },
+        { value: "Marketing & Anúncios", label: "Marketing & Anúncios" },
+        { value: "Pró-Labore / Salários", label: "Pró-Labore / Salários" },
+        { value: "Reposição Estoque", label: "Reposição Estoque" },
+        { value: "Ajuste Caixa", label: "Ajuste Caixa" },
+        { value: "Fatura de Cartão", label: "Fatura de Cartão" },
+        { value: "Outras Despesas", label: "Outras Despesas" },
+      ],
+    },
+    {
+      id: "paymentDate",
+      label: "Data Pagamento",
+      type: "date",
+      getValue: (t) => t.paymentDate,
+    },
+    {
+      id: "bankAccount",
+      label: "Conta Bancária",
+      type: "select",
+      getValue: (t) => bankAccounts.find((a) => a.id === t.bankAccountId)?.name || "Caixa Geral",
+      options: bankAccounts.map((b) => ({ value: b.name, label: b.name })),
+    },
+    {
+      id: "type",
+      label: "Tipo",
+      type: "select",
+      getValue: (t) => (t.type === "revenue" ? "Receita" : "Despesa"),
+      options: [
+        { value: "Receita", label: "Receita" },
+        { value: "Despesa", label: "Despesa" },
+      ],
+    },
+    {
+      id: "amount",
+      label: "Valor",
+      type: "number",
+      getValue: (t) => t.amount,
+      align: "right",
+    },
+    {
+      id: "status",
+      label: "Status",
+      type: "status",
+      getValue: (t) => (t.status === "paid" ? "Pago" : "Cancelado"),
+      options: [
+        { value: "Pago", label: "Pago" },
+        { value: "Cancelado", label: "Cancelado" },
+      ],
+      defaultVisible: false,
+    },
+  ], [bankAccounts]);
+
+  // Filtragem local básica por busca textual
   const filteredTransactions = React.useMemo(() => {
     return transactions.filter(t =>
       t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [transactions, searchQuery]);
+
+  // Hook de Filtros Avançados e Personalização de Colunas para Fluxo de Caixa
+  const {
+    filterGroup: txFilterGroup,
+    filteredItems: finalTransactions,
+    visibleColumnIds: txVisibleColumnIds,
+    columnOrder: txColumnOrder,
+    isFilterModalOpen: isTxFilterModalOpen,
+    isCustomizeColumnsModalOpen: isTxCustomizeColumnsModalOpen,
+    setIsFilterModalOpen: setIsTxFilterModalOpen,
+    setIsCustomizeColumnsModalOpen: setIsTxCustomizeColumnsModalOpen,
+    applyFilters: applyTxFilters,
+    removeCondition: removeTxCondition,
+    clearFilters: clearTxFilters,
+    toggleColumn: toggleTxColumn,
+    moveColumn: moveTxColumn,
+    resetColumnDefaults: resetTxColumnDefaults,
+    filteredTotalAmount: txFilteredTotalAmount,
+  } = useCustomTableFilters<FinancialTransaction>({
+    storageKey: `finance_cashflow_${tenantId || "default"}`,
+    columns: transactionColumns,
+    items: filteredTransactions,
+    onPageReset: () => setCurrentPage(1),
+    getAmountFn: (t) => (t.type === "revenue" ? t.amount : -t.amount),
+  });
 
   const filteredPayables = React.useMemo(() => {
     return payables.filter(p =>
@@ -1144,7 +1254,7 @@ export default function FinancePage() {
     );
   }, [receivables, searchQuery]);
 
-  const currentItemsCount = activeTab === "cashflow" ? filteredTransactions.length :
+  const currentItemsCount = activeTab === "cashflow" ? finalTransactions.length :
                             activeTab === "payable" ? filteredPayables.length :
                             activeTab === "receivable" ? filteredReceivables.length :
                             activeTab === "purchases" ? purchases.length : 0;
@@ -1153,8 +1263,8 @@ export default function FinancePage() {
 
   const paginatedTransactions = React.useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredTransactions.slice(start, start + itemsPerPage);
-  }, [filteredTransactions, currentPage, itemsPerPage]);
+    return finalTransactions.slice(start, start + itemsPerPage);
+  }, [finalTransactions, currentPage, itemsPerPage]);
 
   const paginatedPayables = React.useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -1171,18 +1281,19 @@ export default function FinancePage() {
     return purchases.slice(start, start + itemsPerPage);
   }, [purchases, currentPage, itemsPerPage]);
 
-  const getCategoryLabel = (cat: string) => {
-    switch (cat) {
-      case "sale": return "Venda Mercadoria";
-      case "rent": return "Aluguel Sala";
-      case "marketing": return "Marketing & Anúncios";
-      case "salary": return "Pró-Labore / Salários";
-      case "stock_purchase": return "Reposição Estoque";
-      case "cash_register_adjustment": return "Ajuste Caixa";
-      case "card_invoice_payment": return "Fatura de Cartão";
-      default: return "Outras Despesas";
-    }
-  };
+  // Colunas ativas ordenadas para o Fluxo de Caixa
+  const txOrderedVisibleColumns = React.useMemo(() => {
+    const map = new Map(transactionColumns.map((c) => [c.id, c]));
+    const result: ColumnDefinition<FinancialTransaction>[] = [];
+    txColumnOrder.forEach((id) => {
+      if (txVisibleColumnIds.includes(id)) {
+        const col = map.get(id);
+        if (col) result.push(col);
+      }
+    });
+    return result;
+  }, [transactionColumns, txColumnOrder, txVisibleColumnIds]);
+
 
   return (
     <div className="space-y-6">
@@ -1298,84 +1409,187 @@ export default function FinancePage() {
             
             {/* Tabela 1: Fluxo de Caixa */}
             {activeTab === "cashflow" && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                      <th className="p-4 w-10 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.length === paginatedTransactions.length && paginatedTransactions.length > 0}
-                          onChange={() => toggleSelectAllTransactions(paginatedTransactions)}
-                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                        />
-                      </th>
-                      <th className="p-4">Descrição</th>
-                      <th className="p-4">Categoria</th>
-                      <th className="p-4">Data Pagamento</th>
-                      <th className="p-4">Conta</th>
-                      <th className="p-4">Valor</th>
-                      <th className="p-4 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {paginatedTransactions.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum lançamento financeiro registrado.</td>
+              <div className="space-y-4 p-4">
+                {/* Barra de Filtros Personalizados e Personalização de Colunas */}
+                <CustomFilterToolbar
+                  columns={transactionColumns}
+                  filterGroup={txFilterGroup}
+                  onOpenFilterModal={() => setIsTxFilterModalOpen(true)}
+                  onOpenCustomizeColumnsModal={() => setIsTxCustomizeColumnsModalOpen(true)}
+                  onRemoveCondition={removeTxCondition}
+                  onClearFilters={clearTxFilters}
+                  totalOriginalCount={transactions.length}
+                  totalFilteredCount={finalTransactions.length}
+                  filteredTotalAmount={txFilteredTotalAmount}
+                  currencyLabel="Saldo Filtrado (Receitas - Despesas)"
+                />
+
+                <div className="overflow-x-auto border border-border/80 rounded-xl bg-card/20">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                        <th className="p-4 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.length === paginatedTransactions.length && paginatedTransactions.length > 0}
+                            onChange={() => toggleSelectAllTransactions(paginatedTransactions)}
+                            className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                          />
+                        </th>
+
+                        {txOrderedVisibleColumns.map((col) => (
+                          <th
+                            key={col.id}
+                            className={cn("p-4", col.align === "right" && "text-right", col.align === "center" && "text-center")}
+                          >
+                            {col.label}
+                          </th>
+                        ))}
+
+                        <th className="p-4 text-right">Ações</th>
                       </tr>
-                    ) : (
-                      paginatedTransactions.map((t) => {
-                        const isSelected = selectedIds.includes(t.id);
-                        return (
-                          <tr key={t.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
-                            <td className="p-4 text-center">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleSelectDocTransaction(t.id)}
-                                className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                              />
-                            </td>
-                            <td className="p-4">
-                              <div className="flex items-center gap-2">
-                                {t.type === "revenue" ? (
-                                  <div className="p-1 rounded-md bg-green-100 text-green-600 dark:bg-green-950/20 dark:text-green-400">
-                                    <ArrowUpRight className="h-3.5 w-3.5" />
-                                  </div>
-                                ) : (
-                                  <div className="p-1 rounded-md bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400">
-                                    <ArrowDownRight className="h-3.5 w-3.5" />
-                                  </div>
-                                )}
-                                <span className="font-semibold text-foreground">{t.description}</span>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {paginatedTransactions.length === 0 ? (
+                        <tr>
+                          <td colSpan={txOrderedVisibleColumns.length + 2} className="p-8 text-center text-muted-foreground">
+                            {txFilterGroup.conditions.length > 0 || searchQuery
+                              ? "Nenhum lançamento encontrado para os filtros selecionados."
+                              : "Nenhum lançamento financeiro registrado."}
+                            {txFilterGroup.conditions.length > 0 && (
+                              <div className="mt-2">
+                                <button
+                                  type="button"
+                                  onClick={clearTxFilters}
+                                  className="text-primary hover:underline text-xs font-semibold"
+                                >
+                                  Limpar filtros avançados
+                                </button>
                               </div>
-                            </td>
-                            <td className="p-4">{getCategoryLabel(t.category)}</td>
-                            <td className="p-4 font-mono text-muted-foreground">{t.paymentDate ? formatDate(t.paymentDate) : "-"}</td>
-                            <td className="p-4 text-muted-foreground">
-                              {bankAccounts.find(a => a.id === t.bankAccountId)?.name || "Caixa Geral"}
-                            </td>
-                            <td className="p-4 font-mono font-bold text-foreground">
-                              <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
-                                {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right">
-                              <button
-                                onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
-                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                            )}
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedTransactions.map((t) => {
+                          const isSelected = selectedIds.includes(t.id);
+                          return (
+                            <tr key={t.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
+                              <td className="p-4 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectDocTransaction(t.id)}
+                                  className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                                />
+                              </td>
+
+                              {txOrderedVisibleColumns.map((col) => {
+                                if (col.id === "description") {
+                                  return (
+                                    <td key={col.id} className="p-4">
+                                      <div className="flex items-center gap-2">
+                                        {t.type === "revenue" ? (
+                                          <div className="p-1 rounded-md bg-green-100 text-green-600 dark:bg-green-950/20 dark:text-green-400">
+                                            <ArrowUpRight className="h-3.5 w-3.5" />
+                                          </div>
+                                        ) : (
+                                          <div className="p-1 rounded-md bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400">
+                                            <ArrowDownRight className="h-3.5 w-3.5" />
+                                          </div>
+                                        )}
+                                        <span className="font-semibold text-foreground">{t.description}</span>
+                                      </div>
+                                    </td>
+                                  );
+                                }
+                                if (col.id === "category") {
+                                  return (
+                                    <td key={col.id} className="p-4">
+                                      {getCategoryLabel(t.category)}
+                                    </td>
+                                  );
+                                }
+                                if (col.id === "paymentDate") {
+                                  return (
+                                    <td key={col.id} className="p-4 font-mono text-muted-foreground">
+                                      {t.paymentDate ? formatDate(t.paymentDate) : "-"}
+                                    </td>
+                                  );
+                                }
+                                if (col.id === "bankAccount") {
+                                  return (
+                                    <td key={col.id} className="p-4 text-muted-foreground">
+                                      {bankAccounts.find((a) => a.id === t.bankAccountId)?.name || "Caixa Geral"}
+                                    </td>
+                                  );
+                                }
+                                if (col.id === "type") {
+                                  return (
+                                    <td key={col.id} className="p-4">
+                                      <span
+                                        className={cn(
+                                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
+                                          t.type === "revenue"
+                                            ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
+                                            : "bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-200/30"
+                                        )}
+                                      >
+                                        {t.type === "revenue" ? "Receita" : "Despesa"}
+                                      </span>
+                                    </td>
+                                  );
+                                }
+                                if (col.id === "amount") {
+                                  return (
+                                    <td key={col.id} className="p-4 font-mono font-bold text-foreground text-right">
+                                      <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
+                                        {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
+                                      </span>
+                                    </td>
+                                  );
+                                }
+                                if (col.id === "status") {
+                                  return (
+                                    <td key={col.id} className="p-4">
+                                      <span
+                                        className={cn(
+                                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
+                                          t.status === "paid"
+                                            ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
+                                            : "bg-gray-100 text-gray-700 dark:bg-gray-950/20 dark:text-gray-400 border-gray-200/30"
+                                        )}
+                                      >
+                                        {t.status === "paid" ? "Pago" : "Cancelado"}
+                                      </span>
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td key={col.id} className="p-4">
+                                    {String(col.getValue(t) || "-")}
+                                  </td>
+                                );
+                              })}
+
+                              <td className="p-4 text-right">
+                                <button
+                                  onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
+                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
+
 
             {/* Tela 2: Contas Bancárias & Saldos */}
             {activeTab === "accounts" && (
@@ -2804,6 +3018,27 @@ export default function FinancePage() {
           </div>
         </div>
       )}
+
+      {/* Modais de Filtros Personalizados e Personalização de Colunas (Fluxo de Caixa) */}
+      <CustomFilterModal
+        isOpen={isTxFilterModalOpen}
+        onClose={() => setIsTxFilterModalOpen(false)}
+        columns={transactionColumns}
+        filterGroup={txFilterGroup}
+        onApplyFilters={applyTxFilters}
+        onClearFilters={clearTxFilters}
+      />
+
+      <CustomizeColumnsModal
+        isOpen={isTxCustomizeColumnsModalOpen}
+        onClose={() => setIsTxCustomizeColumnsModalOpen(false)}
+        columns={transactionColumns}
+        visibleColumnIds={txVisibleColumnIds}
+        columnOrder={txColumnOrder}
+        onToggleColumn={toggleTxColumn}
+        onMoveColumn={moveTxColumn}
+        onResetDefaults={resetTxColumnDefaults}
+      />
 
     </div>
   );
