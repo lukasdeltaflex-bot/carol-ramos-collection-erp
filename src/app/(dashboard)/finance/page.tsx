@@ -1469,11 +1469,11 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* 2. Seleção de Abas & Filtros */}
-      <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+      {/* 2. Navegação de Subabas & Barra de Ferramentas */}
+      <div className="space-y-3.5">
         
-        {/* Abas */}
-        <div className="flex border border-border bg-card/40 rounded-xl p-1 overflow-x-auto scrollbar-none shrink-0">
+        {/* Linha 1: Seleção de Subabas */}
+        <div className="flex border border-border bg-card/40 rounded-xl p-1 overflow-x-auto scrollbar-none w-full max-w-full">
           {[
             { id: "cashflow", label: "Fluxo de Caixa", icon: Activity },
             { id: "accounts", label: "Contas & Saldos", icon: Wallet },
@@ -1489,7 +1489,7 @@ export default function FinancePage() {
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id as any); setSearchQuery(""); }}
                 className={cn(
-                  "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
+                  "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0",
                   activeTab === tab.id
                     ? "bg-primary text-primary-foreground shadow"
                     : "text-muted-foreground hover:text-foreground"
@@ -1502,11 +1502,11 @@ export default function FinancePage() {
           })}
         </div>
 
-        {/* Barra de Pesquisa e Filtros Rápidos de Status */}
+        {/* Linha 2: Barra de Pesquisa e Filtros Rápidos de Status */}
         {activeTab !== "dre" && activeTab !== "accounts" && activeTab !== "cards" && (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 max-w-2xl">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-border bg-card/25 backdrop-blur-sm">
             {/* Campo de Busca */}
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0 max-w-md">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
                 <Search className="h-4.5 w-4.5" />
               </span>
@@ -1521,13 +1521,13 @@ export default function FinancePage() {
                     ? "Filtrar por descrição ou cliente..."
                     : "Pesquisar lançamentos ou contas..."
                 }
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 placeholder-muted-foreground text-xs focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                className="w-full pl-10 pr-4 py-2 text-xs rounded-lg border border-border bg-card/50 placeholder-muted-foreground text-foreground focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
               />
             </div>
 
             {/* Filtros Específicos de Status: Contas a Pagar (Todas, Pendente, Pago, Vencidas) */}
             {activeTab === "payable" && (
-              <div className="flex bg-muted/40 p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto overflow-x-auto">
+              <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start sm:self-auto overflow-x-auto max-w-full">
                 {[
                   { id: "all", label: "Todas" },
                   { id: "pending", label: "Pendente" },
@@ -1542,7 +1542,7 @@ export default function FinancePage() {
                       setPayablePage(1);
                     }}
                     className={cn(
-                      "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap",
+                      "px-3 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap",
                       payableStatusFilter === tab.id
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
@@ -1556,7 +1556,7 @@ export default function FinancePage() {
 
             {/* Filtros Específicos de Status: Contas a Receber (Todas, Pendente, Pago, Vencidas) */}
             {activeTab === "receivable" && (
-              <div className="flex bg-muted/40 p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto overflow-x-auto">
+              <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start sm:self-auto overflow-x-auto max-w-full">
                 {[
                   { id: "all", label: "Todas" },
                   { id: "pending", label: "Pendente" },
@@ -1571,7 +1571,7 @@ export default function FinancePage() {
                       setReceivablePage(1);
                     }}
                     className={cn(
-                      "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap",
+                      "px-3 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap",
                       receivableStatusFilter === tab.id
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
