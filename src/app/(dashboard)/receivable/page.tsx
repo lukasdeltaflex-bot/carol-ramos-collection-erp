@@ -29,11 +29,6 @@ import {
 import { AccountsReceivable, BankAccount } from "@/features/finance/types";
 import { Customer } from "@/features/customers/types";
 import { AccountsReceivableSchema } from "@/features/finance/schemas";
-import { ColumnDefinition } from "@/features/finance/types/filters";
-import { useCustomTableFilters } from "@/features/finance/hooks/useCustomTableFilters";
-import CustomFilterToolbar from "@/features/finance/components/CustomFilterToolbar";
-import CustomFilterModal from "@/features/finance/components/CustomFilterModal";
-import CustomizeColumnsModal from "@/features/finance/components/CustomizeColumnsModal";
 
 export default function AccountsReceivablePage() {
   const { user, role, tenantId } = useAuth();
@@ -391,153 +386,36 @@ export default function AccountsReceivablePage() {
   };
 
   // Dynamic Metrics Calculations
-  // Dynamic Metrics Calculations
   const now = new Date();
   now.setHours(0,0,0,0);
 
-  // 1. Definição das Colunas Disponíveis para Filtros e Visualização
-  const receivableColumns: ColumnDefinition<AccountsReceivable>[] = React.useMemo(() => [
-    {
-      id: "dueDate",
-      label: "Vencimento",
-      type: "date",
-      getValue: (r) => r.dueDate,
-    },
-    {
-      id: "description",
-      label: "Descrição",
-      type: "text",
-      getValue: (r) => r.description,
-    },
-    {
-      id: "customer",
-      label: "Cliente",
-      type: "select",
-      getValue: (r) => customers.find((c) => c.id === r.customerId)?.name || "Consumidor Final",
-      options: customers.map((c) => ({ value: c.name, label: c.name })),
-    },
-    {
-      id: "amount",
-      label: "Valor Original",
-      type: "number",
-      getValue: (r) => r.amount,
-      align: "right",
-    },
-    {
-      id: "receivedAmount",
-      label: "Valor Recebido",
-      type: "number",
-      getValue: (r) => r.receivedAmount || (r.status === "paid" ? r.amount : 0),
-      align: "right",
-      defaultVisible: false,
-    },
-    {
-      id: "pendingAmount",
-      label: "Saldo Pendente",
-      type: "number",
-      getValue: (r) => (r.status === "paid" ? 0 : r.amount - (r.receivedAmount || 0)),
-      align: "right",
-      defaultVisible: false,
-    },
-    {
-      id: "status",
-      label: "Status",
-      type: "status",
-      getValue: (r) => {
-        const sDate = getNormalizeDate(r.dueDate);
-        sDate.setHours(0, 0, 0, 0);
-        if (r.status === "pending" && sDate < now) return "Vencida";
-        if (r.status === "paid") return "Recebido";
-        if (r.status === "partially_paid") return "Parcialmente Recebido";
-        if (r.status === "cancelled") return "Cancelada";
-        return "Pendente";
-      },
-      options: [
-        { value: "Pendente", label: "Pendente" },
-        { value: "Vencida", label: "Vencida / Atrasada" },
-        { value: "Recebido", label: "Recebido" },
-        { value: "Parcialmente Recebido", label: "Parcialmente Recebido" },
-        { value: "Cancelada", label: "Cancelada" },
-      ],
-    },
-    {
-      id: "paymentMethod",
-      label: "Forma de Recebimento",
-      type: "select",
-      getValue: (r) => r.paymentMethod || "pix",
-      options: [
-        { value: "pix", label: "PIX" },
-        { value: "credit_card", label: "Cartão de Crédito" },
-        { value: "debit_card", label: "Cartão de Débito" },
-        { value: "cash", label: "Dinheiro" },
-        { value: "split", label: "Misto" },
-      ],
-      defaultVisible: false,
-    },
-    {
-      id: "receivedDate",
-      label: "Data de Recebimento",
-      type: "date",
-      getValue: (r) => r.receivedDate,
-      defaultVisible: false,
-    },
-  ], [customers, now]);
-
-  // Filtro básico inicial (busca e abas de status rápidas)
-  const baseFilteredReceivables = React.useMemo(() => {
-    return receivables.filter((r) => {
-      const rDate = getNormalizeDate(r.dueDate);
-      rDate.setHours(0, 0, 0, 0);
-      const isOverdue = r.status === "pending" && rDate < now;
-      const customerName = customers.find((c) => c.id === r.customerId)?.name || "";
-
-      const matchesSearch =
-        r.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        customerName.toLowerCase().includes(searchQuery.toLowerCase());
-
-      if (statusFilter === "pending") {
-        return r.status === "pending" && !isOverdue && matchesSearch;
-      }
-      if (statusFilter === "overdue") {
-        return isOverdue && matchesSearch;
-      }
-      if (statusFilter === "paid") {
-        return r.status === "paid" && matchesSearch;
-      }
-      return matchesSearch;
-    });
-  }, [receivables, searchQuery, statusFilter, customers, now]);
-
-  // Hook de Filtros Personalizados e Colunas
-  const {
-    filterGroup,
-    filteredItems: finalReceivables,
-    visibleColumnIds,
-    columnOrder,
-    isFilterModalOpen,
-    isCustomizeColumnsModalOpen,
-    setIsFilterModalOpen,
-    setIsCustomizeColumnsModalOpen,
-    applyFilters,
-    removeCondition,
-    clearFilters,
-    toggleColumn,
-    moveColumn,
-    resetColumnDefaults,
-    filteredTotalAmount,
-  } = useCustomTableFilters<AccountsReceivable>({
-    storageKey: `receivable_${tenantId || "default"}`,
-    columns: receivableColumns,
-    items: baseFilteredReceivables,
-    onPageReset: () => setCurrentPage(1),
-    getAmountFn: (r) => (r.status === "paid" ? r.amount : r.amount - (r.receivedAmount || 0)),
+  const filteredReceivables = receivables.filter(r => {
+    const rDate = getNormalizeDate(r.dueDate);
+    rDate.setHours(0,0,0,0);
+    
+    // Status Logic
+    const isOverdue = r.status === "pending" && rDate < now;
+    
+    const matchesSearch = r.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customers.find(c => c.id === r.customerId)?.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    if (statusFilter === "pending") {
+      return r.status === "pending" && !isOverdue && matchesSearch;
+    }
+    if (statusFilter === "overdue") {
+      return isOverdue && matchesSearch;
+    }
+    if (statusFilter === "paid") {
+      return r.status === "paid" && matchesSearch;
+    }
+    return matchesSearch;
   });
 
-  const totalPages = Math.ceil(finalReceivables.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredReceivables.length / itemsPerPage);
   const paginatedReceivables = React.useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return finalReceivables.slice(start, start + itemsPerPage);
-  }, [finalReceivables, currentPage, itemsPerPage]);
+    return filteredReceivables.slice(start, start + itemsPerPage);
+  }, [filteredReceivables, currentPage, itemsPerPage]);
 
   const totalReceivables = receivables.reduce((acc, r) => r.status === "pending" ? acc + r.amount : acc, 0);
   const totalReceived = receivables.reduce((acc, r) => r.status === "paid" ? acc + (r.receivedAmount || r.amount) : acc, 0);
@@ -546,19 +424,6 @@ export default function AccountsReceivablePage() {
     rDate.setHours(0,0,0,0);
     return r.status === "pending" && rDate < now ? acc + r.amount : acc;
   }, 0);
-
-  // Ordenação das colunas ativas para a tabela
-  const orderedVisibleColumns = React.useMemo(() => {
-    const map = new Map(receivableColumns.map((c) => [c.id, c]));
-    const result: ColumnDefinition<AccountsReceivable>[] = [];
-    columnOrder.forEach((id) => {
-      if (visibleColumnIds.includes(id)) {
-        const col = map.get(id);
-        if (col) result.push(col);
-      }
-    });
-    return result;
-  }, [receivableColumns, columnOrder, visibleColumnIds]);
 
   return (
     <div className="space-y-6">
@@ -583,7 +448,7 @@ export default function AccountsReceivablePage() {
         {/* Card 1: Pendentes */}
         <div className="p-4 rounded-xl border border-border bg-card/30 backdrop-blur-sm flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">A Receber (Pendentes Gerais)</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">A Vencer (Pendentes)</span>
             <span className="text-lg font-mono font-bold text-amber-500">{formatCurrency(totalReceivables - totalOverdue)}</span>
           </div>
           <Calendar className="h-8 w-8 text-amber-500/20" />
@@ -592,7 +457,7 @@ export default function AccountsReceivablePage() {
         {/* Card 2: Vencidos */}
         <div className="p-4 rounded-xl border border-border bg-card/30 backdrop-blur-sm flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Atrasadas / Vencidas Gerais</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Atrasadas / Vencidas</span>
             <span className="text-lg font-mono font-bold text-red-500">{formatCurrency(totalOverdue)}</span>
           </div>
           <AlertCircle className="h-8 w-8 text-red-500/20 animate-pulse" />
@@ -601,7 +466,7 @@ export default function AccountsReceivablePage() {
         {/* Card 3: Liquidado */}
         <div className="p-4 rounded-xl border border-border bg-card/30 backdrop-blur-sm flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Total Recebido Geral</span>
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Total Recebido / Liquidado</span>
             <span className="text-lg font-mono font-bold text-emerald-500">{formatCurrency(totalReceived)}</span>
           </div>
           <CheckCircle className="h-8 w-8 text-emerald-500/20" />
@@ -609,57 +474,41 @@ export default function AccountsReceivablePage() {
       </div>
 
       {/* 2. Filters & Searches */}
-      <div className="space-y-3 p-4 rounded-xl border border-border bg-card/25 backdrop-blur-sm">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Busca rápida por descrição ou cliente..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-border bg-card/50 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:bg-card"
-            />
-          </div>
-
-          {/* Tabs rápidas de status */}
-          <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
-            {[
-              { id: "all", label: "Todas" },
-              { id: "pending", label: "A Receber" },
-              { id: "overdue", label: "Vencidas" },
-              { id: "paid", label: "Recebidas" }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setStatusFilter(tab.id as any)}
-                className={cn(
-                  "px-3 py-1.5 text-[10px] font-semibold rounded-md transition-all whitespace-nowrap",
-                  statusFilter === tab.id
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card/25 backdrop-blur-sm">
+        {/* Search */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Filtrar por descrição ou cliente..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-border bg-card/50 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:bg-card"
+          />
         </div>
 
-        {/* Toolbar de Filtros Avançados e Personalização de Colunas */}
-        <CustomFilterToolbar
-          columns={receivableColumns}
-          filterGroup={filterGroup}
-          onOpenFilterModal={() => setIsFilterModalOpen(true)}
-          onOpenCustomizeColumnsModal={() => setIsCustomizeColumnsModalOpen(true)}
-          onRemoveCondition={removeCondition}
-          onClearFilters={clearFilters}
-          totalOriginalCount={receivables.length}
-          totalFilteredCount={finalReceivables.length}
-          filteredTotalAmount={filteredTotalAmount}
-          currencyLabel="Total Filtrado (Pendente/Recebido)"
-        />
+        {/* Tabs */}
+        <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
+          {[
+            { id: "all", label: "Todas" },
+            { id: "pending", label: "A Vencer" },
+            { id: "overdue", label: "Vencidas" },
+            { id: "paid", label: "Recebidas" }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id as any)}
+              className={cn(
+                "px-3 py-1.5 text-[10px] font-semibold rounded-md transition-all whitespace-nowrap",
+                statusFilter === tab.id
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 3. Table/List */}
@@ -672,23 +521,8 @@ export default function AccountsReceivablePage() {
       ) : paginatedReceivables.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-border bg-card/20 space-y-3">
           <FileText className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm font-medium text-muted-foreground">
-            {filterGroup.conditions.length > 0 || searchQuery || statusFilter !== "all"
-              ? "Nenhum lançamento encontrado para os filtros selecionados."
-              : "Nenhuma conta a receber encontrada."}
-          </p>
-          <p className="text-xs text-muted-foreground/75">
-            {filterGroup.conditions.length > 0 ? (
-              <button
-                onClick={clearFilters}
-                className="text-primary hover:underline font-semibold"
-              >
-                Limpar filtros avançados
-              </button>
-            ) : (
-              "As vendas a prazo do PDV aparecem automaticamente aqui."
-            )}
-          </p>
+          <p className="text-sm font-medium text-muted-foreground">Nenhuma conta a receber encontrada.</p>
+          <p className="text-xs text-muted-foreground/75">As vendas a prazo do PDV aparecem automaticamente aqui.</p>
         </div>
       ) : (
         <div className="border border-border rounded-xl bg-card/30 overflow-hidden shadow-lg">
@@ -704,16 +538,11 @@ export default function AccountsReceivablePage() {
                       className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                     />
                   </th>
-
-                  {orderedVisibleColumns.map((col) => (
-                    <th
-                      key={col.id}
-                      className={cn("p-4", col.align === "right" && "text-right", col.align === "center" && "text-center")}
-                    >
-                      {col.label}
-                    </th>
-                  ))}
-
+                  <th className="p-4">Vencimento</th>
+                  <th className="p-4">Descrição</th>
+                  <th className="p-4">Cliente</th>
+                  <th className="p-4 text-right">Valor</th>
+                  <th className="p-4">Status</th>
                   <th className="p-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -735,90 +564,30 @@ export default function AccountsReceivablePage() {
                           className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
                         />
                       </td>
-
-                      {orderedVisibleColumns.map((col) => {
-                        if (col.id === "dueDate") {
-                          return (
-                            <td key={col.id} className="p-4 font-mono font-semibold">
-                              {getNormalizedDateStr(rec.dueDate)}
-                            </td>
-                          );
-                        }
-                        if (col.id === "description") {
-                          return (
-                            <td key={col.id} className="p-4">
-                              <div className="font-medium text-foreground">{rec.description}</div>
-                              {rec.saleId && (
-                                <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded mt-1 inline-block">
-                                  Venda #{rec.saleId.slice(-6)}
-                                </span>
-                              )}
-                            </td>
-                          );
-                        }
-                        if (col.id === "customer") {
-                          return (
-                            <td key={col.id} className="p-4 font-medium text-muted-foreground">
-                              {customerName}
-                            </td>
-                          );
-                        }
-                        if (col.id === "amount") {
-                          return (
-                            <td key={col.id} className="p-4 text-right font-mono font-bold text-foreground">
-                              {formatCurrency(rec.amount)}
-                            </td>
-                          );
-                        }
-                        if (col.id === "receivedAmount") {
-                          return (
-                            <td key={col.id} className="p-4 text-right font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                              {formatCurrency(rec.receivedAmount || (rec.status === "paid" ? rec.amount : 0))}
-                            </td>
-                          );
-                        }
-                        if (col.id === "pendingAmount") {
-                          const pendVal = rec.status === "paid" ? 0 : rec.amount - (rec.receivedAmount || 0);
-                          return (
-                            <td key={col.id} className="p-4 text-right font-mono font-bold text-amber-500">
-                              {formatCurrency(pendVal)}
-                            </td>
-                          );
-                        }
-                        if (col.id === "status") {
-                          return (
-                            <td key={col.id} className="p-4">
-                              {rec.status === "paid" ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold">Recebido</span>
-                              ) : isOverdue ? (
-                                <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-bold animate-pulse">Vencida</span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-bold">Pendente</span>
-                              )}
-                            </td>
-                          );
-                        }
-                        if (col.id === "paymentMethod") {
-                          return (
-                            <td key={col.id} className="p-4 uppercase text-[10px] text-muted-foreground">
-                              {rec.paymentMethod === "credit_card" ? "Cartão de Crédito" : rec.paymentMethod === "debit_card" ? "Cartão de Débito" : rec.paymentMethod || "PIX"}
-                            </td>
-                          );
-                        }
-                        if (col.id === "receivedDate") {
-                          return (
-                            <td key={col.id} className="p-4 font-mono text-muted-foreground">
-                              {rec.receivedDate ? getNormalizedDateStr(rec.receivedDate) : "-"}
-                            </td>
-                          );
-                        }
-                        return (
-                          <td key={col.id} className="p-4">
-                            {String(col.getValue(rec) || "-")}
-                          </td>
-                        );
-                      })}
-
+                      <td className="p-4 font-mono font-semibold">
+                        {getNormalizedDateStr(rec.dueDate)}
+                      </td>
+                      <td className="p-4">
+                        <div className="font-medium text-foreground">{rec.description}</div>
+                        {rec.saleId && (
+                          <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded mt-1 inline-block">Venda #{rec.saleId.slice(-6)}</span>
+                        )}
+                      </td>
+                      <td className="p-4 font-medium text-muted-foreground">
+                        {customerName}
+                      </td>
+                      <td className="p-4 text-right font-mono font-bold text-foreground">
+                        {formatCurrency(rec.amount)}
+                      </td>
+                      <td className="p-4">
+                        {rec.status === "paid" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-bold">Recebido</span>
+                        ) : isOverdue ? (
+                          <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-[9px] font-bold animate-pulse">Vencida</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[9px] font-bold">Pendente</span>
+                        )}
+                      </td>
                       <td className="p-4 flex items-center justify-center gap-1">
                         {rec.status === "pending" && (
                           <button
@@ -855,7 +624,7 @@ export default function AccountsReceivablePage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between p-4 border-t border-border bg-muted/10 select-none">
               <span className="text-xs text-muted-foreground">
-                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({finalReceivables.length} itens)
+                Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong> ({filteredReceivables.length} itens)
               </span>
               <div className="flex items-center gap-1.5">
                 <button
@@ -877,28 +646,6 @@ export default function AccountsReceivablePage() {
           )}
         </div>
       )}
-
-      {/* Modais de Filtros Personalizados e Colunas */}
-      <CustomFilterModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        columns={receivableColumns}
-        filterGroup={filterGroup}
-        onApplyFilters={applyFilters}
-        onClearFilters={clearFilters}
-      />
-
-      <CustomizeColumnsModal
-        isOpen={isCustomizeColumnsModalOpen}
-        onClose={() => setIsCustomizeColumnsModalOpen(false)}
-        columns={receivableColumns}
-        visibleColumnIds={visibleColumnIds}
-        columnOrder={columnOrder}
-        onToggleColumn={toggleColumn}
-        onMoveColumn={moveColumn}
-        onResetDefaults={resetColumnDefaults}
-      />
-
 
       {/* 4. MODAL: CADASTRAR / EDITAR CONTA A RECEBER */}
       <Modal

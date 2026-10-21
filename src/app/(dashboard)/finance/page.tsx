@@ -59,11 +59,9 @@ import { BankLogo } from "@/components/ui/BankLogo";
 import { CardFlagLogo } from "@/components/ui/CardFlagLogo";
 import { KNOWN_BANKS, generateOnlineLogoCandidates, findKnownBank } from "@/lib/bankLogos";
 import { KNOWN_CARD_FLAGS, generateOnlineFlagCandidates, findKnownCardFlag } from "@/lib/cardFlags";
-import { ColumnDefinition } from "@/features/finance/types/filters";
-import { useCustomTableFilters } from "@/features/finance/hooks/useCustomTableFilters";
-import CustomFilterToolbar from "@/features/finance/components/CustomFilterToolbar";
-import CustomFilterModal from "@/features/finance/components/CustomFilterModal";
-import CustomizeColumnsModal from "@/features/finance/components/CustomizeColumnsModal";
+import TableColumnHeader from "@/features/finance/components/TableColumnHeader";
+import ActiveTableFiltersBar from "@/features/finance/components/ActiveTableFiltersBar";
+import { useTableColumnSortingAndFiltering } from "@/features/finance/hooks/useTableColumnSortingAndFiltering";
 
 export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
@@ -94,6 +92,7 @@ export default function FinancePage() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [customers, setCustomers] = useState<Array<{ id: string; name?: string }>>([]);
 
   // Drawer Form State
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -303,7 +302,7 @@ export default function FinancePage() {
   const loadFinancialData = async () => {
     setLoading(true);
     try {
-      let [bAccounts, cCards, trans, pays, recs, purcs, prods, supps] = await Promise.all([
+      let [bAccounts, cCards, trans, pays, recs, purcs, prods, supps, custs] = await Promise.all([
         getDocs("bank_accounts"),
         getDocs("company_credit_cards"),
         getDocs("financial_transactions"),
@@ -311,7 +310,8 @@ export default function FinancePage() {
         getDocs("accounts_receivable"),
         getDocs("purchases"),
         getDocs("products"),
-        getDocs("suppliers")
+        getDocs("suppliers"),
+        getDocs("customers")
       ]);
 
       bAccounts = (bAccounts as BankAccount[]) || [];
@@ -322,6 +322,7 @@ export default function FinancePage() {
       purcs = (purcs as Purchase[]) || [];
       prods = (prods as Product[]) || [];
       supps = (supps as Supplier[]) || [];
+      custs = (custs as Array<{ id: string; name?: string }>) || [];
 
       setBankAccounts(bAccounts);
       setCompanyCards(cCards);
@@ -331,6 +332,7 @@ export default function FinancePage() {
       setPurchases(purcs);
       setProducts(prods);
       setSuppliers(supps);
+      setCustomers(custs);
 
       if (bAccounts.length > 0 && bAccounts[0]) {
         setTBankAccountId(bAccounts[0].id);
@@ -1129,6 +1131,230 @@ export default function FinancePage() {
 
   const dre = React.useMemo(() => getDREData(), [transactions]);
 
+  // Filtragem local por busca (Fluxo de Caixa)
+  const filteredTransactions = React.useMemo(() => {
+    return transactions.filter(t =>
+      t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.category.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [transactions, searchQuery]);
+
+  // Helpers para Contas a Pagar e Receber
+  const getPayableStatus = (p: AccountsPayable) => {
+    if (p.status === "paid") return "Pago";
+    const isOverdue = new Date(p.dueDate) < new Date() && p.status === "pending";
+    if (isOverdue) return "Atrasado";
+    if (p.status === "partially_paid") return "Parcial";
+    return "Pendente";
+  };
+
+  const getReceivableStatus = (r: AccountsReceivable) => {
+    if (r.status === "paid") return "Recebido";
+    const isOverdue = new Date(r.dueDate) < new Date() && r.status === "pending";
+    if (isOverdue) return "Atrasado";
+    if (r.status === "partially_paid") return "Parcial";
+    return "Pendente";
+  };
+
+  const getPayableMethodLabel = (method?: string) => {
+    switch (method) {
+      case "company_credit_card": return "Cartão Corporativo";
+      case "credit_card": return "Cartão de Crédito";
+      case "bank_slip": return "Boleto";
+      case "pix": return "PIX";
+      case "cash": return "Dinheiro";
+      case "transfer": return "Transferência";
+      case "bank_account": return "Débito em Conta";
+      default: return method || "Boleto";
+    }
+  };
+
+  const getReceivableMethodLabel = (method?: string) => {
+    switch (method) {
+      case "credit_card": return "Cartão de Crédito";
+      case "debit_card": return "Cartão de Débito";
+      case "pix": return "PIX";
+      case "cash": return "Dinheiro";
+      case "split": return "Múltiplo";
+      default: return method || "Cartão";
+    }
+  };
+
+  const supplierOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    suppliers.forEach((s) => { if (s.name) set.add(s.name); });
+    payables.forEach((p) => {
+      const name = suppliers.find((s) => s.id === p.supplierId)?.name;
+      if (name) set.add(name);
+    });
+    return Array.from(set).sort().map((name) => ({ value: name, label: name }));
+  }, [suppliers, payables]);
+
+  const customerOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    customers.forEach((c) => { if (c.name) set.add(c.name); });
+    receivables.forEach((r) => {
+      const name = customers.find((c) => c.id === r.customerId)?.name;
+      if (name) set.add(name);
+    });
+    return Array.from(set).sort().map((name) => ({ value: name, label: name }));
+  }, [customers, receivables]);
+
+  // Hook de Ordenação e Filtro Individual de Colunas - Contas a Pagar
+  const payableColumnsConfig = React.useMemo(() => [
+    {
+      id: "description",
+      type: "text" as const,
+      getValue: (p: AccountsPayable) => p.description || "",
+    },
+    {
+      id: "supplier",
+      type: "select" as const,
+      getValue: (p: AccountsPayable) => suppliers.find((s) => s.id === p.supplierId)?.name || "Despesa Administrativa",
+    },
+    {
+      id: "dueDate",
+      type: "date" as const,
+      getValue: (p: AccountsPayable) => p.dueDate,
+    },
+    {
+      id: "amount",
+      type: "currency" as const,
+      getValue: (p: AccountsPayable) => p.amount || 0,
+    },
+    {
+      id: "paymentMethod",
+      type: "select" as const,
+      getValue: (p: AccountsPayable) => getPayableMethodLabel(p.paymentMethod),
+    },
+    {
+      id: "status",
+      type: "status" as const,
+      getValue: (p: AccountsPayable) => getPayableStatus(p),
+    },
+  ], [suppliers]);
+
+  const payableSearchFields = React.useMemo(() => [
+    (p: AccountsPayable) => p.description || "",
+    (p: AccountsPayable) => suppliers.find((s) => s.id === p.supplierId)?.name || "",
+  ], [suppliers]);
+
+  const {
+    sortConfig: payableSort,
+    filters: payableFilters,
+    currentPage: payablePage,
+    setCurrentPage: setPayablePage,
+    totalPages: payableTotalPages,
+    hasActiveFilters: hasPayableFilters,
+    sortedItems: finalPayables,
+    paginatedItems: paginatedPayables,
+    totalOriginalCount: payableOriginalCount,
+    totalFilteredCount: payableFilteredCount,
+    setColumnFilter: setPayableColumnFilter,
+    clearColumnFilter: clearPayableColumnFilter,
+    clearAllFilters: clearAllPayableFilters,
+    handleSortChange: handlePayableSortChange,
+  } = useTableColumnSortingAndFiltering<AccountsPayable>({
+    items: payables,
+    columns: payableColumnsConfig,
+    searchQuery,
+    searchFields: payableSearchFields,
+    itemsPerPage,
+  });
+
+  const payableFilteredPendingAmount = React.useMemo(() => {
+    return finalPayables.reduce((sum, p) => {
+      const isPaid = p.status === "paid";
+      return sum + (isPaid ? 0 : (p.amount - (p.paidAmount || 0)));
+    }, 0);
+  }, [finalPayables]);
+
+  // Hook de Ordenação e Filtro Individual de Colunas - Contas a Receber
+  const receivableColumnsConfig = React.useMemo(() => [
+    {
+      id: "description",
+      type: "text" as const,
+      getValue: (r: AccountsReceivable) => r.description || "",
+    },
+    {
+      id: "customer",
+      type: "select" as const,
+      getValue: (r: AccountsReceivable) => customers.find((c) => c.id === r.customerId)?.name || "Cliente Final",
+    },
+    {
+      id: "dueDate",
+      type: "date" as const,
+      getValue: (r: AccountsReceivable) => r.dueDate,
+    },
+    {
+      id: "amount",
+      type: "currency" as const,
+      getValue: (r: AccountsReceivable) => r.amount || 0,
+    },
+    {
+      id: "paymentMethod",
+      type: "select" as const,
+      getValue: (r: AccountsReceivable) => getReceivableMethodLabel(r.paymentMethod),
+    },
+    {
+      id: "status",
+      type: "status" as const,
+      getValue: (r: AccountsReceivable) => getReceivableStatus(r),
+    },
+  ], [customers]);
+
+  const receivableSearchFields = React.useMemo(() => [
+    (r: AccountsReceivable) => r.description || "",
+    (r: AccountsReceivable) => customers.find((c) => c.id === r.customerId)?.name || "",
+  ], [customers]);
+
+  const {
+    sortConfig: receivableSort,
+    filters: receivableFilters,
+    currentPage: receivablePage,
+    setCurrentPage: setReceivablePage,
+    totalPages: receivableTotalPages,
+    hasActiveFilters: hasReceivableFilters,
+    sortedItems: finalReceivables,
+    paginatedItems: paginatedReceivables,
+    totalOriginalCount: receivableOriginalCount,
+    totalFilteredCount: receivableFilteredCount,
+    setColumnFilter: setReceivableColumnFilter,
+    clearColumnFilter: clearReceivableColumnFilter,
+    clearAllFilters: clearAllReceivableFilters,
+    handleSortChange: handleReceivableSortChange,
+  } = useTableColumnSortingAndFiltering<AccountsReceivable>({
+    items: receivables,
+    columns: receivableColumnsConfig,
+    searchQuery,
+    searchFields: receivableSearchFields,
+    itemsPerPage,
+  });
+
+  const receivableFilteredPendingAmount = React.useMemo(() => {
+    return finalReceivables.reduce((sum, r) => {
+      const isPaid = r.status === "paid";
+      return sum + (isPaid ? 0 : (r.amount - (r.receivedAmount || 0)));
+    }, 0);
+  }, [finalReceivables]);
+
+  const currentItemsCount = activeTab === "cashflow" ? filteredTransactions.length :
+                            activeTab === "payable" ? payableFilteredCount :
+                            activeTab === "receivable" ? receivableFilteredCount :
+                            activeTab === "purchases" ? purchases.length : 0;
+
+  const totalPages = Math.ceil(currentItemsCount / itemsPerPage);
+
+  const paginatedTransactions = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredTransactions.slice(start, start + itemsPerPage);
+  }, [filteredTransactions, currentPage, itemsPerPage]);
+
+  const paginatedPurchases = React.useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return purchases.slice(start, start + itemsPerPage);
+  }, [purchases, currentPage, itemsPerPage]);
+
   const getCategoryLabel = (cat: string) => {
     switch (cat) {
       case "sale": return "Venda Mercadoria";
@@ -1141,159 +1367,6 @@ export default function FinancePage() {
       default: return "Outras Despesas";
     }
   };
-
-  // 1. Colunas de Lançamentos Financeiros (Fluxo de Caixa)
-  const transactionColumns: ColumnDefinition<FinancialTransaction>[] = React.useMemo(() => [
-    {
-      id: "description",
-      label: "Descrição",
-      type: "text",
-      getValue: (t) => t.description,
-    },
-    {
-      id: "category",
-      label: "Categoria",
-      type: "category",
-      getValue: (t) => getCategoryLabel(t.category),
-      options: [
-        { value: "Venda Mercadoria", label: "Venda Mercadoria" },
-        { value: "Aluguel Sala", label: "Aluguel Sala" },
-        { value: "Marketing & Anúncios", label: "Marketing & Anúncios" },
-        { value: "Pró-Labore / Salários", label: "Pró-Labore / Salários" },
-        { value: "Reposição Estoque", label: "Reposição Estoque" },
-        { value: "Ajuste Caixa", label: "Ajuste Caixa" },
-        { value: "Fatura de Cartão", label: "Fatura de Cartão" },
-        { value: "Outras Despesas", label: "Outras Despesas" },
-      ],
-    },
-    {
-      id: "paymentDate",
-      label: "Data Pagamento",
-      type: "date",
-      getValue: (t) => t.paymentDate,
-    },
-    {
-      id: "bankAccount",
-      label: "Conta Bancária",
-      type: "select",
-      getValue: (t) => bankAccounts.find((a) => a.id === t.bankAccountId)?.name || "Caixa Geral",
-      options: bankAccounts.map((b) => ({ value: b.name, label: b.name })),
-    },
-    {
-      id: "type",
-      label: "Tipo",
-      type: "select",
-      getValue: (t) => (t.type === "revenue" ? "Receita" : "Despesa"),
-      options: [
-        { value: "Receita", label: "Receita" },
-        { value: "Despesa", label: "Despesa" },
-      ],
-    },
-    {
-      id: "amount",
-      label: "Valor",
-      type: "number",
-      getValue: (t) => t.amount,
-      align: "right",
-    },
-    {
-      id: "status",
-      label: "Status",
-      type: "status",
-      getValue: (t) => (t.status === "paid" ? "Pago" : "Cancelado"),
-      options: [
-        { value: "Pago", label: "Pago" },
-        { value: "Cancelado", label: "Cancelado" },
-      ],
-      defaultVisible: false,
-    },
-  ], [bankAccounts]);
-
-  // Filtragem local básica por busca textual
-  const filteredTransactions = React.useMemo(() => {
-    return transactions.filter(t =>
-      t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.category.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [transactions, searchQuery]);
-
-  // Hook de Filtros Avançados e Personalização de Colunas para Fluxo de Caixa
-  const {
-    filterGroup: txFilterGroup,
-    filteredItems: finalTransactions,
-    visibleColumnIds: txVisibleColumnIds,
-    columnOrder: txColumnOrder,
-    isFilterModalOpen: isTxFilterModalOpen,
-    isCustomizeColumnsModalOpen: isTxCustomizeColumnsModalOpen,
-    setIsFilterModalOpen: setIsTxFilterModalOpen,
-    setIsCustomizeColumnsModalOpen: setIsTxCustomizeColumnsModalOpen,
-    applyFilters: applyTxFilters,
-    removeCondition: removeTxCondition,
-    clearFilters: clearTxFilters,
-    toggleColumn: toggleTxColumn,
-    moveColumn: moveTxColumn,
-    resetColumnDefaults: resetTxColumnDefaults,
-    filteredTotalAmount: txFilteredTotalAmount,
-  } = useCustomTableFilters<FinancialTransaction>({
-    storageKey: `finance_cashflow_${tenantId || "default"}`,
-    columns: transactionColumns,
-    items: filteredTransactions,
-    onPageReset: () => setCurrentPage(1),
-    getAmountFn: (t) => (t.type === "revenue" ? t.amount : -t.amount),
-  });
-
-  const filteredPayables = React.useMemo(() => {
-    return payables.filter(p =>
-      p.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [payables, searchQuery]);
-
-  const filteredReceivables = React.useMemo(() => {
-    return receivables.filter(r =>
-      r.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [receivables, searchQuery]);
-
-  const currentItemsCount = activeTab === "cashflow" ? finalTransactions.length :
-                            activeTab === "payable" ? filteredPayables.length :
-                            activeTab === "receivable" ? filteredReceivables.length :
-                            activeTab === "purchases" ? purchases.length : 0;
-
-  const totalPages = Math.ceil(currentItemsCount / itemsPerPage);
-
-  const paginatedTransactions = React.useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return finalTransactions.slice(start, start + itemsPerPage);
-  }, [finalTransactions, currentPage, itemsPerPage]);
-
-  const paginatedPayables = React.useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredPayables.slice(start, start + itemsPerPage);
-  }, [filteredPayables, currentPage, itemsPerPage]);
-
-  const paginatedReceivables = React.useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredReceivables.slice(start, start + itemsPerPage);
-  }, [filteredReceivables, currentPage, itemsPerPage]);
-
-  const paginatedPurchases = React.useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return purchases.slice(start, start + itemsPerPage);
-  }, [purchases, currentPage, itemsPerPage]);
-
-  // Colunas ativas ordenadas para o Fluxo de Caixa
-  const txOrderedVisibleColumns = React.useMemo(() => {
-    const map = new Map(transactionColumns.map((c) => [c.id, c]));
-    const result: ColumnDefinition<FinancialTransaction>[] = [];
-    txColumnOrder.forEach((id) => {
-      if (txVisibleColumnIds.includes(id)) {
-        const col = map.get(id);
-        if (col) result.push(col);
-      }
-    });
-    return result;
-  }, [transactionColumns, txColumnOrder, txVisibleColumnIds]);
-
 
   return (
     <div className="space-y-6">
@@ -1409,187 +1482,84 @@ export default function FinancePage() {
             
             {/* Tabela 1: Fluxo de Caixa */}
             {activeTab === "cashflow" && (
-              <div className="space-y-4 p-4">
-                {/* Barra de Filtros Personalizados e Personalização de Colunas */}
-                <CustomFilterToolbar
-                  columns={transactionColumns}
-                  filterGroup={txFilterGroup}
-                  onOpenFilterModal={() => setIsTxFilterModalOpen(true)}
-                  onOpenCustomizeColumnsModal={() => setIsTxCustomizeColumnsModalOpen(true)}
-                  onRemoveCondition={removeTxCondition}
-                  onClearFilters={clearTxFilters}
-                  totalOriginalCount={transactions.length}
-                  totalFilteredCount={finalTransactions.length}
-                  filteredTotalAmount={txFilteredTotalAmount}
-                  currencyLabel="Saldo Filtrado (Receitas - Despesas)"
-                />
-
-                <div className="overflow-x-auto border border-border/80 rounded-xl bg-card/20">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                        <th className="p-4 w-10 text-center">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.length === paginatedTransactions.length && paginatedTransactions.length > 0}
-                            onChange={() => toggleSelectAllTransactions(paginatedTransactions)}
-                            className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                          />
-                        </th>
-
-                        {txOrderedVisibleColumns.map((col) => (
-                          <th
-                            key={col.id}
-                            className={cn("p-4", col.align === "right" && "text-right", col.align === "center" && "text-center")}
-                          >
-                            {col.label}
-                          </th>
-                        ))}
-
-                        <th className="p-4 text-right">Ações</th>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                      <th className="p-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.length === paginatedTransactions.length && paginatedTransactions.length > 0}
+                          onChange={() => toggleSelectAllTransactions(paginatedTransactions)}
+                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      </th>
+                      <th className="p-4">Descrição</th>
+                      <th className="p-4">Categoria</th>
+                      <th className="p-4">Data Pagamento</th>
+                      <th className="p-4">Conta</th>
+                      <th className="p-4">Valor</th>
+                      <th className="p-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {paginatedTransactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-muted-foreground">Nenhum lançamento financeiro registrado.</td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {paginatedTransactions.length === 0 ? (
-                        <tr>
-                          <td colSpan={txOrderedVisibleColumns.length + 2} className="p-8 text-center text-muted-foreground">
-                            {txFilterGroup.conditions.length > 0 || searchQuery
-                              ? "Nenhum lançamento encontrado para os filtros selecionados."
-                              : "Nenhum lançamento financeiro registrado."}
-                            {txFilterGroup.conditions.length > 0 && (
-                              <div className="mt-2">
-                                <button
-                                  type="button"
-                                  onClick={clearTxFilters}
-                                  className="text-primary hover:underline text-xs font-semibold"
-                                >
-                                  Limpar filtros avançados
-                                </button>
+                    ) : (
+                      paginatedTransactions.map((t) => {
+                        const isSelected = selectedIds.includes(t.id);
+                        return (
+                          <tr key={t.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
+                            <td className="p-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectDocTransaction(t.id)}
+                                className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                {t.type === "revenue" ? (
+                                  <div className="p-1 rounded-md bg-green-100 text-green-600 dark:bg-green-950/20 dark:text-green-400">
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                  </div>
+                                ) : (
+                                  <div className="p-1 rounded-md bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400">
+                                    <ArrowDownRight className="h-3.5 w-3.5" />
+                                  </div>
+                                )}
+                                <span className="font-semibold text-foreground">{t.description}</span>
                               </div>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedTransactions.map((t) => {
-                          const isSelected = selectedIds.includes(t.id);
-                          return (
-                            <tr key={t.id} className={cn("transition-colors", isSelected ? "bg-primary/5" : "hover:bg-muted/10")}>
-                              <td className="p-4 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleSelectDocTransaction(t.id)}
-                                  className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                                />
-                              </td>
-
-                              {txOrderedVisibleColumns.map((col) => {
-                                if (col.id === "description") {
-                                  return (
-                                    <td key={col.id} className="p-4">
-                                      <div className="flex items-center gap-2">
-                                        {t.type === "revenue" ? (
-                                          <div className="p-1 rounded-md bg-green-100 text-green-600 dark:bg-green-950/20 dark:text-green-400">
-                                            <ArrowUpRight className="h-3.5 w-3.5" />
-                                          </div>
-                                        ) : (
-                                          <div className="p-1 rounded-md bg-red-100 text-red-600 dark:bg-red-950/20 dark:text-red-400">
-                                            <ArrowDownRight className="h-3.5 w-3.5" />
-                                          </div>
-                                        )}
-                                        <span className="font-semibold text-foreground">{t.description}</span>
-                                      </div>
-                                    </td>
-                                  );
-                                }
-                                if (col.id === "category") {
-                                  return (
-                                    <td key={col.id} className="p-4">
-                                      {getCategoryLabel(t.category)}
-                                    </td>
-                                  );
-                                }
-                                if (col.id === "paymentDate") {
-                                  return (
-                                    <td key={col.id} className="p-4 font-mono text-muted-foreground">
-                                      {t.paymentDate ? formatDate(t.paymentDate) : "-"}
-                                    </td>
-                                  );
-                                }
-                                if (col.id === "bankAccount") {
-                                  return (
-                                    <td key={col.id} className="p-4 text-muted-foreground">
-                                      {bankAccounts.find((a) => a.id === t.bankAccountId)?.name || "Caixa Geral"}
-                                    </td>
-                                  );
-                                }
-                                if (col.id === "type") {
-                                  return (
-                                    <td key={col.id} className="p-4">
-                                      <span
-                                        className={cn(
-                                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-                                          t.type === "revenue"
-                                            ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
-                                            : "bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-200/30"
-                                        )}
-                                      >
-                                        {t.type === "revenue" ? "Receita" : "Despesa"}
-                                      </span>
-                                    </td>
-                                  );
-                                }
-                                if (col.id === "amount") {
-                                  return (
-                                    <td key={col.id} className="p-4 font-mono font-bold text-foreground text-right">
-                                      <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
-                                        {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
-                                      </span>
-                                    </td>
-                                  );
-                                }
-                                if (col.id === "status") {
-                                  return (
-                                    <td key={col.id} className="p-4">
-                                      <span
-                                        className={cn(
-                                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-                                          t.status === "paid"
-                                            ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
-                                            : "bg-gray-100 text-gray-700 dark:bg-gray-950/20 dark:text-gray-400 border-gray-200/30"
-                                        )}
-                                      >
-                                        {t.status === "paid" ? "Pago" : "Cancelado"}
-                                      </span>
-                                    </td>
-                                  );
-                                }
-                                return (
-                                  <td key={col.id} className="p-4">
-                                    {String(col.getValue(t) || "-")}
-                                  </td>
-                                );
-                              })}
-
-                              <td className="p-4 text-right">
-                                <button
-                                  onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
-                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                            </td>
+                            <td className="p-4">{getCategoryLabel(t.category)}</td>
+                            <td className="p-4 font-mono text-muted-foreground">{t.paymentDate ? formatDate(t.paymentDate) : "-"}</td>
+                            <td className="p-4 text-muted-foreground">
+                              {bankAccounts.find(a => a.id === t.bankAccountId)?.name || "Caixa Geral"}
+                            </td>
+                            <td className="p-4 font-mono font-bold text-foreground">
+                              <span className={t.type === "revenue" ? "text-green-500" : "text-red-500"}>
+                                {t.type === "revenue" ? "+" : "-"} {formatCurrency(t.amount)}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
+                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
-
 
             {/* Tela 2: Contas Bancárias & Saldos */}
             {activeTab === "accounts" && (
@@ -1797,150 +1767,435 @@ export default function FinancePage() {
 
             {/* Tabela 4: Contas a Pagar */}
             {activeTab === "payable" && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                      <th className="p-4">Fornecedor / Descrição</th>
-                      <th className="p-4">Vencimento</th>
-                      <th className="p-4">Valor</th>
-                      <th className="p-4">Forma</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {paginatedPayables.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma conta a pagar cadastrada.</td>
+              <div className="space-y-3 p-4">
+                {/* Barra de Filtros Ativos (se houver algum ativo) */}
+                <ActiveTableFiltersBar
+                  filters={payableFilters}
+                  columnTitles={{
+                    description: "Descrição",
+                    supplier: "Fornecedor",
+                    dueDate: "Vencimento",
+                    amount: "Valor",
+                    paymentMethod: "Forma",
+                    status: "Status"
+                  }}
+                  onRemoveFilter={clearPayableColumnFilter}
+                  onClearAll={clearAllPayableFilters}
+                  totalOriginalCount={payableOriginalCount}
+                  totalFilteredCount={payableFilteredCount}
+                  filteredTotalAmount={payableFilteredPendingAmount}
+                  amountLabel="Saldo Pendente"
+                />
+
+                <div className="overflow-x-auto rounded-xl border border-border/80">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                        <TableColumnHeader
+                          title="Descrição"
+                          columnId="description"
+                          sortable
+                          currentSort={payableSort}
+                          onSortChange={handlePayableSortChange}
+                          filterable
+                          filterType="text"
+                          currentFilter={payableFilters["description"]}
+                          onFilterChange={(f) => setPayableColumnFilter("description", f)}
+                        />
+                        <TableColumnHeader
+                          title="Fornecedor"
+                          columnId="supplier"
+                          sortable
+                          currentSort={payableSort}
+                          onSortChange={handlePayableSortChange}
+                          filterable
+                          filterType="select"
+                          selectOptions={supplierOptions}
+                          currentFilter={payableFilters["supplier"]}
+                          onFilterChange={(f) => setPayableColumnFilter("supplier", f)}
+                        />
+                        <TableColumnHeader
+                          title="Vencimento"
+                          columnId="dueDate"
+                          sortable
+                          currentSort={payableSort}
+                          onSortChange={handlePayableSortChange}
+                          filterable
+                          filterType="date"
+                          currentFilter={payableFilters["dueDate"]}
+                          onFilterChange={(f) => setPayableColumnFilter("dueDate", f)}
+                        />
+                        <TableColumnHeader
+                          title="Valor"
+                          columnId="amount"
+                          align="right"
+                          sortable
+                          currentSort={payableSort}
+                          onSortChange={handlePayableSortChange}
+                          filterable
+                          filterType="currency"
+                          currentFilter={payableFilters["amount"]}
+                          onFilterChange={(f) => setPayableColumnFilter("amount", f)}
+                          popoverAlign="right"
+                        />
+                        <TableColumnHeader
+                          title="Forma"
+                          columnId="paymentMethod"
+                          sortable
+                          currentSort={payableSort}
+                          onSortChange={handlePayableSortChange}
+                          filterable
+                          filterType="select"
+                          selectOptions={[
+                            { value: "Boleto", label: "Boleto" },
+                            { value: "Cartão Corporativo", label: "Cartão Corporativo" },
+                            { value: "PIX", label: "PIX" },
+                            { value: "Cartão de Crédito", label: "Cartão de Crédito" },
+                            { value: "Dinheiro", label: "Dinheiro" },
+                            { value: "Transferência", label: "Transferência" },
+                            { value: "Débito em Conta", label: "Débito em Conta" }
+                          ]}
+                          currentFilter={payableFilters["paymentMethod"]}
+                          onFilterChange={(f) => setPayableColumnFilter("paymentMethod", f)}
+                        />
+                        <TableColumnHeader
+                          title="Status"
+                          columnId="status"
+                          sortable
+                          currentSort={payableSort}
+                          onSortChange={handlePayableSortChange}
+                          filterable
+                          filterType="status"
+                          selectOptions={[
+                            { value: "Pendente", label: "Pendente" },
+                            { value: "Atrasado", label: "Atrasado" },
+                            { value: "Pago", label: "Pago" },
+                            { value: "Parcial", label: "Parcialmente Pago" }
+                          ]}
+                          currentFilter={payableFilters["status"]}
+                          onFilterChange={(f) => setPayableColumnFilter("status", f)}
+                        />
+                        <th className="p-4 text-right">Ações</th>
                       </tr>
-                    ) : (
-                      paginatedPayables.map((p) => {
-                        const isOverdue = new Date(p.dueDate) < new Date() && p.status === "pending";
-                        return (
-                          <tr key={p.id} className="hover:bg-muted/10 transition-colors">
-                            <td className="p-4">
-                              <div className="font-semibold text-foreground">{p.description}</div>
-                              <div className="text-[10px] text-muted-foreground">
-                                {suppliers.find(s => s.id === p.supplierId)?.name || "Despesa Administrativa"}
-                              </div>
-                            </td>
-                            <td className="p-4 font-mono font-semibold">
-                              <span className={isOverdue ? "text-red-500" : "text-muted-foreground"}>
-                                {formatDate(p.dueDate)}
-                              </span>
-                            </td>
-                            <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(p.amount)}</td>
-                            <td className="p-4 uppercase text-[10px] text-muted-foreground">{p.paymentMethod === "company_credit_card" ? "Cartão Corporativo" : p.paymentMethod || "Boleto"}</td>
-                            <td className="p-4">
-                              <span className={cn(
-                                "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-                                p.status === "paid" 
-                                  ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30" 
-                                  : isOverdue 
-                                    ? "bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-200/30 animate-pulse"
-                                    : "bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border-orange-200/30"
-                              )}>
-                                {p.status === "paid" ? "Pago" : isOverdue ? "Atrasado" : "Pendente"}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {p.status === "pending" && (
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {paginatedPayables.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                            {hasPayableFilters
+                              ? "Nenhuma conta a pagar encontrada com os filtros selecionados."
+                              : "Nenhuma conta a pagar cadastrada."}
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedPayables.map((p) => {
+                          const isOverdue = new Date(p.dueDate) < new Date() && p.status === "pending";
+                          const supplierName = suppliers.find(s => s.id === p.supplierId)?.name || "Despesa Administrativa";
+                          const displayStatus = getPayableStatus(p);
+
+                          return (
+                            <tr key={p.id} className="hover:bg-muted/10 transition-colors">
+                              <td className="p-4 font-semibold text-foreground">
+                                {p.description}
+                              </td>
+                              <td className="p-4 text-muted-foreground">
+                                {supplierName}
+                              </td>
+                              <td className="p-4 font-mono font-semibold">
+                                <span className={isOverdue ? "text-red-500" : "text-muted-foreground"}>
+                                  {formatDate(p.dueDate)}
+                                </span>
+                              </td>
+                              <td className="p-4 font-mono font-bold text-foreground text-right">
+                                {formatCurrency(p.amount)}
+                              </td>
+                              <td className="p-4 uppercase text-[10px] text-muted-foreground">
+                                {getPayableMethodLabel(p.paymentMethod)}
+                              </td>
+                              <td className="p-4">
+                                <span
+                                  className={cn(
+                                    "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
+                                    displayStatus === "Pago"
+                                      ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
+                                      : displayStatus === "Atrasado"
+                                      ? "bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-200/30 animate-pulse"
+                                      : "bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border-orange-200/30"
+                                  )}
+                                >
+                                  {displayStatus}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {p.status === "pending" && (
+                                    <button
+                                      onClick={() => handleOpenPayModal(p.id)}
+                                      className="px-2 py-1 rounded bg-rosegold-100 dark:bg-rosegold-900/50 hover:bg-primary hover:text-white text-rosegold-700 dark:text-rosegold-300 font-semibold text-[10px] transition-colors"
+                                    >
+                                      Baixar
+                                    </button>
+                                  )}
                                   <button
-                                    onClick={() => handleOpenPayModal(p.id)}
-                                    className="px-2 py-1 rounded bg-rosegold-100 dark:bg-rosegold-900/50 hover:bg-primary hover:text-white text-rosegold-700 dark:text-rosegold-300 font-semibold text-[10px] transition-colors"
+                                    onClick={() => window.location.href = `/payable?id=${p.id}`}
+                                    disabled={p.status === "paid"}
+                                    className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                    title="Editar"
                                   >
-                                    Baixar
+                                    <Edit2 className="h-3.5 w-3.5" />
                                   </button>
-                                )}
-                                <button
-                                  onClick={() => window.location.href = `/payable?id=${p.id}`}
-                                  disabled={p.status === "paid"}
-                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                                  title="Editar"
-                                >
-                                  <Edit2 className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteItem("accounts_payable", p.id, p.description)}
-                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                                  <button
+                                    onClick={() => handleDeleteItem("accounts_payable", p.id, p.description)}
+                                    className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                    title="Excluir"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Paginação da Tabela de Contas a Pagar */}
+                {payableTotalPages > 1 && (
+                  <div className="flex items-center justify-between p-3 border-t border-border bg-muted/10 rounded-xl select-none">
+                    <span className="text-xs text-muted-foreground">
+                      Página <strong>{payablePage}</strong> de <strong>{payableTotalPages}</strong> ({payableFilteredCount} itens)
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setPayablePage((prev) => Math.max(1, prev - 1))}
+                        disabled={payablePage === 1}
+                        className="px-2.5 py-1 rounded-lg border border-border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-all"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        onClick={() => setPayablePage((prev) => Math.min(payableTotalPages, prev + 1))}
+                        disabled={payablePage === payableTotalPages}
+                        className="px-2.5 py-1 rounded-lg border border-border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-all"
+                      >
+                        Próxima
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Tabela 5: Contas a Receber */}
             {activeTab === "receivable" && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
-                      <th className="p-4">Cliente / Descrição</th>
-                      <th className="p-4">Vencimento</th>
-                      <th className="p-4">Valor</th>
-                      <th className="p-4">Forma</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {paginatedReceivables.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhuma conta a receber cadastrada.</td>
+              <div className="space-y-3 p-4">
+                {/* Barra de Filtros Ativos */}
+                <ActiveTableFiltersBar
+                  filters={receivableFilters}
+                  columnTitles={{
+                    description: "Descrição",
+                    customer: "Cliente",
+                    dueDate: "Vencimento",
+                    amount: "Valor",
+                    paymentMethod: "Forma",
+                    status: "Status"
+                  }}
+                  onRemoveFilter={clearReceivableColumnFilter}
+                  onClearAll={clearAllReceivableFilters}
+                  totalOriginalCount={receivableOriginalCount}
+                  totalFilteredCount={receivableFilteredCount}
+                  filteredTotalAmount={receivableFilteredPendingAmount}
+                  amountLabel="Saldo a Receber"
+                />
+
+                <div className="overflow-x-auto rounded-xl border border-border/80">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40 font-semibold text-muted-foreground">
+                        <TableColumnHeader
+                          title="Descrição"
+                          columnId="description"
+                          sortable
+                          currentSort={receivableSort}
+                          onSortChange={handleReceivableSortChange}
+                          filterable
+                          filterType="text"
+                          currentFilter={receivableFilters["description"]}
+                          onFilterChange={(f) => setReceivableColumnFilter("description", f)}
+                        />
+                        <TableColumnHeader
+                          title="Cliente"
+                          columnId="customer"
+                          sortable
+                          currentSort={receivableSort}
+                          onSortChange={handleReceivableSortChange}
+                          filterable
+                          filterType="select"
+                          selectOptions={customerOptions}
+                          currentFilter={receivableFilters["customer"]}
+                          onFilterChange={(f) => setReceivableColumnFilter("customer", f)}
+                        />
+                        <TableColumnHeader
+                          title="Vencimento"
+                          columnId="dueDate"
+                          sortable
+                          currentSort={receivableSort}
+                          onSortChange={handleReceivableSortChange}
+                          filterable
+                          filterType="date"
+                          currentFilter={receivableFilters["dueDate"]}
+                          onFilterChange={(f) => setReceivableColumnFilter("dueDate", f)}
+                        />
+                        <TableColumnHeader
+                          title="Valor"
+                          columnId="amount"
+                          align="right"
+                          sortable
+                          currentSort={receivableSort}
+                          onSortChange={handleReceivableSortChange}
+                          filterable
+                          filterType="currency"
+                          currentFilter={receivableFilters["amount"]}
+                          onFilterChange={(f) => setReceivableColumnFilter("amount", f)}
+                          popoverAlign="right"
+                        />
+                        <TableColumnHeader
+                          title="Forma"
+                          columnId="paymentMethod"
+                          sortable
+                          currentSort={receivableSort}
+                          onSortChange={handleReceivableSortChange}
+                          filterable
+                          filterType="select"
+                          selectOptions={[
+                            { value: "Cartão", label: "Cartão" },
+                            { value: "Cartão de Crédito", label: "Cartão de Crédito" },
+                            { value: "Cartão de Débito", label: "Cartão de Débito" },
+                            { value: "PIX", label: "PIX" },
+                            { value: "Dinheiro", label: "Dinheiro" },
+                            { value: "Boleto", label: "Boleto" },
+                            { value: "Múltiplo", label: "Múltiplo / Dividido" }
+                          ]}
+                          currentFilter={receivableFilters["paymentMethod"]}
+                          onFilterChange={(f) => setReceivableColumnFilter("paymentMethod", f)}
+                        />
+                        <TableColumnHeader
+                          title="Status"
+                          columnId="status"
+                          sortable
+                          currentSort={receivableSort}
+                          onSortChange={handleReceivableSortChange}
+                          filterable
+                          filterType="status"
+                          selectOptions={[
+                            { value: "Pendente", label: "Pendente" },
+                            { value: "Atrasado", label: "Atrasado" },
+                            { value: "Recebido", label: "Recebido" },
+                            { value: "Parcial", label: "Parcialmente Recebido" }
+                          ]}
+                          currentFilter={receivableFilters["status"]}
+                          onFilterChange={(f) => setReceivableColumnFilter("status", f)}
+                        />
+                        <th className="p-4 text-right">Ações</th>
                       </tr>
-                    ) : (
-                      paginatedReceivables.map((r) => (
-                        <tr key={r.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-4">
-                            <div className="font-semibold text-foreground">{r.description}</div>
-                          </td>
-                          <td className="p-4 font-mono">{formatDate(r.dueDate)}</td>
-                          <td className="p-4 font-mono font-bold text-foreground">{formatCurrency(r.amount)}</td>
-                          <td className="p-4 uppercase text-[10px] text-muted-foreground">{r.paymentMethod || "Cartão"}</td>
-                          <td className="p-4">
-                            <span className={cn(
-                              "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-                              r.status === "paid"
-                                ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
-                                : "bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border-orange-200/30"
-                            )}>
-                              {r.status === "paid" ? "Recebido" : "Pendente"}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {r.status === "pending" && (
-                                <button
-                                  onClick={() => handleOpenReceiveModal(r.id)}
-                                  className="px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-950/50 hover:bg-green-600 hover:text-white font-semibold text-[10px] transition-colors"
-                                >
-                                  Receber
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleDeleteItem("accounts_receivable", r.id, r.description)}
-                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {paginatedReceivables.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                            {hasReceivableFilters
+                              ? "Nenhuma conta a receber encontrada com os filtros selecionados."
+                              : "Nenhuma conta a receber cadastrada."}
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        paginatedReceivables.map((r) => {
+                          const customerName = customers.find(c => c.id === r.customerId)?.name || "Cliente Final";
+                          const displayStatus = getReceivableStatus(r);
+
+                          return (
+                            <tr key={r.id} className="hover:bg-muted/10 transition-colors">
+                              <td className="p-4 font-semibold text-foreground">
+                                {r.description}
+                              </td>
+                              <td className="p-4 text-muted-foreground">
+                                {customerName}
+                              </td>
+                              <td className="p-4 font-mono text-muted-foreground">
+                                {formatDate(r.dueDate)}
+                              </td>
+                              <td className="p-4 font-mono font-bold text-foreground text-right">
+                                {formatCurrency(r.amount)}
+                              </td>
+                              <td className="p-4 uppercase text-[10px] text-muted-foreground">
+                                {getReceivableMethodLabel(r.paymentMethod)}
+                              </td>
+                              <td className="p-4">
+                                <span
+                                  className={cn(
+                                    "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
+                                    displayStatus === "Recebido"
+                                      ? "bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400 border-green-200/30"
+                                      : displayStatus === "Atrasado"
+                                      ? "bg-red-100 text-red-700 dark:bg-red-950/20 dark:text-red-400 border-red-200/30 animate-pulse"
+                                      : "bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-400 border-orange-200/30"
+                                  )}
+                                >
+                                  {displayStatus}
+                                </span>
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {r.status === "pending" && (
+                                    <button
+                                      onClick={() => handleOpenReceiveModal(r.id)}
+                                      className="px-2 py-1 rounded bg-green-100 text-green-700 dark:bg-green-950/50 hover:bg-green-600 hover:text-white font-semibold text-[10px] transition-colors"
+                                    >
+                                      Receber
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeleteItem("accounts_receivable", r.id, r.description)}
+                                    className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Paginação da Tabela de Contas a Receber */}
+                {receivableTotalPages > 1 && (
+                  <div className="flex items-center justify-between p-3 border-t border-border bg-muted/10 rounded-xl select-none">
+                    <span className="text-xs text-muted-foreground">
+                      Página <strong>{receivablePage}</strong> de <strong>{receivableTotalPages}</strong> ({receivableFilteredCount} itens)
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setReceivablePage((prev) => Math.max(1, prev - 1))}
+                        disabled={receivablePage === 1}
+                        className="px-2.5 py-1 rounded-lg border border-border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-all"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        onClick={() => setReceivablePage((prev) => Math.min(receivableTotalPages, prev + 1))}
+                        disabled={receivablePage === receivableTotalPages}
+                        className="px-2.5 py-1 rounded-lg border border-border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-all"
+                      >
+                        Próxima
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3018,27 +3273,6 @@ export default function FinancePage() {
           </div>
         </div>
       )}
-
-      {/* Modais de Filtros Personalizados e Personalização de Colunas (Fluxo de Caixa) */}
-      <CustomFilterModal
-        isOpen={isTxFilterModalOpen}
-        onClose={() => setIsTxFilterModalOpen(false)}
-        columns={transactionColumns}
-        filterGroup={txFilterGroup}
-        onApplyFilters={applyTxFilters}
-        onClearFilters={clearTxFilters}
-      />
-
-      <CustomizeColumnsModal
-        isOpen={isTxCustomizeColumnsModalOpen}
-        onClose={() => setIsTxCustomizeColumnsModalOpen(false)}
-        columns={transactionColumns}
-        visibleColumnIds={txVisibleColumnIds}
-        columnOrder={txColumnOrder}
-        onToggleColumn={toggleTxColumn}
-        onMoveColumn={moveTxColumn}
-        onResetDefaults={resetTxColumnDefaults}
-      />
 
     </div>
   );
