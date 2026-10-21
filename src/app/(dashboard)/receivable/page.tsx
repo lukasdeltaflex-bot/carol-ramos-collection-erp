@@ -491,9 +491,9 @@ export default function AccountsReceivablePage() {
         <div className="flex bg-muted/40 p-1 rounded-lg border border-border shrink-0 self-start md:self-auto overflow-x-auto max-w-full">
           {[
             { id: "all", label: "Todas" },
-            { id: "pending", label: "A Vencer" },
-            { id: "overdue", label: "Vencidas" },
-            { id: "paid", label: "Recebidas" }
+            { id: "pending", label: "Pendente" },
+            { id: "paid", label: "Pago" },
+            { id: "overdue", label: "Vencidas" }
           ].map(tab => (
             <button
               key={tab.id}

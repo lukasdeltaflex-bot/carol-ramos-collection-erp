@@ -62,6 +62,7 @@ import { KNOWN_CARD_FLAGS, generateOnlineFlagCandidates, findKnownCardFlag } fro
 import TableColumnHeader from "@/features/finance/components/TableColumnHeader";
 import ActiveTableFiltersBar from "@/features/finance/components/ActiveTableFiltersBar";
 import { useTableColumnSortingAndFiltering } from "@/features/finance/hooks/useTableColumnSortingAndFiltering";
+import { parseDateToMillis } from "@/features/finance/utils/columnFilters";
 
 export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
@@ -1139,19 +1140,62 @@ export default function FinancePage() {
     );
   }, [transactions, searchQuery]);
 
-  // Helpers para Contas a Pagar e Receber
+  // Helpers e Filtros Específicos para Contas a Pagar e Receber
+  const [payableStatusFilter, setPayableStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
+  const [receivableStatusFilter, setReceivableStatusFilter] = useState<"all" | "pending" | "paid" | "overdue">("all");
+
+  const todayStartMillis = React.useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
+
+  const isPayableOverdue = React.useCallback((p: AccountsPayable) => {
+    const dt = parseDateToMillis(p.dueDate);
+    return (p.status === "pending" && dt !== null && dt < todayStartMillis) || p.status === "overdue";
+  }, [todayStartMillis]);
+
+  const payableCustomFilter = React.useCallback((p: AccountsPayable) => {
+    if (payableStatusFilter === "pending") {
+      return p.status === "pending" && !isPayableOverdue(p);
+    }
+    if (payableStatusFilter === "paid") {
+      return p.status === "paid";
+    }
+    if (payableStatusFilter === "overdue") {
+      return isPayableOverdue(p);
+    }
+    return true;
+  }, [payableStatusFilter, isPayableOverdue]);
+
+  const isReceivableOverdue = React.useCallback((r: AccountsReceivable) => {
+    const dt = parseDateToMillis(r.dueDate);
+    return (r.status === "pending" && dt !== null && dt < todayStartMillis) || r.status === "overdue";
+  }, [todayStartMillis]);
+
+  const receivableCustomFilter = React.useCallback((r: AccountsReceivable) => {
+    if (receivableStatusFilter === "pending") {
+      return r.status === "pending" && !isReceivableOverdue(r);
+    }
+    if (receivableStatusFilter === "paid") {
+      return r.status === "paid";
+    }
+    if (receivableStatusFilter === "overdue") {
+      return isReceivableOverdue(r);
+    }
+    return true;
+  }, [receivableStatusFilter, isReceivableOverdue]);
+
   const getPayableStatus = (p: AccountsPayable) => {
     if (p.status === "paid") return "Pago";
-    const isOverdue = new Date(p.dueDate) < new Date() && p.status === "pending";
-    if (isOverdue) return "Atrasado";
+    if (isPayableOverdue(p)) return "Atrasado";
     if (p.status === "partially_paid") return "Parcial";
     return "Pendente";
   };
 
   const getReceivableStatus = (r: AccountsReceivable) => {
     if (r.status === "paid") return "Recebido";
-    const isOverdue = new Date(r.dueDate) < new Date() && r.status === "pending";
-    if (isOverdue) return "Atrasado";
+    if (isReceivableOverdue(r)) return "Atrasado";
     if (r.status === "partially_paid") return "Parcial";
     return "Pendente";
   };
@@ -1260,6 +1304,7 @@ export default function FinancePage() {
     searchQuery,
     searchFields: payableSearchFields,
     itemsPerPage,
+    customFilter: payableCustomFilter,
   });
 
   const payableFilteredPendingAmount = React.useMemo(() => {
@@ -1329,6 +1374,7 @@ export default function FinancePage() {
     searchQuery,
     searchFields: receivableSearchFields,
     itemsPerPage,
+    customFilter: receivableCustomFilter,
   });
 
   const receivableFilteredPendingAmount = React.useMemo(() => {
@@ -1456,19 +1502,86 @@ export default function FinancePage() {
           })}
         </div>
 
-        {/* Barra de Pesquisa */}
+        {/* Barra de Pesquisa e Filtros Rápidos de Status */}
         {activeTab !== "dre" && activeTab !== "accounts" && activeTab !== "cards" && (
-          <div className="relative flex-1 max-w-md">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
-              <Search className="h-4.5 w-4.5" />
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar lançamentos ou contas..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 placeholder-muted-foreground text-xs focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-            />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 max-w-2xl">
+            {/* Campo de Busca */}
+            <div className="relative flex-1">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-muted-foreground">
+                <Search className="h-4.5 w-4.5" />
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={
+                  activeTab === "payable"
+                    ? "Filtrar por descrição ou fornecedor..."
+                    : activeTab === "receivable"
+                    ? "Filtrar por descrição ou cliente..."
+                    : "Pesquisar lançamentos ou contas..."
+                }
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border bg-card/50 placeholder-muted-foreground text-xs focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+              />
+            </div>
+
+            {/* Filtros Específicos de Status: Contas a Pagar (Todas, Pendente, Pago, Vencidas) */}
+            {activeTab === "payable" && (
+              <div className="flex bg-muted/40 p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto overflow-x-auto">
+                {[
+                  { id: "all", label: "Todas" },
+                  { id: "pending", label: "Pendente" },
+                  { id: "paid", label: "Pago" },
+                  { id: "overdue", label: "Vencidas" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setPayableStatusFilter(tab.id as any);
+                      setPayablePage(1);
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap",
+                      payableStatusFilter === tab.id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Filtros Específicos de Status: Contas a Receber (Todas, Pendente, Pago, Vencidas) */}
+            {activeTab === "receivable" && (
+              <div className="flex bg-muted/40 p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto overflow-x-auto">
+                {[
+                  { id: "all", label: "Todas" },
+                  { id: "pending", label: "Pendente" },
+                  { id: "paid", label: "Pago" },
+                  { id: "overdue", label: "Vencidas" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setReceivableStatusFilter(tab.id as any);
+                      setReceivablePage(1);
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap",
+                      receivableStatusFilter === tab.id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

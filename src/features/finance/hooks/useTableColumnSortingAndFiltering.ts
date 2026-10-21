@@ -23,6 +23,7 @@ interface UseTableColumnSortingAndFilteringOptions<T> {
   searchQuery?: string;
   searchFields?: Array<(item: T) => string>;
   itemsPerPage?: number;
+  customFilter?: (item: T) => boolean;
 }
 
 export function useTableColumnSortingAndFiltering<T>({
@@ -30,7 +31,8 @@ export function useTableColumnSortingAndFiltering<T>({
   columns,
   searchQuery = "",
   searchFields = [],
-  itemsPerPage = 12
+  itemsPerPage = 12,
+  customFilter,
 }: UseTableColumnSortingAndFilteringOptions<T>) {
   const [sortConfig, setSortConfig] = useState<ColumnSortState | null>(null);
   const [filters, setFilters] = useState<Record<string, ColumnFilter | null>>({});
@@ -79,9 +81,14 @@ export function useTableColumnSortingAndFiltering<T>({
     setCurrentPage(1);
   };
 
-  // 1. Filtragem dos itens (Busca textual geral + Filtros individuais de coluna combinados com E)
+  // 1. Filtragem dos itens (Filtro customizado de status + Busca textual geral + Filtros individuais de coluna combinados com E)
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
+      // 1.0 Filtro customizado / específico (ex: Pago / Pendente)
+      if (customFilter && !customFilter(item)) {
+        return false;
+      }
+
       // 1.1 Busca textual geral (se informada)
       if (searchQuery.trim() && searchFields.length > 0) {
         const query = searchQuery.trim().toLowerCase();
@@ -113,7 +120,7 @@ export function useTableColumnSortingAndFiltering<T>({
 
       return true;
     });
-  }, [items, searchQuery, searchFields, filters, columnMap]);
+  }, [items, searchQuery, searchFields, filters, columnMap, customFilter]);
 
   // 2. Ordenação dos itens filtrados
   const sortedItems = useMemo(() => {

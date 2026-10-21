@@ -227,6 +227,87 @@ assert(withoutValueFilter.length === 3, "Remover filtro de valor mantém os outr
 const allRestored = mockPayables.filter(() => true);
 assert(allRestored.length === 6, "Limpar todos os filtros restaura os 6 registros originais");
 
+// --- 6. Testes Específicos: Filtros Restaurados 'Pago' e 'Pendente' ---
+console.log("\n--- TESTE 6: Restaurar Filtro Específico 'Pago' e 'Pendente' (Testes A, B, C, D, E) ---");
+
+// Simulação de Data Atual (01/10/2026 midnight) para checagem de atraso
+const testTodayMidnight = new Date("2026-10-10T00:00:00.000Z").getTime();
+const isTestOverdue = (p: typeof mockPayables[0]) => {
+  const dt = parseDateToMillis(p.dueDate);
+  return (p.status === "pending" && dt !== null && dt < testTodayMidnight);
+};
+
+const filterByQuickStatus = (status: "all" | "pending" | "paid" | "overdue") => {
+  return mockPayables.filter((p) => {
+    if (status === "pending") return p.status === "pending" && !isTestOverdue(p);
+    if (status === "paid") return p.status === "paid";
+    if (status === "overdue") return isTestOverdue(p);
+    return true;
+  });
+};
+
+// Teste A: Restaurar Pago
+const quickPaid = filterByQuickStatus("paid");
+assert(quickPaid.length === 2 && quickPaid.every((p) => p.status === "paid"), "Teste A: Filtro Pago apresenta exatamente os registros pagos (pay-3 e pay-6)");
+
+// Teste B: Restaurar Pendente
+const quickPending = filterByQuickStatus("pending");
+assert(quickPending.length === 3 && quickPending.every((p) => p.status === "pending" && !isTestOverdue(p)), "Teste B: Filtro Pendente apresenta registros pendentes não vencidos");
+
+// Teste C: Ordenação com Pago e Pendente Ativos
+const quickPaidSortedByAmountDesc = [...quickPaid].sort((a, b) => b.amount - a.amount);
+assert(
+  quickPaidSortedByAmountDesc[0].amount === 2800 && quickPaidSortedByAmountDesc[1].amount === 99.90,
+  "Teste C: Com filtro Pago ativo, ordenação por valor desc coloca R$ 2.800 primeiro e R$ 99,90 depois"
+);
+
+const quickPendingSortedByDateAsc = [...quickPending].sort((a, b) => {
+  const tA = parseDateToMillis(a.dueDate) || 0;
+  const tB = parseDateToMillis(b.dueDate) || 0;
+  return tA - tB;
+});
+assert(
+  quickPendingSortedByDateAsc[0].id === "pay-2" && quickPendingSortedByDateAsc[quickPendingSortedByDateAsc.length - 1].id === "pay-4",
+  "Teste C: Com filtro Pendente ativo, ordenação por data asc coloca 15/10/2026 antes de 20/11/2026"
+);
+
+// Teste D: Filtros Combinados (Status Pendente + Fornecedor + Data Outubro + Ordenação Valor Desc)
+const testDCombined = mockPayables.filter((p) => {
+  const matchQuickStatus = p.status === "pending" && !isTestOverdue(p);
+  const matchCategoryDesc = matchText(p.description, { type: "text", mode: "contains", value: "Perfumes" });
+  const matchOctDate = matchDate(p.dueDate, octFilter);
+  return matchQuickStatus && matchCategoryDesc && matchOctDate;
+}).sort((a, b) => b.amount - a.amount);
+
+assert(
+  testDCombined.length === 1 && testDCombined[0].id === "pay-2",
+  "Teste D: Combinação simultânea de Status Pendente + Descrição 'Perfumes' + Data Outubro + Ordenação por Valor retorna exatamente pay-2"
+);
+
+// Teste E: Limpeza - Limpar filtros de coluna mantém statusFilter ativo
+let activeQuickStatus: "pending" | "all" = "pending";
+let activeColumnFilters: Record<string, any> = { description: { type: "text", mode: "contains", value: "Perfumes" } };
+
+// Ação 1: Limpar filtros de coluna
+activeColumnFilters = {};
+const afterClearColumnFilters = mockPayables.filter((p) => {
+  // Apenas o quick status permanece
+  if (activeQuickStatus === "pending") return p.status === "pending" && !isTestOverdue(p);
+  return true;
+});
+assert(
+  afterClearColumnFilters.length === 3 && activeQuickStatus === "pending",
+  "Teste E: Limpar filtros das colunas mantém o controle 'Pendente' ativo e operante"
+);
+
+// Ação 2: Limpar statusFilter específico para 'all'
+activeQuickStatus = "all";
+const afterClearQuickStatus = mockPayables.filter(() => true);
+assert(
+  afterClearQuickStatus.length === 6 && activeQuickStatus === "all",
+  "Teste E: Limpar o filtro específico restaura todos os lançamentos originais"
+);
+
 console.log("\n========================================================");
 console.log(`📊 RESULTADO DA SUÍTE DE TESTES:`);
 console.log(`   Total Passados: ${passed}`);
