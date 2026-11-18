@@ -64,6 +64,17 @@ import ActiveTableFiltersBar from "@/features/finance/components/ActiveTableFilt
 import { useTableColumnSortingAndFiltering } from "@/features/finance/hooks/useTableColumnSortingAndFiltering";
 import { parseDateToMillis } from "@/features/finance/utils/columnFilters";
 
+import { Settings2 } from "lucide-react";
+import { BrazilianCurrencyInput } from "@/features/finance/components/BrazilianCurrencyInput";
+import { BrazilianDateInput } from "@/features/finance/components/BrazilianDateInput";
+import { ManageFinancialCategoriesModal } from "@/features/finance/components/ManageFinancialCategoriesModal";
+import {
+  FinancialCategory,
+  DEFAULT_FINANCIAL_CATEGORIES,
+  getFinancialCategories,
+  getCategoryLabelFromList
+} from "@/features/finance/services/financialCategoriesService";
+
 export const BRAZILIAN_BANKS = KNOWN_BANKS;
 
 export default function FinancePage() {
@@ -103,7 +114,10 @@ export default function FinancePage() {
   // Form Fields
   // 1. Transaction
   const [tType, setTType] = useState<'revenue' | 'expense'>("expense");
-  const [tCategory, setTCategory] = useState<'sale' | 'rent' | 'marketing' | 'salary' | 'stock_purchase' | 'cash_register_adjustment' | 'card_invoice_payment' | 'other'>("other");
+  const [tCategory, setTCategory] = useState<string>("other");
+  const [isDateValid, setIsDateValid] = useState(true);
+  const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>(DEFAULT_FINANCIAL_CATEGORIES);
+  const [manageCategoriesModalOpen, setManageCategoriesModalOpen] = useState(false);
   const [tAmount, setTAmount] = useState(0);
   const [tDesc, setTDesc] = useState("");
   const [tDate, setTDate] = useState("");
@@ -335,6 +349,10 @@ export default function FinancePage() {
       setSuppliers(supps);
       setCustomers(custs);
 
+      // Carrega categorias financeiras dinâmicas do Firestore
+      const cats = await getFinancialCategories(tenantId || "carol-ramos-collection", { getDocs, createDoc, updateDoc });
+      setFinancialCategories(cats);
+
       if (bAccounts.length > 0 && bAccounts[0]) {
         setTBankAccountId(bAccounts[0].id);
         setPaymentBankAccountId(bAccounts[0].id);
@@ -370,10 +388,12 @@ export default function FinancePage() {
     
     // Reset inputs
     setTType("expense");
-    setTCategory("other");
+    const firstExpenseCat = financialCategories.find(c => c.type === "expense" && c.status !== "archived");
+    setTCategory(firstExpenseCat ? firstExpenseCat.id : "other_expense");
     setTAmount(0);
     setTDesc("");
     setTDate(new Date().toISOString().split("T")[0]);
+    setIsDateValid(true);
     if (bankAccounts.length > 0) setTBankAccountId(bankAccounts[0].id);
 
     setBName("");
@@ -427,6 +447,21 @@ export default function FinancePage() {
     setPurchaseAddition(0);
     setPurchaseFreight(0);
 
+    setDrawerOpen(true);
+  };
+
+  // 1a. Abrir Drawer de Edição de Lançamento no Fluxo
+  const handleEditTransaction = (tx: FinancialTransaction) => {
+    setDrawerType("transaction");
+    setEditingId(tx.id);
+    setErrors({});
+    setTType(tx.type);
+    setTCategory(tx.category);
+    setTAmount(tx.amount);
+    setTDesc(tx.description);
+    setTDate(tx.paymentDate || new Date().toISOString().split("T")[0]);
+    setIsDateValid(true);
+    setTBankAccountId(tx.bankAccountId || (bankAccounts[0]?.id || ""));
     setDrawerOpen(true);
   };
 
@@ -645,6 +680,10 @@ export default function FinancePage() {
       }
 
       else if (drawerType === "transaction") {
+        if (!isDateValid && tDate === "") {
+          setErrors({ paymentDate: "Data de pagamento inválida ou incompleta" });
+          return;
+        }
         const payload = {
           type: tType,
           category: tCategory,
@@ -662,7 +701,40 @@ export default function FinancePage() {
           return;
         }
 
-        // Alterar saldo da conta bancária correspondente
+        if (editingId) {
+          const oldTx = transactions.find(t => t.id === editingId);
+          if (oldTx) {
+            const oldAccount = bankAccounts.find(a => a.id === oldTx.bankAccountId);
+            const oldDiff = oldTx.type === "revenue" ? oldTx.amount : -oldTx.amount;
+            const newAccount = bankAccounts.find(a => a.id === tBankAccountId);
+            const newDiff = tType === "revenue" ? tAmount : -tAmount;
+
+            if (oldAccount && newAccount && oldAccount.id === newAccount.id) {
+              const balanceDelta = newDiff - oldDiff;
+              if (balanceDelta !== 0) {
+                await updateDoc("bank_accounts", tBankAccountId, {
+                  balance: oldAccount.balance + balanceDelta
+                });
+              }
+            } else {
+              if (oldAccount) {
+                await updateDoc("bank_accounts", oldAccount.id, {
+                  balance: oldAccount.balance - oldDiff
+                });
+              }
+              if (newAccount) {
+                await updateDoc("bank_accounts", newAccount.id, {
+                  balance: newAccount.balance + newDiff
+                });
+              }
+            }
+          }
+
+          await updateDoc("financial_transactions", editingId, {
+            ...payload,
+            updatedAt: new Date().toISOString()
+          });
+        } else {
         const account = bankAccounts.find(a => a.id === tBankAccountId);
         if (account) {
           const diff = tType === "revenue" ? tAmount : -tAmount;
@@ -675,6 +747,7 @@ export default function FinancePage() {
           ...payload,
           status: "paid" as const,
         });
+        }
       } 
       
       else if (drawerType === "purchase") {
@@ -1402,16 +1475,7 @@ export default function FinancePage() {
   }, [purchases, currentPage, itemsPerPage]);
 
   const getCategoryLabel = (cat: string) => {
-    switch (cat) {
-      case "sale": return "Venda Mercadoria";
-      case "rent": return "Aluguel Sala";
-      case "marketing": return "Marketing & Anúncios";
-      case "salary": return "Pró-Labore / Salários";
-      case "stock_purchase": return "Reposição Estoque";
-      case "cash_register_adjustment": return "Ajuste Caixa";
-      case "card_invoice_payment": return "Fatura de Cartão";
-      default: return "Outras Despesas";
-    }
+    return getCategoryLabelFromList(cat, financialCategories);
   };
 
   return (
@@ -1658,12 +1722,22 @@ export default function FinancePage() {
                               </span>
                             </td>
                             <td className="p-4 text-right">
-                              <button
-                                onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
-                                className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleEditTransaction(t)}
+                                  title="Editar lançamento"
+                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteItem("financial_transactions", t.id, t.description)}
+                                  title="Excluir lançamento"
+                                  className="p-1.5 rounded-lg border border-border bg-card/50 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2909,22 +2983,51 @@ export default function FinancePage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Tipo</label>
-                        <select value={tType} onChange={(e) => setTType(e.target.value as any)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
+                        <select
+                          value={tType}
+                          onChange={(e) => {
+                            const newType = e.target.value as "expense" | "revenue";
+                            setTType(newType);
+                            const validCats = financialCategories.filter(c => c.type === newType && c.status !== "archived");
+                            if (!validCats.some(c => c.id === tCategory)) {
+                              setTCategory(validCats[0]?.id || (newType === "expense" ? "other_expense" : "other_revenue"));
+                            }
+                          }}
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground"
+                        >
                           <option value="expense">Despesa (Saída)</option>
                           <option value="revenue">Receita (Entrada)</option>
                         </select>
                       </div>
 
                       <div className="space-y-1">
-                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Categoria</label>
-                        <select value={tCategory} onChange={(e) => setTCategory(e.target.value as any)} className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground">
-                          <option value="other">Outros Lançamentos</option>
-                          <option value="rent">Aluguel / Condomínio</option>
-                          <option value="marketing">Marketing & Tráfego</option>
-                          <option value="salary">Salários & Pró-Labore</option>
-                          <option value="stock_purchase">Compra de Mercadorias</option>
-                          <option value="card_invoice_payment">Pagamento Fatura Cartão</option>
+                        <div className="flex items-center justify-between">
+                          <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Categoria</label>
+                          <button
+                            type="button"
+                            onClick={() => setManageCategoriesModalOpen(true)}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline hover:text-primary/80 transition-colors"
+                            title="Gerenciar, criar e editar categorias"
+                          >
+                            <Settings2 className="h-2.5 w-2.5" />
+                            <span>Gerenciar</span>
+                          </button>
+                        </div>
+                        <select
+                          value={tCategory}
+                          onChange={(e) => setTCategory(e.target.value)}
+                          className="w-full px-3.5 py-2 rounded-lg border border-border bg-card text-foreground"
+                        >
+                          {financialCategories
+                            .filter(c => c.type === tType && c.status !== "archived")
+                            .map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          {!financialCategories.some(c => c.id === tCategory && c.type === tType && c.status !== "archived") && (
+                            <option value={tCategory}>{getCategoryLabelFromList(tCategory, financialCategories)}</option>
+                          )}
                         </select>
+                        {errors.category && <p className="text-[10px] text-destructive">{errors.category}</p>}
                       </div>
                     </div>
 
@@ -2936,12 +3039,34 @@ export default function FinancePage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Valor (R$)</label>
-                        <input type="number" step="0.01" required value={tAmount || ""} onChange={(e) => setTAmount(parseFloat(e.target.value) || 0)} placeholder="0,00" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono" />
+                        <BrazilianCurrencyInput
+                          value={tAmount}
+                          onChange={setTAmount}
+                          required
+                          placeholder="R$ 0,00"
+                          className={errors.amount ? "border-destructive focus-visible:ring-destructive" : ""}
+                        />
+                        {errors.amount && <p className="text-[10px] text-destructive">{errors.amount}</p>}
                       </div>
 
                       <div className="space-y-1">
-                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Data Pagamento</label>
-                        <input type="text" required value={tDate} onChange={(e) => setTDate(e.target.value)} placeholder="AAAA-MM-DD" className="w-full px-3.5 py-2 rounded-lg border border-border bg-card font-mono" />
+                        <label className="font-semibold text-muted-foreground uppercase tracking-wider text-[9px]">Data de Pagamento</label>
+                        <BrazilianDateInput
+                          value={tDate}
+                          onChange={(isoDate, valid) => {
+                            setTDate(isoDate);
+                            setIsDateValid(valid);
+                            if (valid && errors.paymentDate) {
+                              setErrors(prev => {
+                                const next = { ...prev };
+                                delete next.paymentDate;
+                                return next;
+                              });
+                            }
+                          }}
+                          required
+                          errorMessage={errors.paymentDate}
+                        />
                       </div>
                     </div>
 
@@ -3345,6 +3470,23 @@ export default function FinancePage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Gerenciamento de Categorias Financeiras */}
+      <ManageFinancialCategoriesModal
+        open={manageCategoriesModalOpen}
+        onClose={() => setManageCategoriesModalOpen(false)}
+        tenantId={tenantId || "carol-ramos-collection"}
+        initialType={tType}
+        categories={financialCategories}
+        onCategoriesUpdated={setFinancialCategories}
+        transactions={transactions}
+        db={{ getDocs, createDoc, updateDoc }}
+        onSelectCategory={(categoryId) => {
+          setTCategory(categoryId);
+          const catObj = financialCategories.find(c => c.id === categoryId);
+          if (catObj) setTType(catObj.type);
+        }}
+      />
 
       {/* Floating Batch Action Bar (Financeiro - Fluxo de Caixa) */}
       {activeTab === "cashflow" && selectedIds.length > 0 && (

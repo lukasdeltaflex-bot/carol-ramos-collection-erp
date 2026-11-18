@@ -41,10 +41,12 @@ export interface CompanyCreditCard extends BaseDocument {
   notes?: string;
 }
 
+export type { FinancialCategory } from "../services/financialCategoriesService";
+
 export interface FinancialTransaction extends BaseDocument {
   tenantId: string;
   type: 'revenue' | 'expense';
-  category: 'sale' | 'rent' | 'marketing' | 'salary' | 'stock_purchase' | 'cash_register_adjustment' | 'card_invoice_payment' | 'other';
+  category: 'sale' | 'rent' | 'marketing' | 'salary' | 'stock_purchase' | 'cash_register_adjustment' | 'card_invoice_payment' | 'other' | (string & {});
   amount: number;
   description: string;
   paymentDate?: any;

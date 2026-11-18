@@ -41,7 +41,7 @@ export const CompanyCreditCardSchema = z.object({
 
 export const FinancialTransactionSchema = z.object({
   type: z.enum(["revenue", "expense"]),
-  category: z.enum(["sale", "rent", "marketing", "salary", "stock_purchase", "cash_register_adjustment", "card_invoice_payment", "other"]),
+  category: z.string().min(1, "Categoria é obrigatória"),
   amount: z.number().positive("O valor deve ser maior que zero"),
   description: z.string().min(3, "Descrição deve conter pelo menos 3 caracteres"),
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato de data inválido (AAAA-MM-DD)").or(z.string().length(0)).optional(),
